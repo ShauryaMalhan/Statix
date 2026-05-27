@@ -1,0 +1,21 @@
+[build]
+# Suppress the harmless "unable to open LLVM shared lib" linker message.
+# bpf-linker tries the nightly toolchain's LLVM first, falls back to system
+# LLVM (installed via apt) — the build succeeds either way.
+rustflags = ["-A", "linker_messages"]
+
+# bpfel-unknown-none means:
+#   bpf   = Berkeley Packet Filter instruction set
+#   el    = little-endian (x86_64 servers are little-endian)
+#   unknown = no operating system (we're inside the kernel)
+#   none  = no standard library (no libc, no malloc, no threads)
+#
+# This target does not have prebuilt Rust standard library artifacts on
+# rustup (it's a "tier 3" target). The `build-std` unstable flag tells
+# the nightly compiler to compile `core` from source specifically for this
+# target. `core` is the minimal subset of std that works without an OS:
+# it provides basic types (Option, Result, iterators) but no heap allocation.
+target = "bpfel-unknown-none"
+
+[unstable]
+build-std = ["core"]

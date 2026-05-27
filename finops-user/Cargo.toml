@@ -1,0 +1,38 @@
+[package]
+name    = "finops-user"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# aya is the user-space half of the Aya eBPF framework.
+# It handles: loading BPF ELF files, creating/pinning maps,
+# attaching programs to kernel hooks, and reading from ring buffers.
+aya = { version = "0.13", features = ["async_tokio"] }
+
+# aya-log is intentionally omitted in Phase 1 — re-add alongside
+# aya-log-ebpf in Phase 2 when BPF-side structured logging is needed.
+
+# Tokio is the async runtime. Our ring buffer consumer uses async I/O:
+# instead of blocking a thread waiting for kernel data, we register the
+# ring buffer file descriptor with the OS epoll, and Tokio wakes our
+# task only when events arrive. Zero CPU usage while waiting.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+# serde + serde_json for structured JSON output.
+# Phase 1 prints to stdout. Phase 3 will stream over gRPC instead.
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# anyhow gives us the ? operator and readable error messages without
+# defining a custom error enum for every failure mode.
+anyhow = "1"
+
+# log crate for structured logging (aya-log integrates with this)
+log = "0.4"
+env_logger = "0.11"
+libc       = "0.2"
+
+# Our shared memory contract — enable the `user` feature so we get
+# the aya::Pod implementation for ProcessEvent
+finops-common = { path = "../finops-common", features = ["user"] }
+

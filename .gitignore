@@ -1,0 +1,90 @@
+# ============================================================
+# FinOps eBPF Agent — .gitignore
+# ============================================================
+
+# ── Rust build artifacts ─────────────────────────────────────
+# The workspace target directory (finops-common, finops-user)
+/target/
+
+# finops-ebpf has its own target directory because it is excluded
+# from the workspace (different compilation target: bpfel-unknown-none)
+/finops-ebpf/target/
+
+# NOTE: Cargo.lock files ARE committed.
+# For binary crates (finops-user) this guarantees reproducible builds.
+# Do NOT add Cargo.lock here.
+
+# ── eBPF compiled bytecode ───────────────────────────────────
+# Raw object files produced by clang or llvm if ever generated manually
+*.bpf.o
+*.bpf.elf
+
+# ── Environment and secrets ──────────────────────────────────
+.env
+.env.*
+*.env
+secrets/
+config.local.toml
+
+# Private keys and certificates — never commit these
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ── Editor and IDE artifacts ─────────────────────────────────
+# VSCode / Cursor workspace settings (machine-specific, not shared config)
+.vscode/
+.cursor/
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# Vim / Neovim swap and backup files
+*.swp
+*.swo
+*.swn
+*~
+
+# Emacs backup files
+\#*\#
+.\#*
+
+# ── OS artifacts ─────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Linux
+.directory
+
+# ── Logs and profiling output ────────────────────────────────
+*.log
+logs/
+
+# Linux perf profiling output
+perf.data
+perf.data.old
+flamegraph.svg
+*.prof
+*.profdata
+
+# ── Test and benchmark artifacts ─────────────────────────────
+# Criterion benchmark results
+criterion/
+
+# ── Future tooling ───────────────────────────────────────────
+# mdBook documentation build output (for when we add a docs site)
+book/
+
+# Docker build context artifacts
+.dockerignore.bak
+/docs

@@ -1,0 +1,20 @@
+[package]
+name    = "finops-common"
+version = "0.1.0"
+edition = "2021"
+
+# This crate must compile in two very different environments:
+#   1. Kernel space  (finops-ebpf): no operating system, no heap, no std library
+#   2. User space    (finops-user): full std, tokio, serde, etc.
+#
+# The `user` feature gates any dependency that only makes sense in user-space
+# (like aya's Pod trait). When finops-ebpf depends on this crate, it uses
+# default features (none). When finops-user depends on it, it enables `user`.
+[features]
+default = []
+user    = ["aya"]
+
+[dependencies]
+# aya is only needed for the Pod marker trait implementation.
+# Pod tells Aya: "it is safe to read this struct directly from raw kernel bytes."
+aya = { version = "0.13", optional = true }
