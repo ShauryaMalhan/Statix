@@ -36,3 +36,7 @@ libc       = "0.2"
 # the aya::Pod implementation for ProcessEvent
 finops-common = { path = "../finops-common", features = ["user"] }
 
+# Optional in-cluster pod/namespace resolution (skipped when not on Kubernetes).
+kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.24", features = ["v1_30"] }
+
