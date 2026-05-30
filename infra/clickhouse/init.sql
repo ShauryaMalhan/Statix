@@ -19,7 +19,11 @@ SETTINGS
     kafka_broker_list = 'kafka:29092',
     kafka_topic_list = 'finops-telemetry',
     kafka_group_name = 'clickhouse-consumer',
-    kafka_format = 'JSONEachRow';
+    kafka_format = 'JSONEachRow',
+    -- Drop malformed JSON rows instead of halting the consumer (poison pill)
+    kafka_skip_broken_messages = 1000,
+    -- Match Kafka partition count in production (1 for local docker)
+    kafka_num_consumers = 1;
 
 CREATE TABLE IF NOT EXISTS finops_telemetry (
     window_start_ns UInt64,

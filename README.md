@@ -27,7 +27,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3 adds fire-and-forget `POST` to `finops-api`, one Kafka JSON row per workload, ClickHouse ingestion via materialized view.
+Phase 3 adds fire-and-forget `POST` to `finops-api` (3s HTTP timeout), one Kafka JSON row per workload, ClickHouse ingestion via Kafka engine + materialized view (skip broken messages; tune `kafka_num_consumers` to partition count in prod).
 
 **Enterprise low-latency contract:** [docs/enterprise-latency.md](docs/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  

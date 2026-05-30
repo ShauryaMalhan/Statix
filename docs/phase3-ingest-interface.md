@@ -59,6 +59,15 @@ API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSO
 
 Topic: `finops-telemetry`
 
+## ClickHouse Kafka consumer (`infra/clickhouse/init.sql`)
+
+| Setting | Local dev | Production |
+|---------|-----------|------------|
+| `kafka_skip_broken_messages` | `1000` | same — avoid poison-pill halt |
+| `kafka_num_consumers` | `1` | **match topic partition count** (e.g. `8`) |
+
+See [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
+
 ## Environment variables
 
 ### Agent (`finops-user`)
@@ -66,6 +75,7 @@ Topic: `finops-telemetry`
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
+| (client) | — | Shared `reqwest::Client`: **3s** request timeout, **90s** pool idle ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
@@ -91,5 +101,5 @@ sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
 ## Deferred
 
 - TLS between agent and API
-- Multi-partition / replication tuning
+- Kafka topic replication / multi-broker production config (set `kafka_num_consumers` when partition count changes)
 - Dedupe and p99 analyzer (Phase 4)

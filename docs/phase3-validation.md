@@ -50,7 +50,12 @@ If tables are missing or schema changed (partition / ORDER BY / TTL), reset the 
 docker compose down -v && make compose-up
 ```
 
-See [ADR 007](adr/007-clickhouse-mergetree-tuning.md).
+See [ADR 007](adr/007-clickhouse-mergetree-tuning.md) and [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
+
+```bash
+curl -s "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20finops_telemetry_kafka" | grep -E 'skip_broken|num_consumers'
+# Expect kafka_skip_broken_messages = 1000 and kafka_num_consumers = 1 (local)
+```
 
 ## Local ports
 
@@ -63,4 +68,4 @@ See [ADR 007](adr/007-clickhouse-mergetree-tuning.md).
 
 ## Enterprise checks
 
-See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses shared `reqwest` client + `tokio::spawn`.
+See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses shared `reqwest` client (3s timeout) + `tokio::spawn`.

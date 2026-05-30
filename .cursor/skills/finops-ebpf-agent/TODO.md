@@ -6,6 +6,7 @@ Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed d
 
 ## Phase 3 — ingest hardening
 
+- [ ] **Production ClickHouse:** set `kafka_num_consumers` = Kafka topic partition count in env-specific SQL ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md))
 - [ ] **TLS + auth on `POST /ingest`**
 - [ ] **Agent ingest retry / dead-letter**
 - [ ] **Ingest metrics** (channel depth, drops, produce latency)

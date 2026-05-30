@@ -99,13 +99,13 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` + `tokio::spawn` POST.
+**Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `tokio::spawn` POST ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
 **API:** `FlatRow<'a>` borrows `&batch.node`; `try_send` only; always `200`.
 
-**Kafka:** background `produce` task.
+**Kafka:** micro-batch (`recv_many` + linger); hoisted `payloads`; `drain().map().collect()` per batch for `produce` (library owns `Vec<Record>` — no recycle).
 
-**ClickHouse:** daily `PARTITION BY`, `ORDER BY (namespace, pod, node, window_start_ns)`, 30d TTL — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md).
+**ClickHouse:** Kafka engine `kafka_skip_broken_messages`, `kafka_num_consumers` (match partitions in prod) — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). MergeTree daily parts, billing sort key, 30d TTL — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md).
 
 ---
 
@@ -117,3 +117,5 @@ sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
 ```
 
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
+
+**API shutdown:** `with_graceful_shutdown` → drop ingest `tx` → producer `recv_many` into hoisted `payloads` (no scratch buffer) → flush full/partial batches ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).

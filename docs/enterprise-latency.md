@@ -12,7 +12,8 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **No hot-path heap churn** | Stack reads for `memory.current`; precomputed paths; `FxHashMap` for internal `u64` keys |
 | **Explicit backpressure** | Channel full → log + drop row, still HTTP 200 (agent must not stall) |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
-| **Shared I/O pools** | One `reqwest::Client` via `OnceLock`; one Kafka producer task per API process |
+| **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (3s timeout, 90s pool idle); one Kafka producer task per API process |
+| **Bounded background work** | Agent HTTP tasks must not hang on black-hole TCP; ClickHouse Kafka engine skips broken rows ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)) |
 
 ## Latency budget (targets)
 
@@ -32,6 +33,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 - `read_to_string` on `memory.current` in the sample loop
 - `await` Kafka or HTTP inside Axum handlers or the ring-buffer `select!` arm
 - New `reqwest::Client` per batch
+- `reqwest::Client` without request timeout (unbounded `tokio::spawn` on network black holes)
 - Blocking K8s API in the event loop (30s interval refresh only)
 
 ## Change workflow (required)

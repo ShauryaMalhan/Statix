@@ -25,8 +25,10 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(3000);
 
-    let kafka_tx = kafka::build_producer(brokers.clone());
-    let state = AppState { kafka_tx };
+    let producer = kafka::spawn_producer(brokers.clone());
+    let state = AppState {
+        kafka_tx: producer.tx.clone(),
+    };
 
     let app = Router::new()
         .route("/ingest", post(routes::ingest::handler))
@@ -38,7 +40,41 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    log::info!("HTTP server stopped; draining Kafka producer");
+    producer.shutdown().await;
+    log::info!("finops-api shutdown complete");
 
     Ok(())
+}
+
+/// SIGINT (local) and SIGTERM (ECS/K8s deploy) — stop accept, then drain in-flight ingest.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            log::info!("SIGINT received");
+        }
+    };
+
+    #[cfg(unix)]
+    let sigterm = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut stream) => {
+                stream.recv().await;
+                log::info!("SIGTERM received");
+            }
+            Err(e) => log::warn!("SIGTERM handler not installed: {e}"),
+        }
+    };
+
+    #[cfg(not(unix))]
+    let sigterm = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = sigterm => {},
+    }
 }

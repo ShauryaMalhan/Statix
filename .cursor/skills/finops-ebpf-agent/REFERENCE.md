@@ -45,7 +45,9 @@ ring buffer → aggregator → emit_batch
 
 - Docker for Phase 3: `make compose-up`
 - Kafka: host `localhost:9092`, in-compose `kafka:29092`
-- ClickHouse schema: [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)
+- ClickHouse MergeTree: [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)
+- ClickHouse Kafka engine: `kafka_skip_broken_messages`, `kafka_num_consumers` — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)
+- Agent HTTP: `init_http_client()` — 3s timeout, 90s pool idle — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)
 - Merge conflicts: resolve all `<<<<<<<` markers before `make run`
 
 ## Deferred work

@@ -71,6 +71,7 @@ pub async fn handler(State(state): State<AppState>, Json(batch): Json<IngestBatc
             sample_count: row.sample_count,
         };
 
+        // One heap alloc from `to_vec`; `Bytes::from(vec)` reuses that buffer (no JSON memcpy).
         let bytes = match serde_json::to_vec(&flat) {
             Ok(b) => Bytes::from(b),
             Err(e) => {

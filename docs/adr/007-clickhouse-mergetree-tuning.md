@@ -12,7 +12,7 @@
 - **ORDER BY:** `(namespace, pod, node, window_start_ns)` — not `(node, pod, ...)`.
 - **TTL:** 30 days from event time — automatic part drops on dev/docker hosts.
 
-Kafka engine table stays plain `String` columns (JSONEachRow wire format). `LowCardinality` only on MergeTree target.
+Kafka engine table stays plain `String` columns (JSONEachRow wire format). `LowCardinality` only on MergeTree target. Kafka consumer resilience (`kafka_skip_broken_messages`, `kafka_num_consumers`) — [ADR 008](008-clickhouse-kafka-engine-resilience.md).
 
 ## Rationale
 

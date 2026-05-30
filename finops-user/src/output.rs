@@ -1,6 +1,7 @@
 //! Batched JSON (schema v2), optional HTTP ingest, and raw per-event debug output.
 
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use finops_common::FinopsEvent;
 use serde::Serialize;
@@ -15,6 +16,8 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 pub fn init_http_client() {
     let _ = HTTP_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
+            .timeout(Duration::from_secs(3))
+            .pool_idle_timeout(Duration::from_secs(90))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     });

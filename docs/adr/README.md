@@ -13,3 +13,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [005](005-non-blocking-ingest-pipeline.md) | HTTP → mpsc → Kafka; ClickHouse Kafka engine | Accepted |
 | [006](006-shared-http-client-for-ingest.md) | Shared `reqwest::Client` for ingest POST | Accepted |
 | [007](007-clickhouse-mergetree-tuning.md) | MergeTree daily parts, billing sort key, 30d TTL | Accepted |
+| [008](008-clickhouse-kafka-engine-resilience.md) | Kafka engine: skip broken messages, `kafka_num_consumers` | Accepted |
