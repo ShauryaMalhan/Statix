@@ -42,12 +42,9 @@ rustc-hash = "2"
 # the aya::Pod implementation for ProcessEvent
 finops-common = { path = "../finops-common", features = ["user"] }
 
-<<<<<<< HEAD
-=======
 # Phase 3: fire-and-forget HTTP ingest when FINOPS_INGEST_URL is set.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 # Optional in-cluster pod/namespace resolution (skipped when not on Kubernetes).
 kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
 k8s-openapi = { version = "0.24", features = ["v1_30"] }

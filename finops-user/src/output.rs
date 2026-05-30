@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-//! Batched JSON (schema v2) and optional raw per-event debug output.
-=======
 //! Batched JSON (schema v2), optional HTTP ingest, and raw per-event debug output.
 
 use std::sync::OnceLock;
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 
 use finops_common::FinopsEvent;
 use serde::Serialize;
@@ -13,8 +9,6 @@ use crate::aggregator::BatchPayload;
 
 pub const SCHEMA_VERSION: u32 = 2;
 
-<<<<<<< HEAD
-=======
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 /// Call once at startup when `FINOPS_INGEST_URL` may be used (shared connection pool).
@@ -26,7 +20,6 @@ pub fn init_http_client() {
     });
 }
 
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 #[derive(Serialize)]
 pub struct BatchJson<'a> {
     pub schema_version: u32,
@@ -60,11 +53,6 @@ pub fn emit_batch(payload: &BatchPayload) {
         node: &payload.node,
         workloads: &payload.workloads,
     };
-<<<<<<< HEAD
-    match serde_json::to_string(&batch) {
-        Ok(json) => println!("{json}"),
-        Err(e) => log::error!("batch JSON serialisation failed: {e}"),
-=======
 
     let json = match serde_json::to_string(&batch) {
         Ok(j) => j,
@@ -95,7 +83,6 @@ pub fn emit_batch(payload: &BatchPayload) {
         });
     } else {
         println!("{json}");
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
     }
 }
 

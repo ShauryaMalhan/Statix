@@ -1,14 +1,3 @@
-<<<<<<< HEAD
-# Phase 3 ingest interface (specification)
-
-Phase 2 emits **batched workload rows** on stdout. Phase 3 agents will stream the same logical record over gRPC without changing field semantics.
-
-## Batch envelope
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `schema_version` | u32 | Always `2` for Phase 2+ batches |
-=======
 # Phase 3 ingest interface
 
 Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch JSON; the API denormalizes rows to Kafka; ClickHouse consumes via the Kafka engine table.
@@ -28,7 +17,6 @@ ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
 | Field | Type | Description |
 |-------|------|-------------|
 | `schema_version` | u32 | Always `2` |
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `FINOPS_NODE_NAME` |
@@ -48,12 +36,6 @@ ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
 
-<<<<<<< HEAD
-## Environment variables (Phase 2 agent)
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-=======
 ## Kafka message (one per workload row)
 
 API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSONEachRow`:
@@ -84,7 +66,6 @@ Topic: `finops-telemetry`
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
@@ -92,21 +73,6 @@ Topic: `finops-telemetry`
 | `FINOPS_CGROUP_ROOT` | `/sys/fs/cgroup` | cgroup v2 mount |
 | `FINOPS_RAW_EVENTS` | off | Per-event debug JSON |
 
-<<<<<<< HEAD
-## gRPC sketch (Phase 3 — not implemented)
-
-```protobuf
-message WorkloadBatch {
-  uint32 schema_version = 1;
-  uint64 window_start_ns = 2;
-  uint64 window_end_ns = 3;
-  string node = 4;
-  repeated WorkloadRow workloads = 5;
-}
-```
-
-Ingestion service responsibilities: dedupe by `(node, namespace, pod, container, window)`, write to ClickHouse, compute p99 for Phase 4 analyzer.
-=======
 ### API (`finops-api`)
 
 | Variable | Default | Purpose |
@@ -117,9 +83,9 @@ Ingestion service responsibilities: dedupe by `(node, namespace, pod, container,
 ## Local stack
 
 ```bash
-make compose-up          # Kafka KRaft, Kafka UI :8080, ClickHouse :8123
+make compose-up
 make build-api && make run-api
-sudo FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
 ```
 
 ## Deferred
@@ -127,4 +93,3 @@ sudo FINOPS_INGEST_URL=http://localhost:3000/ingest make run
 - TLS between agent and API
 - Multi-partition / replication tuning
 - Dedupe and p99 analyzer (Phase 4)
->>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
