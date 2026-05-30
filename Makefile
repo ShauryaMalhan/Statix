@@ -25,7 +25,17 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 EBPF_OUT_NAME  := finops-ebpf
 EBPF_TARGET    := bpfel-unknown-none
 
+<<<<<<< HEAD
 .PHONY: deps build-ebpf build-user build run check clean fmt verify verify-btf
+=======
+.PHONY: deps build-ebpf build-user build-api build run run-api compose-up check clean fmt verify verify-btf enterprise-check
+
+# Skill-driven build gate (see .cursor/skills/finops-ebpf-agent/SKILL.md)
+enterprise-check: build check
+	@echo "==> Enterprise gate OK (build + check). Update docs/adr/skills if you changed architecture."
+
+FINOPS_INGEST_URL ?= http://localhost:3000/ingest
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 
 # ──────────────────────────────────────────────────────────────
 deps:
@@ -70,6 +80,7 @@ EBPF_BIN = $(shell \
 # ──────────────────────────────────────────────────────────────
 # Compile finops-user (the Rust daemon) with stable toolchain.
 build-user:
+<<<<<<< HEAD
 	@echo "==> [2/2] Compiling user-space agent..."
 	cd $(WORKSPACE_ROOT) && cargo build -p finops-user --release
 	@echo "==> Agent build complete."
@@ -82,6 +93,27 @@ build: build-ebpf build-user
 	@echo "  Agent binary  : $(USER_DIR)/target/release/finops-user"
 	@echo ""
 	@echo "Run with: make run"
+=======
+	@echo "==> [2/3] Compiling user-space agent..."
+	cd $(WORKSPACE_ROOT) && cargo build -p finops-user --release
+	@echo "==> Agent build complete."
+
+build-api:
+	@echo "==> Compiling finops-api (ingest)..."
+	cd $(WORKSPACE_ROOT) && cargo build -p finops-api --release
+	@echo "==> API build complete."
+
+# ──────────────────────────────────────────────────────────────
+build: build-ebpf build-user build-api
+	@echo ""
+	@echo "Build complete."
+	@echo "  eBPF bytecode : $(EBPF_BIN)"
+	@echo "  Agent binary  : $(WORKSPACE_ROOT)/target/release/finops-user"
+	@echo "  API binary    : $(WORKSPACE_ROOT)/target/release/finops-api"
+	@echo ""
+	@echo "Phase 2: make run"
+	@echo "Phase 3: make compose-up && make run-api  (terminal) && FINOPS_INGEST_URL=$(FINOPS_INGEST_URL) sudo -E make run"
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 
 # ──────────────────────────────────────────────────────────────
 # Run the agent.
@@ -100,6 +132,24 @@ run: build
 	RUST_LOG=info FINOPS_EBF_PATH=$(EBPF_BIN) \
 		$(WORKSPACE_ROOT)/target/release/finops-user
 
+<<<<<<< HEAD
+=======
+run-api: build-api
+	@echo "==> Starting finops-api (KAFKA_BROKERS=localhost:9092)..."
+	RUST_LOG=info KAFKA_BROKERS=localhost:9092 \
+		$(WORKSPACE_ROOT)/target/release/finops-api
+
+compose-up:
+	@command -v docker >/dev/null 2>&1 || ( \
+		echo "ERROR: docker not found. Install on Ubuntu:"; \
+		echo "  sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2"; \
+		echo "  sudo systemctl start docker"; \
+		exit 127; \
+	)
+	@echo "==> Starting Kafka + Kafka UI + ClickHouse (finops-net)..."
+	docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml up -d
+
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 # ──────────────────────────────────────────────────────────────
 # Quick syntax check (much faster than full build)
 check:
@@ -107,6 +157,10 @@ check:
 	cd $(EBPF_DIR) && cargo +nightly check \
 		-Z build-std=core --target $(EBPF_TARGET)
 	cd $(WORKSPACE_ROOT) && cargo check -p finops-user
+<<<<<<< HEAD
+=======
+	cd $(WORKSPACE_ROOT) && cargo check -p finops-api
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 
 # ──────────────────────────────────────────────────────────────
 # Show the BPF bytecode disassembly — what the verifier sees.

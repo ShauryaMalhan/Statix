@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 //! finops-user — Phase 2: attribution, memory sampling, batched stdout.
+=======
+//! finops-user — attribution, memory sampling, batched stdout or HTTP ingest (Phase 3).
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 
 mod aggregator;
 mod attribution;
@@ -16,6 +20,10 @@ use tokio::time::{self, Duration};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+<<<<<<< HEAD
+=======
+    output::init_http_client();
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
     check_privileges()?;
 
     let ebpf_path = read_ebpf_path()?;
@@ -44,8 +52,19 @@ async fn main() -> anyhow::Result<()> {
         log::debug!("Initial K8s refresh: {e}");
     }
 
+<<<<<<< HEAD
     log::info!(
         "Phase 2 agent ready (window={window_secs}s, sample={sample_secs}s, node={node})"
+=======
+    if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
+        log::info!("Ingest: POST batches to {url}");
+        log::info!("Phase 3: start API first — make compose-up && make run-api (other terminal)");
+    } else {
+        log::info!("Ingest: stdout (set FINOPS_INGEST_URL for HTTP ingest)");
+    }
+    log::info!(
+        "Agent ready (window={window_secs}s, sample={sample_secs}s, node={node})"
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
     );
     println!(
         r#"{{"status":"ready","probe":"sched:sched_process_exec","schema_version":{}}}"#,

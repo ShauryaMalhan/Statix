@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Phase 3 ingest interface (specification)
 
 Phase 2 emits **batched workload rows** on stdout. Phase 3 agents will stream the same logical record over gRPC without changing field semantics.
@@ -7,6 +8,27 @@ Phase 2 emits **batched workload rows** on stdout. Phase 3 agents will stream th
 | Field | Type | Description |
 |-------|------|-------------|
 | `schema_version` | u32 | Always `2` for Phase 2+ batches |
+=======
+# Phase 3 ingest interface
+
+Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch JSON; the API denormalizes rows to Kafka; ClickHouse consumes via the Kafka engine table.
+
+**Enterprise constraints:** [enterprise-latency.md](enterprise-latency.md) · **Validation:** [phase3-validation.md](phase3-validation.md) · **ADR:** [adr/005-non-blocking-ingest-pipeline.md](adr/005-non-blocking-ingest-pipeline.md)
+
+## Flow
+
+```
+finops-user  --POST /ingest-->  finops-api  --try_send-->  mpsc  --produce-->  Kafka
+                                                                                    |
+ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
+```
+
+## Batch envelope (agent → API)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `schema_version` | u32 | Always `2` |
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `FINOPS_NODE_NAME` |
@@ -26,10 +48,43 @@ Phase 2 emits **batched workload rows** on stdout. Phase 3 agents will stream th
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
 
+<<<<<<< HEAD
 ## Environment variables (Phase 2 agent)
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+=======
+## Kafka message (one per workload row)
+
+API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSONEachRow`:
+
+```json
+{
+  "window_start_ns": 0,
+  "window_end_ns": 0,
+  "node": "host",
+  "cgroup_id": 1,
+  "namespace": null,
+  "pod": null,
+  "container": null,
+  "k8s_resolved": false,
+  "memory_bytes_max": 0,
+  "memory_bytes_last": 0,
+  "exec_count": 1,
+  "sample_count": 0
+}
+```
+
+Topic: `finops-telemetry`
+
+## Environment variables
+
+### Agent (`finops-user`)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
@@ -37,6 +92,7 @@ Phase 2 emits **batched workload rows** on stdout. Phase 3 agents will stream th
 | `FINOPS_CGROUP_ROOT` | `/sys/fs/cgroup` | cgroup v2 mount |
 | `FINOPS_RAW_EVENTS` | off | Per-event debug JSON |
 
+<<<<<<< HEAD
 ## gRPC sketch (Phase 3 — not implemented)
 
 ```protobuf
@@ -50,3 +106,25 @@ message WorkloadBatch {
 ```
 
 Ingestion service responsibilities: dedupe by `(node, namespace, pod, container, window)`, write to ClickHouse, compute p99 for Phase 4 analyzer.
+=======
+### API (`finops-api`)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `KAFKA_BROKERS` | `localhost:9092` | Kafka bootstrap (host: `localhost:9092`, in-compose: `kafka:29092`) |
+| `FINOPS_API_PORT` | `3000` | HTTP listen port |
+
+## Local stack
+
+```bash
+make compose-up          # Kafka KRaft, Kafka UI :8080, ClickHouse :8123
+make build-api && make run-api
+sudo FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+```
+
+## Deferred
+
+- TLS between agent and API
+- Multi-partition / replication tuning
+- Dedupe and p99 analyzer (Phase 4)
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)

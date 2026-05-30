@@ -6,5 +6,9 @@
 members = [
     "finops-common",
     "finops-user",
+<<<<<<< HEAD
+=======
+    "finops-api",
+>>>>>>> 57e6b31 (Fixed merge conflict and added boiler for phase 3)
 ]
 resolver = "2"
