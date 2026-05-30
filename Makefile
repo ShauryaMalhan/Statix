@@ -25,7 +25,7 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 EBPF_OUT_NAME  := finops-ebpf
 EBPF_TARGET    := bpfel-unknown-none
 
-.PHONY: deps build-ebpf build-user build run check clean fmt verify
+.PHONY: deps build-ebpf build-user build run check clean fmt verify verify-btf
 
 # ──────────────────────────────────────────────────────────────
 deps:
@@ -116,7 +116,20 @@ verify: build-ebpf
 	llvm-objdump -d $(EBPF_BIN) | head -80
 	@echo ""
 	@echo "==> BPF map definitions:"
-	llvm-readelf -S $(EBPF_BIN) 2>/dev/null | grep -E "Name|maps|kprobe" || true
+	llvm-readelf -S $(EBPF_BIN) 2>/dev/null | grep -E "Name|maps|kprobe|tracepoint" || true
+
+verify-btf: build-ebpf
+	@test -r /sys/kernel/btf/vmlinux && echo "BTF: /sys/kernel/btf/vmlinux OK" \
+		|| (echo "ERROR: BTF not available — CO-RE / portable loads may fail" && exit 1)
+	@if [ -z "$(EBPF_BIN)" ]; then \
+		echo "ERROR: eBPF binary not found (run make build-ebpf)"; exit 1; \
+	fi
+	@if llvm-readelf -S "$(EBPF_BIN)" 2>/dev/null | grep -qE '\.BTF'; then \
+		echo "BTF: .BTF section present in $(EBPF_BIN)"; \
+		bpftool btf dump file "$(EBPF_BIN)" | head -20; \
+	else \
+		echo "BTF: no .BTF in $(EBPF_BIN) (non-CO-RE build — OK for fixed-kernel deploys)"; \
+	fi
 
 # ──────────────────────────────────────────────────────────────
 clean:

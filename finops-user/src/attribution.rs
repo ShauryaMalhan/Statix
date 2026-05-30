@@ -1,0 +1,247 @@
+//! cgroup_id and cgroup path resolution; optional Kubernetes pod/namespace labels.
+
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Component, Path, PathBuf},
+};
+
+use finops_common::FinopsEvent;
+use parking_lot::RwLock;
+
+/// Resolved workload metadata for aggregation and JSON output.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct WorkloadLabels {
+    pub namespace: Option<String>,
+    pub pod: Option<String>,
+    pub container: Option<String>,
+    pub pod_uid: Option<String>,
+    pub k8s_resolved: bool,
+}
+
+#[derive(Debug)]
+pub struct AttributionCache {
+    cgroup_root: PathBuf,
+    cgroup_paths: RwLock<HashMap<u64, PathBuf>>,
+    memory_current_paths: RwLock<HashMap<u64, PathBuf>>,
+    cgroup_labels: RwLock<HashMap<u64, WorkloadLabels>>,
+    pod_by_uid: RwLock<HashMap<String, WorkloadLabels>>,
+}
+
+impl AttributionCache {
+    pub fn new() -> Self {
+        Self {
+            cgroup_root: cgroup_v2_mount(),
+            cgroup_paths: RwLock::new(HashMap::new()),
+            memory_current_paths: RwLock::new(HashMap::new()),
+            cgroup_labels: RwLock::new(HashMap::new()),
+            pod_by_uid: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub fn on_identity_event(&self, event: &FinopsEvent) {
+        if let Ok(rel_path) = cgroup_path_from_pid(event.pid) {
+            let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+            self.cgroup_paths.write().insert(event.cgroup_id, rel_path);
+            self.memory_current_paths
+                .write()
+                .insert(event.cgroup_id, memory_current);
+        }
+        let labels = labels_from_cgroup_path(self.cgroup_paths.read().get(&event.cgroup_id));
+        self.cgroup_labels.write().insert(event.cgroup_id, labels);
+    }
+
+    /// No `Vec` allocation — safe for the memory sampler hot loop.
+    pub fn for_each_memory_current_path(&self, mut f: impl FnMut(u64, &Path)) {
+        let paths = self.memory_current_paths.read();
+        for (cgroup_id, path) in paths.iter() {
+            f(*cgroup_id, path);
+        }
+    }
+
+    pub fn labels_for_cgroup(&self, cgroup_id: u64) -> WorkloadLabels {
+        if let Some(labels) = self.cgroup_labels.read().get(&cgroup_id).cloned() {
+            if labels.k8s_resolved {
+                return labels;
+            }
+        }
+
+        if let Some(uid) = self
+            .cgroup_paths
+            .read()
+            .get(&cgroup_id)
+            .and_then(|p| extract_pod_uid_from_path(p))
+        {
+            if let Some(pod_labels) = self.pod_by_uid.read().get(&uid) {
+                let mut merged =
+                    labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id));
+                merged.namespace = pod_labels.namespace.clone();
+                merged.pod = pod_labels.pod.clone();
+                merged.k8s_resolved = true;
+                return merged;
+            }
+        }
+
+        labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id))
+    }
+
+    pub fn upsert_pod_labels(&self, uid: String, labels: WorkloadLabels) {
+        self.pod_by_uid.write().insert(uid, labels);
+    }
+}
+
+fn cgroup_v2_mount() -> PathBuf {
+    std::env::var("FINOPS_CGROUP_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/sys/fs/cgroup"))
+}
+
+fn precompute_memory_current(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
+    let rel = rel_path
+        .strip_prefix(Path::new("/"))
+        .unwrap_or(rel_path);
+    cgroup_root.join(rel).join("memory.current")
+}
+
+/// Parse one line from `/proc/{pid}/cgroup`.
+///
+/// cgroup v2 unified hierarchy: `0::/kubepods.slice/...` (two colons before path).
+/// Using `split_once(':')` is wrong — it yields `:/kubepods...` instead of `/kubepods...`.
+fn parse_cgroup_v2_path_line(line: &str) -> Option<&str> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    if let Some((_, path)) = line.split_once("::") {
+        if path.starts_with('/') {
+            return Some(path);
+        }
+    }
+    // cgroup v1 fallback: path is the segment after the last colon
+    let path = line.rsplit(':').next()?;
+    if path.starts_with('/') {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn cgroup_path_from_pid(pid: u32) -> anyhow::Result<PathBuf> {
+    let cgroup_file = format!("/proc/{pid}/cgroup");
+    let contents = fs::read_to_string(&cgroup_file)?;
+    for line in contents.lines() {
+        if let Some(path) = parse_cgroup_v2_path_line(line) {
+            return Ok(PathBuf::from(path));
+        }
+    }
+    anyhow::bail!("no cgroup path in {cgroup_file}")
+}
+
+fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
+    let Some(path) = path else {
+        return WorkloadLabels::default();
+    };
+    let pod_uid = extract_pod_uid_from_path(path);
+    let container = extract_container_from_path(path);
+
+    WorkloadLabels {
+        namespace: None,
+        pod: None,
+        container,
+        pod_uid: pod_uid.clone(),
+        k8s_resolved: false,
+    }
+}
+
+/// Walk `Path::components` — no `to_string_lossy()` heap allocation for the full path.
+fn extract_pod_uid_from_path(path: &Path) -> Option<String> {
+    for component in path.components() {
+        let Component::Normal(part) = component else {
+            continue;
+        };
+        let part = part.to_str()?;
+        if let Some(rest) = part.strip_prefix("kubepods-") {
+            if let Some(uid_part) = rest.split("-pod").nth(1) {
+                let uid = uid_part.trim_end_matches(".slice");
+                return Some(uid.replace('_', "-"));
+            }
+        }
+    }
+    None
+}
+
+fn extract_container_from_path(path: &Path) -> Option<String> {
+    for component in path.components() {
+        let Component::Normal(part) = component else {
+            continue;
+        };
+        let part = part.to_str()?;
+        if let Some(id) = part.strip_prefix("cri-container-") {
+            let id = id.trim_end_matches(".scope");
+            return Some(id.to_string());
+        }
+        if let Some(name) = part.strip_prefix("docker-") {
+            let name = name.trim_end_matches(".scope");
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// In-cluster Kubernetes API refresh (best-effort).
+pub async fn refresh_k8s_pods(cache: &AttributionCache) -> anyhow::Result<()> {
+    if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
+        return Ok(());
+    }
+
+    let client = kube::Client::try_default().await?;
+    let node_name = std::env::var("FINOPS_NODE_NAME")
+        .or_else(|_| std::env::var("NODE_NAME"))
+        .unwrap_or_else(|_| hostname());
+
+    let pods: kube::Api<k8s_openapi::api::core::v1::Pod> = kube::Api::all(client);
+
+    let list = pods
+        .list(&kube::api::ListParams::default().fields(&format!(
+            "spec.nodeName={node_name}"
+        )))
+        .await?;
+
+    for pod in list.items {
+        let meta = &pod.metadata;
+        let uid = meta.uid.clone().unwrap_or_default();
+        if uid.is_empty() {
+            continue;
+        }
+        let namespace = meta
+            .namespace
+            .clone()
+            .unwrap_or_else(|| "default".into());
+        let pod_name = meta.name.clone().unwrap_or_default();
+        let mut container = None;
+        if let Some(spec) = &pod.spec {
+            if let Some(first) = spec.containers.first() {
+                container = Some(first.name.clone());
+            }
+        }
+        cache.upsert_pod_labels(
+            uid,
+            WorkloadLabels {
+                namespace: Some(namespace),
+                pod: Some(pod_name),
+                container,
+                pod_uid: None,
+                k8s_resolved: true,
+            },
+        );
+    }
+
+    log::debug!("K8s pod cache refreshed for node {node_name}");
+    Ok(())
+}
+
+fn hostname() -> String {
+    fs::read_to_string("/etc/hostname")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "localhost".into())
+}

@@ -68,7 +68,9 @@ async fn main() -> anyhow::Result<()> {
                     if raw_events {
                         output::emit_raw(event);
                     }
-                    agg.on_finops_event(event, &cache);
+                    if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
+                        output::emit_batch(&batch);
+                    }
                 }
                 guard.clear_ready();
             }
@@ -80,7 +82,9 @@ async fn main() -> anyhow::Result<()> {
             }
 
             _ = sample_interval.tick() => {
-                memory_sampler::sample_tracked_cgroups(&cache, &mut agg);
+                for batch in memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node) {
+                    output::emit_batch(&batch);
+                }
             }
 
             _ = k8s_interval.tick() => {
