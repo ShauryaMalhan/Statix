@@ -1,20 +1,17 @@
-//! finops-user — eBPF-powered process telemetry agent.
-//!
-//! Loads the kernel probe, reads events from the ring buffer, and emits
-//! structured JSON to stdout. Requires root or CAP_BPF + CAP_PERFMON.
-//!
-//! Usage (via Makefile):
-//!   make build   # compile eBPF bytecode + this binary
-//!   make run     # sets FINOPS_EBF_PATH and runs the agent
+//! finops-user — Phase 2: attribution, memory sampling, batched stdout.
 
+mod aggregator;
+mod attribution;
 mod loader;
+mod memory_sampler;
 mod output;
 
 use std::mem::size_of;
 
-use finops_common::ProcessEvent;
+use finops_common::FinopsEvent;
 use tokio::io::unix::AsyncFd;
 use tokio::signal;
+use tokio::time::{self, Duration};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -22,82 +19,130 @@ async fn main() -> anyhow::Result<()> {
     check_privileges()?;
 
     let ebpf_path = read_ebpf_path()?;
+    let window_secs = read_window_secs()?;
+    let sample_secs = read_sample_interval_secs()?;
+    let node = read_node_name();
+    let raw_events = std::env::var("FINOPS_RAW_EVENTS").ok().as_deref() == Some("1");
 
-    // Load the BPF ELF, run it through the kernel verifier, attach kprobe.
-    // The returned handle owns all kernel resources — dropped at end of main.
     let mut bpf = loader::load_and_attach(&ebpf_path)?;
-
-    // Get a handle to the ring buffer that the kernel probe writes into.
-    // `ring_buf` borrows from `bpf`; both must stay alive through the loop.
-    let ring_buf = loader::get_ring_buf(&mut bpf)?;
-
-    // AsyncFd bridges the ring buffer's kernel file descriptor into Tokio's
-    // epoll reactor. The async task sleeps at zero CPU cost until the kernel
-    // signals new events via epoll — no polling, no busy-wait.
+    let ring_buf = loader::get_events_ring_buf(&mut bpf)?;
     let mut async_fd = AsyncFd::new(ring_buf)?;
 
-    log::info!("Listening for execve events. Press Ctrl+C to stop.");
-    println!(r#"{{"status":"ready","probe":"__x64_sys_execve"}}"#);
+    let cache = attribution::AttributionCache::new();
+    let mut agg = aggregator::Aggregator::new(window_secs);
+
+    let mut flush_interval = time::interval(Duration::from_secs(window_secs));
+    flush_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+
+    let mut sample_interval = time::interval(Duration::from_secs(sample_secs));
+    sample_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
+
+    let mut k8s_interval = time::interval(Duration::from_secs(30));
+    k8s_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+
+    if let Err(e) = attribution::refresh_k8s_pods(&cache).await {
+        log::debug!("Initial K8s refresh: {e}");
+    }
+
+    log::info!(
+        "Phase 2 agent ready (window={window_secs}s, sample={sample_secs}s, node={node})"
+    );
+    println!(
+        r#"{{"status":"ready","probe":"sched:sched_process_exec","schema_version":{}}}"#,
+        output::SCHEMA_VERSION
+    );
 
     loop {
         tokio::select! {
-            // New events available in the ring buffer.
             guard_result = async_fd.readable_mut() => {
                 let mut guard = guard_result?;
                 let rb = guard.get_inner_mut();
-
                 while let Some(item) = rb.next() {
-                    if item.len() < size_of::<ProcessEvent>() {
+                    if item.len() < size_of::<FinopsEvent>() {
                         log::warn!("Undersized event ({} bytes), skipping", item.len());
                         continue;
                     }
-                    // SAFETY: kernel wrote exactly one ProcessEvent into this slot.
-                    // ProcessEvent is #[repr(C)] with only primitive integer fields —
-                    // all bit patterns are valid (documented by the Pod impl in common).
-                    let event: &ProcessEvent =
-                        unsafe { &*(item.as_ptr() as *const ProcessEvent) };
-                    output::emit(event);
+                    // SAFETY: Kernel wrote one FinopsEvent; Pod + repr(C) + primitives only.
+                    let event: &FinopsEvent =
+                        unsafe { &*(item.as_ptr() as *const FinopsEvent) };
+                    if raw_events {
+                        output::emit_raw(event);
+                    }
+                    if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
+                        output::emit_batch(&batch);
+                    }
                 }
-
-                // Re-arm epoll: don't wake until the kernel signals new data.
                 guard.clear_ready();
             }
 
-            // Graceful shutdown on Ctrl+C.
+            _ = flush_interval.tick() => {
+                if let Some(batch) = agg.flush(&node, &cache) {
+                    output::emit_batch(&batch);
+                }
+            }
+
+            _ = sample_interval.tick() => {
+                for batch in memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node) {
+                    output::emit_batch(&batch);
+                }
+            }
+
+            _ = k8s_interval.tick() => {
+                if let Err(e) = attribution::refresh_k8s_pods(&cache).await {
+                    log::debug!("K8s refresh skipped or failed: {e}");
+                }
+            }
+
             _ = signal::ctrl_c() => {
-                log::info!("Ctrl+C received — shutting down cleanly");
+                log::info!("Ctrl+C — flushing partial window");
+                if let Some(batch) = agg.flush(&node, &cache) {
+                    output::emit_batch(&batch);
+                }
                 println!(r#"{{"status":"shutdown"}}"#);
                 break;
             }
         }
     }
 
-    // `bpf` drops here: Aya detaches all kprobes and frees kernel memory.
     Ok(())
 }
 
-/// Resolve the eBPF bytecode path from the environment.
-///
-/// Set by the Makefile automatically. In a container deployment, point this
-/// to the bundled ELF in the image (e.g. /usr/lib/finops/finops-ebpf).
 fn read_ebpf_path() -> anyhow::Result<String> {
     std::env::var("FINOPS_EBF_PATH").map_err(|_| {
         anyhow::anyhow!(
-            "FINOPS_EBF_PATH is not set.\n\
-             Build the eBPF program first, then run via 'make run'.\n\
-             Manual: FINOPS_EBF_PATH=<path> ./finops-user"
+            "FINOPS_EBF_PATH is not set. Build eBPF first, then run via make run."
         )
     })
 }
 
-/// Abort early if the process lacks the kernel privileges needed to load BPF programs.
+fn read_window_secs() -> anyhow::Result<u64> {
+    match std::env::var("FINOPS_WINDOW_SECS") {
+        Ok(s) => Ok(s.parse::<u64>()?.max(1)),
+        Err(_) => Ok(10),
+    }
+}
+
+fn read_sample_interval_secs() -> anyhow::Result<u64> {
+    match std::env::var("FINOPS_SAMPLE_INTERVAL_SECS") {
+        Ok(s) => Ok(s.parse::<u64>()?.max(1)),
+        Err(_) => Ok(10),
+    }
+}
+
+fn read_node_name() -> String {
+    std::env::var("FINOPS_NODE_NAME")
+        .or_else(|_| std::env::var("NODE_NAME"))
+        .unwrap_or_else(|_| {
+            std::fs::read_to_string("/etc/hostname")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "localhost".into())
+        })
+}
+
 fn check_privileges() -> anyhow::Result<()> {
-    // SAFETY: geteuid() is always safe to call.
     if unsafe { libc::geteuid() } != 0 {
         anyhow::bail!(
-            "Must run as root or with CAP_BPF + CAP_PERFMON.\n\
-             Development: sudo ./target/release/finops-user\n\
-             Production:  setcap 'cap_bpf,cap_perfmon=eip' ./finops-user"
+            "Must run as root or with CAP_BPF + CAP_PERFMON (+ CAP_SYS_ADMIN for cgroup reads)."
         );
     }
     Ok(())

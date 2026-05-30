@@ -36,7 +36,10 @@ config.local.toml
 # ── Editor and IDE artifacts ─────────────────────────────────
 # VSCode / Cursor workspace settings (machine-specific, not shared config)
 .vscode/
-.cursor/
+# Cursor local state — ignore; keep shared agent skills tracked
+.cursor/*
+!.cursor/skills/
+!.cursor/skills/**
 
 # JetBrains IDEs
 .idea/
@@ -87,4 +90,3 @@ book/
 
 # Docker build context artifacts
 .dockerignore.bak
-/docs

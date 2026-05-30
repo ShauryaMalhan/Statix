@@ -9,14 +9,14 @@ edition = "2021"
 # attaching programs to kernel hooks, and reading from ring buffers.
 aya = { version = "0.13", features = ["async_tokio"] }
 
-# aya-log is intentionally omitted in Phase 1 — re-add alongside
-# aya-log-ebpf in Phase 2 when BPF-side structured logging is needed.
+# aya-log / aya-log-ebpf omitted (dev-only BPF diagnostics). See
+# .cursor/skills/finops-ebpf-agent/TODO.md if re-adding.
 
 # Tokio is the async runtime. Our ring buffer consumer uses async I/O:
 # instead of blocking a thread waiting for kernel data, we register the
 # ring buffer file descriptor with the OS epoll, and Tokio wakes our
 # task only when events arrive. Zero CPU usage while waiting.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 
 # serde + serde_json for structured JSON output.
 # Phase 1 prints to stdout. Phase 3 will stream over gRPC instead.
@@ -32,7 +32,17 @@ log = "0.4"
 env_logger = "0.11"
 libc       = "0.2"
 
+# Faster RwLock than std (no OS futex on uncontended paths) — attribution cache.
+parking_lot = "0.12"
+
+# Fast HashMap for internal cgroup_id keys (not exposed to untrusted input).
+rustc-hash = "2"
+
 # Our shared memory contract — enable the `user` feature so we get
 # the aya::Pod implementation for ProcessEvent
 finops-common = { path = "../finops-common", features = ["user"] }
+
+# Optional in-cluster pod/namespace resolution (skipped when not on Kubernetes).
+kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.24", features = ["v1_30"] }
 
