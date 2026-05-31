@@ -52,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
 
     if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
         log::info!("Ingest: POST batches to {url}");
-        log::info!("Phase 3: start API first — make compose-up && make run-api (other terminal)");
+        log::info!("Phase 3: start API first — make compose-up (other terminal)");
     } else {
         log::info!("Ingest: stdout (set FINOPS_INGEST_URL for HTTP ingest)");
     }

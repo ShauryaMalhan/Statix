@@ -2,7 +2,7 @@
 
 Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed decisions.
 
-**Gate:** Verify Phase 1–3 pipeline end-to-end (`make compose-up`, `make run-api`, `FINOPS_INGEST_URL`) before starting Phase 4 scale work.
+**Gate:** Phase 1–3 E2E (agent → API → Kafka → ClickHouse) is validated locally; use [phase3-validation.md](../../../docs/phase3-validation.md) after infra changes. Start Phase 4 only when that checklist passes on your target environment.
 
 ---
 
@@ -32,13 +32,11 @@ Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed d
 
 - [ ] **Production ClickHouse:** set `kafka_num_consumers` = Kafka topic partition count in env-specific SQL ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md))
 - [ ] **TLS + auth on `POST /ingest`**
-- [ ] **finops-api in Docker Compose**
 
 ---
 
 ## Performance
 
-- [ ] **`cgroup_path_from_pid`: stack-buffer read**
 - [ ] **`labels_for_cgroup`: fewer `RwLock` read passes**
 - [ ] **BPF-side memory samples** (if sysfs profiled hot)
 

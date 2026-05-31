@@ -11,18 +11,18 @@
 ```bash
 cd finops-core
 make compose-up
-docker compose ps   # kafka, kafka-ui, clickhouse running
-make build-api
-make run-api        # terminal 1 — listens :3000
+docker compose ps   # kafka, kafka-ui, clickhouse, finops-api running
+# API in compose listens :3000 — or use `make run-api` on host (not both)
 ```
 
-Expect log: `finops-api listening on http://0.0.0.0:3000/ingest`.
+Expect: `make compose-up` prints `http://127.0.0.1:3000/health (OK)`.
 
 ## Agent → API → Kafka → ClickHouse
 
 ```bash
 # terminal 2 (root for BPF)
-sudo RUST_LOG=info FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run
 ```
 
 Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
@@ -31,8 +31,8 @@ Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
 
 | Test | Pass |
 |------|------|
-| API liveness | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health` → `200` |
-| API ingest | `curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:3000/ingest -H 'Content-Type: application/json' -d '{"schema_version":2,"window_start_ns":0,"window_end_ns":1,"node":"test","workloads":[]}'` → `200` |
+| API liveness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health` → `200` |
+| API ingest | `curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:3000/ingest -H 'Content-Type: application/json' -d '{"schema_version":2,"window_start_ns":0,"window_end_ns":1,"node":"test","workloads":[]}'` → `200` |
 | Kafka topic | Kafka UI `:8080` shows topic `finops-telemetry` with messages |
 | ClickHouse rows | `curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry'` → count &gt; 0 after traffic |
 | Agent non-blocking | Ring buffer loop responsive under load; ingest transport errors only `log::warn` |
@@ -72,3 +72,5 @@ curl -s -u default:finops_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABL
 ## Enterprise checks
 
 See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses shared `reqwest` client (3s timeout) + `tokio::spawn`.
+
+Tear down: `make compose-down`. Rebuild API image: `docker compose build finops-api && docker compose up -d finops-api` ([ADR 009](adr/009-finops-api-docker-compose.md)).

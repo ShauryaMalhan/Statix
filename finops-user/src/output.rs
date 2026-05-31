@@ -80,7 +80,7 @@ pub fn emit_batch(payload: &BatchPayload) {
                 .await
             {
                 log::warn!(
-                    "ingest POST failed: {e} (is finops-api running? make run-api)"
+                    "ingest POST failed: {e} (is finops-api up? make compose-up; curl http://127.0.0.1:3000/health)"
                 );
             }
         });

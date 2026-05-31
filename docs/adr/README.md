@@ -14,3 +14,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [006](006-shared-http-client-for-ingest.md) | Shared `reqwest::Client` for ingest POST | Accepted |
 | [007](007-clickhouse-mergetree-tuning.md) | MergeTree daily parts, billing sort key, 30d TTL | Accepted |
 | [008](008-clickhouse-kafka-engine-resilience.md) | Kafka engine: skip broken messages, `kafka_num_consumers` | Accepted |
+| [009](009-finops-api-docker-compose.md) | `finops-api` in Docker Compose (`Dockerfile.api`) | Accepted |

@@ -25,6 +25,16 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
       - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -53,6 +63,22 @@ services:
       - ./infra/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     depends_on:
       - kafka
+
+  finops-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    networks:
+      - finops-net
+    ports:
+      - "3000:3000"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      FINOPS_API_PORT: "3000"
+      RUST_LOG: info
+    depends_on:
+      kafka:
+        condition: service_healthy
 
 networks:
   finops-net:

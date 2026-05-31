@@ -45,6 +45,8 @@ static EVENTS: RingBuf = RingBuf::with_byte_size(512 * 1024, 0);
 
 ## Pattern 5 — User event loop + batch flush (main.rs)
 
+K8s pod list refresh runs in a **detached** `tokio::spawn` (`AttributionCache::clone`), not inside `select!`.
+
 ```rust
 if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
     output::emit_batch(&batch);
@@ -61,6 +63,8 @@ Precompute `memory.current` on identity; `sample_tracked_cgroups` is `async` —
 
 ## Pattern 6b — Attribution cache
 
+`AttributionCache`: `Clone` via `Arc<RwLock<...>>` maps; K8s refresh in background task.  
+`cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
 
 ---
@@ -91,7 +95,7 @@ limits   = requests × 1.25;
 ```markdown
 ## Test plan
 - [ ] `make build` && `make check`
-- [ ] Phase 3: `make compose-up`, `make run-api`, FINOPS_INGEST_URL ingest
+- [ ] Phase 3: `make compose-up` → `curl http://127.0.0.1:3000/health` → agent ingest → ClickHouse count > 0
 - [ ] ADR + skills + docs updated in same PR
 ```
 
@@ -112,10 +116,16 @@ limits   = requests × 1.25;
 ## Pattern 11 — Docker / Makefile (Phase 3 dev)
 
 ```bash
-make compose-up && make run-api
-sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+make compose-up    # stop-api (host binary only) + stack + health check
+export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT count() FROM finops_telemetry'
+make compose-down
 ```
+
+- **Do not** `make run-api` while compose `finops-api` is on `:3000`.
+- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
 
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
 
-**API shutdown:** `with_graceful_shutdown` → drop ingest `tx` → producer `recv_many` into hoisted `payloads` (no scratch buffer) → flush full/partial batches ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
+**API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).

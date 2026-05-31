@@ -32,7 +32,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 - [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap)
 - [ ] Output: FINOPS_INGEST_URL → spawn + shared reqwest Client (3s timeout, 90s pool idle)
-- [ ] API: POST /ingest → try_send; 200 or 503; Kafka in background task
+- [ ] API: GET /health; POST /ingest → 400/503/200; try_send; Kafka in background task
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -46,7 +46,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
 | `finops-api` | host | `POST /ingest`, mpsc → Kafka (`rskafka`) |
 
-**Infra:** `docker-compose.yml`, `infra/clickhouse/init.sql`
+**Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -89,7 +89,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 | Avoid | Use |
 |-------|-----|
-| `read_to_string` on `memory.current` | `File::read` into `[u8; 32]` |
+| `read_to_string` on `memory.current` or `/proc/{pid}/cgroup` | `File::read` into stack buffer (`[u8; 32]` / `[u8; 1024]`) |
 | `PathBuf::join` per sample tick | Precompute path on `on_identity_event` |
 | `Vec` of all cgroup IDs per tick | `for_each_memory_current_path` |
 | `HashMap` for `cgroup_id` | `FxHashMap` ([ADR 001](../../../docs/adr/001-use-rustc-hash-for-latency.md)) |
@@ -116,7 +116,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 |-----------|------|
 | Agent | `FINOPS_INGEST_URL` → fire-and-forget POST; shared client 3s timeout ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | API | `GET /health` (producer alive); denormalize → Kafka; graceful shutdown + 10s drain cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
-| Stack | `make compose-up` (Docker required) |
+| Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
 | CH MergeTree | LC on `node`/`namespace` only; `ORDER BY (node, namespace, time, cgroup_id)`; 30d TTL ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)) |
@@ -131,9 +131,11 @@ make deps          # first time
 make build         # ebpf + finops-user + finops-api
 make check
 make verify-btf    # when BPF / kernel portability touched
-make compose-up    # Phase 3 infra (Docker)
-make run-api       # ingest :3000
-sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+make compose-up    # Phase 3 stack (API in Docker on :3000)
+export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run   # agent on host (root)
+make compose-down  # tear down stack
+# Host-only API dev (not with compose-up): make run-api
 ```
 
 Phase 2 validation: [docs/phase2-validation.md](../../../docs/phase2-validation.md)  

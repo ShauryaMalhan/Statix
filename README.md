@@ -67,10 +67,14 @@ sudo RUST_LOG=info make run
 **Phase 3 (ingest pipeline):**
 
 ```bash
-make compose-up
-make run-api
-sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+make compose-up    # one command — frees :3000, starts stack, recreates API if needed
+export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run   # agent only (separate terminal)
 ```
+
+Use **`make run-api`** only for host-only API dev (not with `compose-up`). Tear down: `make compose-down`.
+
+Rebuild API image: `docker compose build finops-api && docker compose up -d finops-api`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

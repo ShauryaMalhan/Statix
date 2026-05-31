@@ -2,7 +2,8 @@
 
 use std::{
     collections::HashMap,
-    fs,
+    fs::{self, File},
+    io::Read,
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
@@ -129,7 +130,15 @@ fn parse_cgroup_v2_path_line(line: &str) -> Option<&str> {
 
 fn cgroup_path_from_pid(pid: u32) -> anyhow::Result<PathBuf> {
     let cgroup_file = format!("/proc/{pid}/cgroup");
-    let contents = fs::read_to_string(&cgroup_file)?;
+    let mut file = File::open(&cgroup_file)?;
+
+    let mut buf = [0u8; 1024];
+    let n = file.read(&mut buf)?;
+    if n == 0 {
+        anyhow::bail!("empty cgroup file: {cgroup_file}");
+    }
+
+    let contents = std::str::from_utf8(&buf[..n])?;
     for line in contents.lines() {
         if let Some(path) = parse_cgroup_v2_path_line(line) {
             return Ok(PathBuf::from(path));

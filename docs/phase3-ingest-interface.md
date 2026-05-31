@@ -110,9 +110,18 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 ## Local stack
 
 ```bash
-make compose-up
-make build-api && make run-api
-sudo -E FINOPS_INGEST_URL=http://localhost:3000/ingest make run
+make compose-up   # starts finops-api container (KAFKA_BROKERS=kafka:29092) + Kafka + ClickHouse
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/health   # 200
+export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run   # agent on host → API in Docker on :3000
+```
+
+Optional host API instead of container: `make run-api` ([ADR 009](adr/009-finops-api-docker-compose.md) — never both on `:3000`).
+
+**ClickHouse HTTP (docker-compose):** user `default`, password `finops_dev` (see `docker-compose.yml`). Example:
+
+```bash
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry'
 ```
 
 ## Deferred

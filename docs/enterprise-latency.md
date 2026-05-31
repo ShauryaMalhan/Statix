@@ -9,7 +9,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **Never block the ring buffer** | Agent `emit_batch` uses `tokio::spawn` for HTTP; no `.await` on ingest from the event loop |
 | **Never block the ingest handler** | API uses `mpsc::try_send`; Kafka `produce` only in a background task |
 | **Bounded memory** | Aggregator early flush at `max_keys`; double-buffered maps with `.clear()` (retain capacity) |
-| **No hot-path heap churn** | Stack `[u8; 32]` `memory.current` reads on `spawn_blocking`; paths precomputed; `FxHashMap` for `u64` keys |
+| **No hot-path heap churn** | Stack reads: `[u8; 32]` `memory.current`, `[u8; 1024]` `/proc/{pid}/cgroup`; `spawn_blocking` for sampler; `FxHashMap` for `u64` keys |
 | **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); agent must not stall on ring-buffer path |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
 | **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (3s timeout, 90s pool idle); one Kafka producer task per API process |
@@ -31,12 +31,14 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 
 - `std::collections::HashMap` on hot `cgroup_id` paths (SipHash cost, no benefit)
 - `enforce_cap` / random key eviction (data loss)
-- `read_to_string` on `memory.current` in the sample loop
+- `read_to_string` on `memory.current` or `/proc/{pid}/cgroup` on the exec hot path
 - Sync `File::open` / `read` for all cgroups inside `tokio::select!` without `spawn_blocking` (starves ring-buffer drain)
 - `await` Kafka or HTTP inside Axum handlers or the ring-buffer `select!` arm
 - New `reqwest::Client` per batch
 - `reqwest::Client` without request timeout (unbounded `tokio::spawn` on network black holes)
 - `await` Kubernetes API refresh inside the main `select!` loop (use `tokio::spawn` + `AttributionCache::clone`)
+- `fuser -k 3000` or `pkill -f` paths containing `finops-api` while Docker maps `:3000` (kills port-forward or the Make shell)
+- `make run-api` and `make compose-up` both binding `:3000` (use compose API + host agent only)
 
 ## Change workflow (required)
 
