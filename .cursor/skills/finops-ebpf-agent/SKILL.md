@@ -32,7 +32,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 - [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap)
 - [ ] Output: FINOPS_INGEST_URL → spawn + shared reqwest Client (3s timeout, 90s pool idle)
-- [ ] API: POST /ingest → try_send only; Kafka in background task
+- [ ] API: POST /ingest → try_send; 200 or 503; Kafka in background task
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -63,10 +63,10 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
 | `emit_batch` | `tokio::spawn` + `OnceLock<reqwest::Client>` (3s timeout — no black-hole task leak) |
-| `POST /ingest` | `mpsc::try_send`; always `200`; channel full → warn + drop row |
+| `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain |
-| Memory sample | Stack `[u8; 32]` read; precomputed `memory.current` paths |
+| Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
 Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.md)
 
@@ -81,7 +81,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 - Batched JSON `schema_version: 2`
 - `FINOPS_RAW_EVENTS=1` debug only
-- K8s: interval refresh only — not in event loop
+- K8s: `tokio::spawn` + 30s interval — never `await` API in main `select!`
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`
 - Env: `FINOPS_WINDOW_SECS`, `FINOPS_SAMPLE_INTERVAL_SECS`, `FINOPS_NODE_NAME`, `FINOPS_CGROUP_ROOT`
 
@@ -115,11 +115,11 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Component | Rule |
 |-----------|------|
 | Agent | `FINOPS_INGEST_URL` → fire-and-forget POST; shared client 3s timeout ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
-| API | Denormalize batch → one Kafka JSON row per workload; borrow strings in `FlatRow`; graceful shutdown drains Kafka ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
+| API | `GET /health` (producer alive); denormalize → Kafka; graceful shutdown + 10s drain cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | Stack | `make compose-up` (Docker required) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
-| CH MergeTree | Daily parts, `ORDER BY (namespace, pod, node, time)`, 30d TTL ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)) |
+| CH MergeTree | LC on `node`/`namespace` only; `ORDER BY (node, namespace, time, cgroup_id)`; 30d TTL ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)) |
 
 Spec: [docs/phase3-ingest-interface.md](../../../docs/phase3-ingest-interface.md)  
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md)

@@ -55,7 +55,7 @@ if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
 
 ## Pattern 6 — Memory sampling (userspace hot path)
 
-Precompute `memory.current` on identity; stack `[u8; 32]` read; one `sample_tick_ns` per tick.
+Precompute `memory.current` on identity; `sample_tracked_cgroups` is `async` — snapshot paths, `spawn_blocking` + stack `[u8; 32]` read (not `read_to_string` on the runtime worker).
 
 ---
 
@@ -101,11 +101,11 @@ limits   = requests × 1.25;
 
 **Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `tokio::spawn` POST ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `FlatRow<'a>` borrows `&batch.node`; `try_send` only; always `200`.
+**API:** `GET /health` (`503` if producer dead); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap.
 
 **Kafka:** micro-batch (`recv_many` + linger); hoisted `payloads`; `drain().map().collect()` per batch for `produce` (library owns `Vec<Record>` — no recycle).
 
-**ClickHouse:** Kafka engine `kafka_skip_broken_messages`, `kafka_num_consumers` (match partitions in prod) — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). MergeTree daily parts, billing sort key, 30d TTL — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md).
+**ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). MergeTree: LC only `node`/`namespace`; `ORDER BY (node, namespace, time, cgroup_id)`; 30d TTL — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md).
 
 ---
 

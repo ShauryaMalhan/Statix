@@ -31,20 +31,19 @@ CREATE TABLE IF NOT EXISTS finops_telemetry (
     node LowCardinality(String),
     cgroup_id UInt64,
     namespace LowCardinality(Nullable(String)),
-    pod LowCardinality(Nullable(String)),
-    container LowCardinality(Nullable(String)),
+    -- High-cardinality K8s fields: plain String — LowCardinality OOMs on millions of unique pods/IDs
+    pod Nullable(String),
+    container Nullable(String),
     k8s_resolved Bool,
     memory_bytes_max UInt64,
     memory_bytes_last UInt64,
     exec_count UInt32,
     sample_count UInt32
 ) ENGINE = MergeTree()
--- Daily parts: smaller merges under burst ingest; aligns with TTL drops
 PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000)))
--- FinOps billing filters: namespace → pod → node → time
-ORDER BY (namespace, pod, node, window_start_ns)
--- Dev/docker disk cap (tune for production retention policy)
-TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
+ORDER BY (node, namespace, window_start_ns, cgroup_id)
+TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY
+SETTINGS allow_nullable_key = 1;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS finops_mv
 TO finops_telemetry AS

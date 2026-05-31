@@ -9,8 +9,8 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **Never block the ring buffer** | Agent `emit_batch` uses `tokio::spawn` for HTTP; no `.await` on ingest from the event loop |
 | **Never block the ingest handler** | API uses `mpsc::try_send`; Kafka `produce` only in a background task |
 | **Bounded memory** | Aggregator early flush at `max_keys`; double-buffered maps with `.clear()` (retain capacity) |
-| **No hot-path heap churn** | Stack reads for `memory.current`; precomputed paths; `FxHashMap` for internal `u64` keys |
-| **Explicit backpressure** | Channel full → log + drop row, still HTTP 200 (agent must not stall) |
+| **No hot-path heap churn** | Stack `[u8; 32]` `memory.current` reads on `spawn_blocking`; paths precomputed; `FxHashMap` for `u64` keys |
+| **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); agent must not stall on ring-buffer path |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
 | **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (3s timeout, 90s pool idle); one Kafka producer task per API process |
 | **Bounded background work** | Agent HTTP tasks must not hang on black-hole TCP; ClickHouse Kafka engine skips broken rows ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)) |
@@ -21,6 +21,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 |-------|--------|-------|
 | BPF → ring buffer | μs | `reserve` / `submit` only; no printk |
 | Agent event drain | μs per event | `on_finops_event` + map insert; flush work off hot path where possible |
+| cgroup `memory.current` sample | async | Path snapshot + per-file `spawn_blocking` — never sync `File::open` on the runtime worker |
 | `emit_batch` (HTTP path) | &lt; 1 ms on caller | Serialize + `spawn` only |
 | `POST /ingest` handler | &lt; 1 ms typical | Deserialize + `try_send` per row |
 | Kafka produce | async | Isolated to background task |
@@ -31,10 +32,11 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 - `std::collections::HashMap` on hot `cgroup_id` paths (SipHash cost, no benefit)
 - `enforce_cap` / random key eviction (data loss)
 - `read_to_string` on `memory.current` in the sample loop
+- Sync `File::open` / `read` for all cgroups inside `tokio::select!` without `spawn_blocking` (starves ring-buffer drain)
 - `await` Kafka or HTTP inside Axum handlers or the ring-buffer `select!` arm
 - New `reqwest::Client` per batch
 - `reqwest::Client` without request timeout (unbounded `tokio::spawn` on network black holes)
-- Blocking K8s API in the event loop (30s interval refresh only)
+- `await` Kubernetes API refresh inside the main `select!` loop (use `tokio::spawn` + `AttributionCache::clone`)
 
 ## Change workflow (required)
 

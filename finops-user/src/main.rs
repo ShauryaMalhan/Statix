@@ -38,12 +38,17 @@ async fn main() -> anyhow::Result<()> {
     let mut sample_interval = time::interval(Duration::from_secs(sample_secs));
     sample_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
-    let mut k8s_interval = time::interval(Duration::from_secs(30));
-    k8s_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
-
-    if let Err(e) = attribution::refresh_k8s_pods(&cache).await {
-        log::debug!("Initial K8s refresh: {e}");
-    }
+    let cache_for_k8s = cache.clone();
+    tokio::spawn(async move {
+        let mut k8s_interval = time::interval(Duration::from_secs(30));
+        k8s_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+        loop {
+            k8s_interval.tick().await;
+            if let Err(e) = attribution::refresh_k8s_pods(&cache_for_k8s).await {
+                log::debug!("K8s refresh skipped or failed: {e}");
+            }
+        }
+    });
 
     if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
         log::info!("Ingest: POST batches to {url}");
@@ -88,14 +93,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             _ = sample_interval.tick() => {
-                for batch in memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node) {
+                for batch in
+                    memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node).await
+                {
                     output::emit_batch(&batch);
-                }
-            }
-
-            _ = k8s_interval.tick() => {
-                if let Err(e) = attribution::refresh_k8s_pods(&cache).await {
-                    log::debug!("K8s refresh skipped or failed: {e}");
                 }
             }
 

@@ -4,8 +4,11 @@ mod kafka;
 mod routes;
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
-use axum::routing::post;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::Router;
 use tokio::sync::mpsc;
 
@@ -31,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let app = Router::new()
+        .route("/health", get(health_check))
         .route("/ingest", post(routes::ingest::handler))
         .with_state(state);
 
@@ -45,10 +49,23 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     log::info!("HTTP server stopped; draining Kafka producer");
-    producer.shutdown().await;
+    match tokio::time::timeout(Duration::from_secs(10), producer.shutdown()).await {
+        Ok(_) => log::info!("Kafka producer drained successfully"),
+        Err(_) => log::error!("Kafka drain timed out — abandoning in-flight messages"),
+    }
+
     log::info!("finops-api shutdown complete");
 
     Ok(())
+}
+
+/// Readiness: if the background producer task exited, `rx` was dropped and `tx.is_closed()`.
+async fn health_check(State(state): State<AppState>) -> StatusCode {
+    if state.kafka_tx.is_closed() {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    }
 }
 
 /// SIGINT (local) and SIGTERM (ECS/K8s deploy) — stop accept, then drain in-flight ingest.

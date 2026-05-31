@@ -68,6 +68,23 @@ Topic: `finops-telemetry`
 
 See [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
 
+## HTTP endpoints
+
+| Route | Method | Response |
+|-------|--------|----------|
+| `/health` | GET | `200` if Kafka producer task is alive; `503` if `mpsc` sender is closed (producer crashed or never started) |
+| `/ingest` | POST | See table below |
+
+## HTTP responses (`POST /ingest`)
+
+| Status | When | Body |
+|--------|------|------|
+| `200 OK` | Every workload row enqueued to the Kafka `mpsc` channel | empty |
+| `400 Bad Request` | `schema_version != 2` (poison-pill defense — reject before Kafka/ClickHouse) | `Unsupported schema_version=N. Expected 2.` |
+| `503 Service Unavailable` | First `try_send` fails (channel full / broker backpressure) | `Ingest channel full. Broker backpressure active.` |
+
+Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the agent should back off (exponential retry — Phase 4 [TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md)). Partial rows may already be enqueued before `503` until `batch_id` dedupe ships.
+
 ## Environment variables
 
 ### Agent (`finops-user`)

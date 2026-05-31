@@ -42,6 +42,7 @@ impl KafkaProducer {
 pub fn spawn_producer(brokers: String) -> KafkaProducer {
     let (tx, rx) = mpsc::channel(CHANNEL_SIZE);
 
+    // When this task ends, `rx` drops → all `tx` clones report `is_closed()` (/health → 503).
     let task = tokio::spawn(async move {
         if let Err(e) = run_producer_loop(brokers, rx).await {
             log::error!("Kafka producer task exited: {e:#}");

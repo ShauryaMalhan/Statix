@@ -1,6 +1,8 @@
 //! Periodic cgroup v2 `memory.current` sampling for tracked workloads.
 
-use std::{fs::File, io::Read, path::Path};
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use finops_common::EVENT_KIND_MEMORY_SAMPLE;
 
@@ -8,7 +10,10 @@ use crate::aggregator::{Aggregator, BatchPayload};
 use crate::attribution::AttributionCache;
 
 /// Sample all tracked cgroups. May return multiple batches if early flush fires repeatedly.
-pub fn sample_tracked_cgroups(
+///
+/// Async so cgroupfs reads run on Tokio's blocking pool instead of freezing the runtime
+/// worker that also drains the eBPF ring buffer.
+pub async fn sample_tracked_cgroups(
     cache: &AttributionCache,
     aggregator: &mut Aggregator,
     node: &str,
@@ -16,12 +21,18 @@ pub fn sample_tracked_cgroups(
     let sample_tick_ns = now_ns();
     let mut early_batches = Vec::new();
 
-    cache.for_each_memory_current_path(|cgroup_id, memory_current_path| {
-        let memory_bytes = match read_memory_current_at(memory_current_path) {
+    // Snapshot paths first — cannot `.await` inside `for_each_memory_current_path`.
+    let mut targets: Vec<(u64, PathBuf)> = Vec::new();
+    cache.for_each_memory_current_path(|cgroup_id, path| {
+        targets.push((cgroup_id, path.to_path_buf()));
+    });
+
+    for (cgroup_id, path) in targets {
+        let memory_bytes = match read_memory_current_at_async(&path).await {
             Ok(v) => v,
             Err(e) => {
-                log::debug!("memory.current read failed for {memory_current_path:?}: {e}");
-                return;
+                log::debug!("memory.current read failed for {path:?}: {e}");
+                continue;
             }
         };
 
@@ -36,9 +47,15 @@ pub fn sample_tracked_cgroups(
         ) {
             early_batches.push(batch);
         }
-    });
+    }
 
     early_batches
+}
+
+/// Offload sync cgroupfs read to the blocking thread pool; keep stack `[u8; 32]` parse (no `read_to_string`).
+async fn read_memory_current_at_async(path: &Path) -> anyhow::Result<u64> {
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || read_memory_current_at(&path)).await?
 }
 
 fn read_memory_current_at(path: &Path) -> anyhow::Result<u64> {

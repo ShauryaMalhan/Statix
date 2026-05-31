@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     fs,
     path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
 use finops_common::FinopsEvent;
@@ -19,23 +20,23 @@ pub struct WorkloadLabels {
     pub k8s_resolved: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AttributionCache {
     cgroup_root: PathBuf,
-    cgroup_paths: RwLock<HashMap<u64, PathBuf>>,
-    memory_current_paths: RwLock<HashMap<u64, PathBuf>>,
-    cgroup_labels: RwLock<HashMap<u64, WorkloadLabels>>,
-    pod_by_uid: RwLock<HashMap<String, WorkloadLabels>>,
+    cgroup_paths: Arc<RwLock<HashMap<u64, PathBuf>>>,
+    memory_current_paths: Arc<RwLock<HashMap<u64, PathBuf>>>,
+    cgroup_labels: Arc<RwLock<HashMap<u64, WorkloadLabels>>>,
+    pod_by_uid: Arc<RwLock<HashMap<String, WorkloadLabels>>>,
 }
 
 impl AttributionCache {
     pub fn new() -> Self {
         Self {
             cgroup_root: cgroup_v2_mount(),
-            cgroup_paths: RwLock::new(HashMap::new()),
-            memory_current_paths: RwLock::new(HashMap::new()),
-            cgroup_labels: RwLock::new(HashMap::new()),
-            pod_by_uid: RwLock::new(HashMap::new()),
+            cgroup_paths: Arc::new(RwLock::new(HashMap::new())),
+            memory_current_paths: Arc::new(RwLock::new(HashMap::new())),
+            cgroup_labels: Arc::new(RwLock::new(HashMap::new())),
+            pod_by_uid: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

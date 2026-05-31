@@ -2,6 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::Json;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -47,12 +48,23 @@ struct FlatRow<'a> {
     sample_count: u32,
 }
 
-pub async fn handler(State(state): State<AppState>, Json(batch): Json<IngestBatch>) -> StatusCode {
+pub async fn handler(
+    State(state): State<AppState>,
+    Json(batch): Json<IngestBatch>,
+) -> impl IntoResponse {
     if batch.schema_version != 2 {
         log::warn!(
-            "ingest batch schema_version={} (expected 2)",
+            "Rejected batch with invalid schema_version={}",
             batch.schema_version
         );
+        return (
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unsupported schema_version={}. Expected 2.",
+                batch.schema_version
+            ),
+        )
+            .into_response();
     }
 
     for row in &batch.workloads {
@@ -81,9 +93,14 @@ pub async fn handler(State(state): State<AppState>, Json(batch): Json<IngestBatc
         };
 
         if state.kafka_tx.try_send(bytes).is_err() {
-            log::warn!("Kafka channel full (backpressure), dropping row");
+            log::warn!("Kafka channel full (backpressure), rejecting batch");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Ingest channel full. Broker backpressure active.",
+            )
+                .into_response();
         }
     }
 
-    StatusCode::OK
+    StatusCode::OK.into_response()
 }
