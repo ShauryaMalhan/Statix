@@ -86,6 +86,8 @@ Rebuild API image: `docker compose build finops-api && docker compose up -d fino
 | `FINOPS_NODE_NAME` | hostname | Node id in batches |
 | `FINOPS_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
 | `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
+| `FINOPS_BACKOFF_INITIAL_SECS` | `1` | Agent retry base backoff (seconds) |
+| `FINOPS_BACKOFF_MAX_SECS` | `30` | Agent retry max backoff (seconds); 30% jitter on sleep |
 | `KAFKA_BROKERS` | `localhost:9092` | API → Kafka |
 | `FINOPS_API_PORT` | `3000` | API listen port |
 | `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` | API ingest mpsc depth (min 1024) |

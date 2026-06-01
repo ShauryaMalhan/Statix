@@ -105,7 +105,7 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` — `FINOPS_HTTP_TIMEOUT_SECS` (default 5), `FINOPS_HTTP_POOL_IDLE_SECS` (default 55); `init_retry_worker` — bounded `mpsc(60)`, single worker, exponential backoff 1s→30s cap on 5xx/429/transport; `emit_batch` → `try_send`; drop-oldest + `SEVERE` log when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `init_retry_worker` — `mpsc(60)`, exponential backoff + **30% jitter** (`FINOPS_BACKOFF_*`); `emit_batch` → `try_send` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
 **API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 

@@ -514,6 +514,7 @@ dependencies = [
  "log",
  "num_cpus",
  "parking_lot",
+ "rand 0.8.6",
  "reqwest",
  "rustc-hash",
  "serde",

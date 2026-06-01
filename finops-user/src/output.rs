@@ -12,8 +12,9 @@ use crate::aggregator::BatchPayload;
 pub const SCHEMA_VERSION: u32 = 2;
 
 const RETRY_QUEUE_CAPACITY: usize = 60;
-const BACKOFF_INITIAL_SECS: u64 = 1;
-const BACKOFF_MAX_SECS: u64 = 30;
+
+const DEFAULT_BACKOFF_INITIAL_SECS: u64 = 1;
+const DEFAULT_BACKOFF_MAX_SECS: u64 = 30;
 
 const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_HTTP_POOL_IDLE_SECS: u64 = 55;
@@ -69,8 +70,17 @@ pub fn init_retry_worker(url: String) {
     let rx = Arc::new(Mutex::new(rx));
     let _ = RETRY_RX.set(Arc::clone(&rx));
 
+    let initial_backoff = read_env_u64("FINOPS_BACKOFF_INITIAL_SECS", DEFAULT_BACKOFF_INITIAL_SECS);
+    let max_backoff = read_env_u64("FINOPS_BACKOFF_MAX_SECS", DEFAULT_BACKOFF_MAX_SECS)
+        .max(initial_backoff);
+
+    log::info!(
+        "Ingest retry worker: backoff {initial_backoff}s..{max_backoff}s with 30% jitter \
+         (FINOPS_BACKOFF_INITIAL_SECS / FINOPS_BACKOFF_MAX_SECS)"
+    );
+
     tokio::spawn(async move {
-        let mut backoff_secs = BACKOFF_INITIAL_SECS;
+        let mut backoff_secs = initial_backoff;
         loop {
             let body = {
                 let mut guard = rx.lock().await;
@@ -83,22 +93,25 @@ pub fn init_retry_worker(url: String) {
             loop {
                 match post_ingest(&url, &body).await {
                     PostOutcome::Success => {
-                        backoff_secs = BACKOFF_INITIAL_SECS;
+                        backoff_secs = initial_backoff;
                         break;
                     }
                     PostOutcome::Retryable(reason) => {
+                        let jitter = rand::random::<f64>() * (backoff_secs as f64 * 0.3);
+                        let sleep_secs = backoff_secs as f64 + jitter;
                         log::warn!(
-                            "ingest POST retryable failure: {reason} (backoff {backoff_secs}s; \
-                             is finops-api up? make compose-up; curl http://127.0.0.1:3000/health)"
+                            "ingest POST retryable failure: {reason} (sleep {:.2}s, base {backoff_secs}s; \
+                             is finops-api up? make compose-up; curl http://127.0.0.1:3000/health)",
+                            sleep_secs
                         );
-                        tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
-                        backoff_secs = (backoff_secs * 2).min(BACKOFF_MAX_SECS);
+                        tokio::time::sleep(Duration::from_secs_f64(sleep_secs)).await;
+                        backoff_secs = (backoff_secs * 2).min(max_backoff);
                     }
                     PostOutcome::NonRetryable(status) => {
                         log::error!(
                             "ingest POST non-retryable status {status}; discarding batch window"
                         );
-                        backoff_secs = BACKOFF_INITIAL_SECS;
+                        backoff_secs = initial_backoff;
                         break;
                     }
                 }

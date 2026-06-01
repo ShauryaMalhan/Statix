@@ -62,7 +62,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | Serialize + `try_send` to retry worker; `reqwest` timeout/pool idle from env (defaults 5s / 55s); backoff 1s→30s ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
+| `emit_batch` | Serialize + `try_send` to retry worker; HTTP env timeouts; backoff + 30% jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain |

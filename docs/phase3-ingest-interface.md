@@ -105,7 +105,9 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
 | `FINOPS_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (seconds) |
 | `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent pool idle timeout (seconds; &lt; ALB 60s typical) |
-| (client) | — | `init_http_client` + `init_retry_worker`; queue 60 ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
+| `FINOPS_BACKOFF_INITIAL_SECS` | `1` | Retry worker base backoff (seconds) |
+| `FINOPS_BACKOFF_MAX_SECS` | `30` | Retry worker max backoff cap (seconds) |
+| (client) | — | `init_http_client` + `init_retry_worker`; queue 60; **30% jitter** on retry sleep ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |

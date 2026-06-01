@@ -45,6 +45,7 @@ finops-common = { path = "../finops-common", features = ["user"] }
 
 # Phase 3: HTTP ingest with bounded retry worker when FINOPS_INGEST_URL is set.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rand    = "0.8"
 
 # Optional in-cluster pod/namespace resolution (skipped when not on Kubernetes).
 kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
