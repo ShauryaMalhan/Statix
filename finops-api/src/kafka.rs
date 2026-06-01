@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -26,6 +26,19 @@ const BATCH_LINGER: Duration = Duration::from_millis(5);
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
 pub type KafkaQueueItem = (String, Bytes);
+
+/// Called after a successful `try_send` on the ingest channel (depth gauge proxy).
+#[inline]
+pub fn on_kafka_enqueued() {
+    metrics::gauge!("finops_api_kafka_channel_depth").increment(1.0);
+}
+
+#[inline]
+fn on_kafka_dequeued(count: usize) {
+    if count > 0 {
+        metrics::gauge!("finops_api_kafka_channel_depth").decrement(count as f64);
+    }
+}
 
 /// Handle to the background producer. Drop `tx` (via `shutdown`) then await the task.
 pub struct KafkaProducer {
@@ -140,9 +153,12 @@ async fn produce_grouped_batch(
                 .into_iter()
                 .map(|(node, payload)| bytes_to_record(&node, payload))
                 .collect();
+            let produce_started = Instant::now();
             if let Err(e) = client.produce(records, Compression::default()).await {
                 log::warn!("Kafka produce failed (partition={pid}, {n} records): {e}");
             }
+            metrics::histogram!("finops_api_kafka_produce_duration_seconds")
+                .record(produce_started.elapsed().as_secs_f64());
         }
     }
 }
@@ -167,6 +183,7 @@ async fn fill_batch(
                 if n == 0 {
                     break;
                 }
+                on_kafka_dequeued(n);
             }
         }
     }
@@ -190,6 +207,7 @@ async fn run_producer_loop(
     loop {
         match rx.recv().await {
             Some(first) => {
+                on_kafka_dequeued(1);
                 fill_batch(&mut rx, &mut batch, first).await;
                 produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
             }
@@ -197,7 +215,11 @@ async fn run_producer_loop(
                 // All senders dropped (graceful shutdown): drain channel into `batch` (no scratch vec).
                 while {
                     let room = BATCH_MAX_RECORDS - batch.len();
-                    rx.recv_many(&mut batch, room).await > 0
+                    let n = rx.recv_many(&mut batch, room).await;
+                    if n > 0 {
+                        on_kafka_dequeued(n);
+                    }
+                    n > 0
                 } {
                     if batch.len() >= BATCH_MAX_RECORDS {
                         produce_grouped_batch(&partition_ids, &clients, &mut batch).await;

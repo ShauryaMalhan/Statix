@@ -95,7 +95,7 @@ limits   = requests × 1.25;
 ```markdown
 ## Test plan
 - [ ] `make build` && `make check`
-- [ ] Phase 3: `make compose-up` → `curl http://127.0.0.1:3000/health` → agent ingest → ClickHouse count > 0
+- [ ] Phase 3: `make compose-up` → `/health` + `/metrics` → agent ingest → `SELECT count() FROM finops_telemetry FINAL` > 0
 - [ ] ADR + skills + docs updated in same PR
 ```
 
@@ -105,7 +105,7 @@ limits   = requests × 1.25;
 
 **Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `init_retry_worker` — bounded `mpsc(60)`, single worker, exponential backoff 1s→30s cap on 5xx/429/transport; `emit_batch` → `try_send`; drop-oldest + `SEVERE` log when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `GET /health` (`503` if producer dead); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap.
+**API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 
 **Kafka:** channel `(node, Bytes)`; broker `list_topics` → `PartitionClient` per partition; route `hash(node) % N`; record key = `node`; micro-batch (`recv_many` + linger), group by partition then `produce` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 

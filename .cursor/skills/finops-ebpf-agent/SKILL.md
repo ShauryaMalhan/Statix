@@ -31,8 +31,8 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 - [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0)
 - [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap)
-- [ ] Output: FINOPS_INGEST_URL → spawn + shared reqwest Client (3s timeout, 90s pool idle)
-- [ ] API: GET /health; POST /ingest → 400/503/200; try_send; Kafka in background task
+- [ ] Output: FINOPS_INGEST_URL → `init_retry_worker` + shared reqwest (3s timeout, 90s pool idle)
+- [ ] API: GET /health; GET /metrics; POST /ingest → 400/503/200; try_send; Kafka in background task
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -44,7 +44,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer |
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `POST /ingest`, mpsc `(node, Bytes)` → keyed Kafka (`rskafka`, [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)) |
+| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(node, Bytes)` → keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
 
 **Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 
@@ -62,7 +62,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | `tokio::spawn` + `OnceLock<reqwest::Client>` (3s timeout — no black-hole task leak) |
+| `emit_batch` | Serialize + `try_send` to retry worker queue; shared `reqwest` (3s timeout); backoff 1s→30s ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain |
@@ -114,8 +114,8 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 | Component | Rule |
 |-----------|------|
-| Agent | `FINOPS_INGEST_URL` → fire-and-forget POST; shared client 3s timeout ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
-| API | `GET /health` (producer alive); denormalize → Kafka; graceful shutdown + 10s drain cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
+| Agent | `init_retry_worker` — bounded queue 60, exponential backoff; shared client 3s timeout ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
+| API | `GET /health`, `GET /metrics`; denormalize → `try_send((node, Bytes))`; keyed Kafka; shutdown + 10s drain ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
@@ -136,6 +136,8 @@ export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run   # agent on host (root)
 make compose-down  # tear down stack
 # Host-only API dev (not with compose-up): make run-api
+# After API code changes in Docker: docker compose build finops-api && docker compose up -d finops-api
+curl -s http://127.0.0.1:3000/metrics | grep finops_api_
 ```
 
 Phase 2 validation: [docs/phase2-validation.md](../../../docs/phase2-validation.md)  

@@ -1,12 +1,16 @@
 //! POST /ingest — denormalize batch envelope to one JSONEachRow message per workload.
 
+use std::time::Instant;
+
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
+use crate::kafka;
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -51,7 +55,14 @@ struct FlatRow<'a> {
 pub async fn handler(
     State(state): State<AppState>,
     Json(batch): Json<IngestBatch>,
-) -> impl IntoResponse {
+) -> Response {
+    let started = Instant::now();
+    let response = ingest_inner(state, batch).await;
+    record_ingest_metrics(response.status(), started.elapsed());
+    response
+}
+
+async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
     if batch.schema_version != 2 {
         log::warn!(
             "Rejected batch with invalid schema_version={}",
@@ -92,19 +103,33 @@ pub async fn handler(
             }
         };
 
-        if state
-            .kafka_tx
-            .try_send((batch.node.clone(), bytes))
-            .is_err()
-        {
-            log::warn!("Kafka channel full (backpressure), rejecting batch");
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Ingest channel full. Broker backpressure active.",
-            )
-                .into_response();
+        match state.kafka_tx.try_send((batch.node.clone(), bytes)) {
+            Ok(()) => kafka::on_kafka_enqueued(),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                metrics::counter!("finops_api_kafka_channel_full_total").increment(1);
+                log::warn!("Kafka channel full (backpressure), rejecting batch");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Ingest channel full. Broker backpressure active.",
+                )
+                    .into_response();
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                log::warn!("Kafka channel closed, rejecting batch");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Ingest channel closed. Producer unavailable.",
+                )
+                    .into_response();
+            }
         }
     }
 
     StatusCode::OK.into_response()
+}
+
+fn record_ingest_metrics(status: StatusCode, elapsed: std::time::Duration) {
+    let status_label = status.as_u16().to_string();
+    metrics::counter!("finops_api_ingest_requests_total", "status" => status_label).increment(1);
+    metrics::histogram!("finops_api_ingest_duration_seconds").record(elapsed.as_secs_f64());
 }

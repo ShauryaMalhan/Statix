@@ -17,7 +17,7 @@ Four crates + infra:
 - **`finops-ebpf`** — BPF program (nightly, `bpfel-unknown-none`)
 - **`finops-common`** — shared event layout (`FinopsEvent`, kinds, sizes)
 - **`finops-user`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
-- **`finops-api`** — `POST /ingest` → Kafka (`mpsc` + background producer)
+- **`finops-api`** — `POST /ingest` → Kafka (`mpsc` + background producer); `GET /health`, `GET /metrics` (Prometheus)
 - **`docker-compose.yml`** — Kafka KRaft, Kafka UI, ClickHouse with Kafka engine table
 
 Phase 2 behavior in short:
@@ -27,7 +27,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3 adds fire-and-forget `POST` to `finops-api` (3s HTTP timeout), one Kafka JSON row per workload, ClickHouse ingestion via Kafka engine + materialized view (skip broken messages; tune `kafka_num_consumers` to partition count in prod).
+Phase 3 adds HTTP ingest to `finops-api` (agent retry worker, 3s timeout), keyed Kafka produce by `node`, ClickHouse `ReplacingMergeTree` + Kafka engine (billing queries use `FINAL`; tune `kafka_num_consumers` to partition count in prod). Rebuild API image after API changes: `docker compose build finops-api && docker compose up -d finops-api`.
 
 **Enterprise low-latency contract:** [docs/enterprise-latency.md](docs/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  

@@ -83,6 +83,7 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 | Route | Method | Response |
 |-------|--------|----------|
 | `/health` | GET | `200` if Kafka producer task is alive; `503` if `mpsc` sender is closed (producer crashed or never started) |
+| `/metrics` | GET | Prometheus text exposition ([ADR 012](adr/012-finops-api-prometheus-metrics.md)) |
 | `/ingest` | POST | See table below |
 
 ## HTTP responses (`POST /ingest`)
@@ -93,7 +94,7 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 | `400 Bad Request` | `schema_version != 2` (poison-pill defense — reject before Kafka/ClickHouse) | `Unsupported schema_version=N. Expected 2.` |
 | `503 Service Unavailable` | First `try_send` fails (channel full / broker backpressure) | `Ingest channel full. Broker backpressure active.` |
 
-Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the agent should back off (exponential retry — Phase 4 [TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md)). Partial rows may already be enqueued before `503` until `batch_id` dedupe ships.
+Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the agent retry worker backs off (1s→30s — [ADR 006](adr/006-shared-http-client-for-ingest.md)). Storage dedupe: [ADR 011](adr/011-replacingmergetree-dedupe-identity.md). Partial rows may already be enqueued before `503` until `batch_id` ships ([TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md) 4.6).
 
 ## Environment variables
 
@@ -102,7 +103,7 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
-| (client) | — | Shared `reqwest::Client`: **3s** request timeout, **90s** pool idle ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
+| (client) | — | `init_http_client` + `init_retry_worker`: **3s** timeout, **90s** pool idle, queue 60 ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
@@ -138,4 +139,4 @@ curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20F
 
 - TLS between agent and API
 - Kafka topic replication / multi-broker production config (set `kafka_num_consumers` when partition count changes)
-- Dedupe and p99 analyzer (Phase 4)
+- `batch_id` on wire + p99 analyzer (Phase 4 — see [TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md))
