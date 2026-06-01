@@ -8,7 +8,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bytes::Bytes;
 use chrono::Utc;
 use rskafka::client::partition::{Compression, UnknownTopicHandling};
 use rskafka::client::ClientBuilder;
@@ -24,7 +23,7 @@ const DEFAULT_BATCH_MAX: usize = 1024;
 const DEFAULT_LINGER_MS: u64 = 50;
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
-pub type KafkaQueueItem = (Bytes, Bytes);
+pub type KafkaQueueItem = (Vec<u8>, Vec<u8>);
 
 fn read_env_usize(name: &str, default: usize) -> usize {
     match std::env::var(name) {
@@ -118,15 +117,15 @@ fn hash_node_to_slot(node: &[u8], num_partitions: usize) -> usize {
     (hasher.finish() as usize) % num_partitions
 }
 
-fn partition_id_for_node(node: &Bytes, partition_ids: &[i32]) -> i32 {
-    let slot = hash_node_to_slot(node.as_ref(), partition_ids.len());
+fn partition_id_for_node(node: &[u8], partition_ids: &[i32]) -> i32 {
+    let slot = hash_node_to_slot(node, partition_ids.len());
     partition_ids[slot]
 }
 
-fn bytes_to_record(node: &Bytes, payload: Bytes) -> Record {
+fn bytes_to_record(node: Vec<u8>, payload: Vec<u8>) -> Record {
     Record {
-        key: Some(node.to_vec()),
-        value: Some(payload.to_vec()),
+        key: Some(node),
+        value: Some(payload),
         headers: std::collections::BTreeMap::new(),
         timestamp: Utc::now(),
     }
@@ -179,7 +178,7 @@ async fn produce_grouped_batch(
 
     let mut by_partition: HashMap<i32, Vec<KafkaQueueItem>> = HashMap::new();
     for (node, payload) in batch.drain(..) {
-        let pid = partition_id_for_node(&node, partition_ids);
+        let pid = partition_id_for_node(node.as_slice(), partition_ids);
         by_partition.entry(pid).or_default().push((node, payload));
     }
 
@@ -194,7 +193,7 @@ async fn produce_grouped_batch(
             let n = chunk.len();
             let records: Vec<Record> = chunk
                 .into_iter()
-                .map(|(node, payload)| bytes_to_record(&node, payload))
+                .map(|(node, payload)| bytes_to_record(node, payload))
                 .collect();
             let produce_started = Instant::now();
             if let Err(e) = client.produce(records, Compression::default()).await {

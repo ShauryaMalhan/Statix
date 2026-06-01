@@ -2,7 +2,7 @@
 name: finops-ebpf-agent
 description: >-
   Enterprise low-latency standards for the FinOps eBPF stack (finops-core):
-  BPF ring buffer, Phase 2 attribution/aggregation, Phase 3 HTTP→Kafka→ClickHouse.
+  BPF ring buffer, batched agent, HTTP→Kafka→ClickHouse; Phase 5 security focus.
   Use when editing finops-common, finops-ebpf, finops-user, finops-api; adding probes;
   ingest, Docker infra, or ADRs. Always read this skill first, then build with make,
   and update docs/adr/skills in the same change.
@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHouse)
+Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 done** (L8 hot path) · **5 active** (security/readiness — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md))
 
 ## Mandatory workflow (every change)
 
@@ -20,7 +20,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 2. Implement using patterns below (do not invent parallel conventions)
 3. `make build && make check` (add `make verify-btf` if BPF/deploy changed)
 4. **ADR** — new file in `docs/adr/` for architectural decisions ([enterprise-latency.md](../../../docs/enterprise-latency.md))
-5. **Docs** — update README, phase validation, `phase3-ingest-interface.md` if contracts change
+5. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
 6. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
 7. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
 
@@ -44,7 +44,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`FINOPS_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(Bytes, Bytes)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(Vec<u8>, Vec<u8>)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
 
 **Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 
@@ -62,7 +62,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | Serialize + `try_send` to retry worker; HTTP env timeouts; backoff + 30% jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
+| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + `clock_offset_ns` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
@@ -91,7 +91,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Avoid | Use |
 |-------|-----|
 | `read_to_string` on `memory.current` or `/proc/{pid}/cgroup` | `File::read` into stack buffer (`[u8; 32]` / `[u8; 1024]`) |
-| `PathBuf::join` per sample tick | Precompute path on `on_identity_event` |
+| `PathBuf::join` / `to_path_buf` per sample tick | Precompute `Arc<PathBuf>` on identity; sampler clones `Arc` only |
 | `Vec` of all cgroup IDs per tick | `for_each_memory_current_path` |
 | `HashMap` for `cgroup_id` | `FxHashMap` ([ADR 001](../../../docs/adr/001-use-rustc-hash-for-latency.md)) |
 
@@ -112,12 +112,12 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | cgroup v2 | `split_once("::")` not `split_once(':')` |
 | Paths | `Path::components()` — no full-path `to_string_lossy()` |
 
-## Phase 3 ingest
+## Ingest pipeline (Phases 3–4 shipped; Phase 5 secures `/ingest`)
 
 | Component | Rule |
 |-----------|------|
 | Agent | `init_retry_worker` — bounded queue 60, exponential backoff; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
-| API | `GET /health`, `GET /metrics`; `try_send((Bytes, Bytes))`; env Kafka mpsc/batch/linger ([ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md)); keyed Kafka; 10s drain ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| API | `GET /health`, `GET /metrics`; `try_send((Vec<u8>, Vec<u8>))`; owned buffers into `rskafka` (no `Bytes::to_vec`) — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
@@ -133,7 +133,7 @@ make deps          # first time
 make build         # ebpf + finops-user + finops-api
 make check
 make verify-btf    # when BPF / kernel portability touched
-make compose-up    # Phase 3 stack (API in Docker on :3000)
+make compose-up    # Dev stack (API in Docker on :3000); Phase 5: add FINOPS_API_TOKEN in prod
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run   # agent on host (root)
 make compose-down  # tear down stack

@@ -6,7 +6,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -82,14 +81,15 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             .into_response();
     }
 
-    // One heap alloc for node key; per-row `Bytes::clone` is refcount-only (not O(N) String clones).
-    let node_bytes = Bytes::from(batch.node.clone());
+    // One `Vec<u8>` key per HTTP batch; per-row `clone` copies key bytes (no `Bytes` → `to_vec` at produce).
+    let node_vec = batch.node.as_bytes().to_vec();
+    let node_str = batch.node.as_str();
 
     for row in &batch.workloads {
         let flat = FlatRow {
             window_start_ns: batch.window_start_ns,
             window_end_ns: batch.window_end_ns,
-            node: batch.node.as_str(),
+            node: node_str,
             batch_id: batch.batch_id.as_str(),
             agent_version: batch.agent_version.as_str(),
             cgroup_id: row.cgroup_id,
@@ -103,16 +103,15 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             sample_count: row.sample_count,
         };
 
-        // One heap alloc from `to_vec`; `Bytes::from(vec)` reuses that buffer (no JSON memcpy).
         let bytes = match serde_json::to_vec(&flat) {
-            Ok(b) => Bytes::from(b),
+            Ok(b) => b,
             Err(e) => {
                 log::warn!("flat row JSON encode failed: {e}");
                 continue;
             }
         };
 
-        match state.kafka_tx.try_send((node_bytes.clone(), bytes)) {
+        match state.kafka_tx.try_send((node_vec.clone(), bytes)) {
             Ok(()) => kafka::on_kafka_enqueued(),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 metrics::counter!("finops_api_kafka_channel_full_total").increment(1);

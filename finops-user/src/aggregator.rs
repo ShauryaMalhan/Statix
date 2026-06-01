@@ -7,6 +7,7 @@
 
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::attribution::{AttributionCache, WorkloadLabels};
@@ -14,13 +15,25 @@ use crate::output::WorkloadBatchRow;
 
 const DEFAULT_MAX_KEYS: usize = 4096;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct WorkloadStats {
     exec_count: u32,
     sample_count: u32,
     memory_bytes_max: u64,
     memory_bytes_last: u64,
-    labels: WorkloadLabels,
+    labels: Arc<WorkloadLabels>,
+}
+
+impl Default for WorkloadStats {
+    fn default() -> Self {
+        Self {
+            exec_count: 0,
+            sample_count: 0,
+            memory_bytes_max: 0,
+            memory_bytes_last: 0,
+            labels: Arc::new(WorkloadLabels::default()),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -74,10 +87,9 @@ impl Aggregator {
         match event.kind {
             EVENT_KIND_WORKLOAD_IDENTITY => {
                 cache.on_identity_event(event);
-                let labels = cache.labels_for_cgroup(event.cgroup_id);
                 let entry = self.active_mut().entry(event.cgroup_id).or_default();
                 entry.exec_count = entry.exec_count.saturating_add(1);
-                entry.labels = labels;
+                entry.labels = cache.labels_for_cgroup(event.cgroup_id);
             }
             k if k == finops_common::EVENT_KIND_MEMORY_SAMPLE => {
                 self.ingest_memory_sample_inner(
@@ -149,7 +161,7 @@ impl Aggregator {
         }
     }
 
-    pub fn flush(&mut self, node: &str, cache: &AttributionCache) -> Option<BatchPayload> {
+    pub fn flush(&mut self, node: &str, _cache: &AttributionCache) -> Option<BatchPayload> {
         let flush_idx = self.active;
         if self.buffers[flush_idx].is_empty() {
             self.reset_window();
@@ -165,19 +177,16 @@ impl Aggregator {
 
         let workloads: Vec<WorkloadBatchRow> = self.buffers[flush_idx]
             .iter()
-            .map(|(cgroup_id, s)| {
-                let labels = cache.labels_for_cgroup(*cgroup_id);
-                WorkloadBatchRow {
-                    cgroup_id: *cgroup_id,
-                    namespace: labels.namespace.or_else(|| s.labels.namespace.clone()),
-                    pod: labels.pod.or_else(|| s.labels.pod.clone()),
-                    container: labels.container.or_else(|| s.labels.container.clone()),
-                    k8s_resolved: labels.k8s_resolved || s.labels.k8s_resolved,
-                    memory_bytes_max: s.memory_bytes_max,
-                    memory_bytes_last: s.memory_bytes_last,
-                    exec_count: s.exec_count,
-                    sample_count: s.sample_count,
-                }
+            .map(|(cgroup_id, s)| WorkloadBatchRow {
+                cgroup_id: *cgroup_id,
+                namespace: s.labels.namespace.clone(),
+                pod: s.labels.pod.clone(),
+                container: s.labels.container.clone(),
+                k8s_resolved: s.labels.k8s_resolved,
+                memory_bytes_max: s.memory_bytes_max,
+                memory_bytes_last: s.memory_bytes_last,
+                exec_count: s.exec_count,
+                sample_count: s.sample_count,
             })
             .collect();
 

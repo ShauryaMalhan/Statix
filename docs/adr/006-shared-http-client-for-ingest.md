@@ -8,7 +8,7 @@
 
 1. **`output::init_http_client()`** — one `reqwest::Client` via `static HTTP_CLIENT: OnceLock<reqwest::Client>`.
 2. **`output::init_retry_worker(url)`** — single background task; bounded `mpsc(60)` (~10 min of 10s windows).
-3. **`emit_batch`** — serialize JSON, `try_send` to retry queue (no per-batch `tokio::spawn` POST). On queue full: drop-oldest + `SEVERE` log.
+3. **`emit_batch`** — serialize JSON, `try_send` to retry queue (no per-batch `tokio::spawn` POST). On queue full: synchronous `try_lock` + drop-oldest + re-`try_send` (no spawned tasks on the hot path).
 4. **Retry policy** — exponential backoff on transport errors, **5xx**, and **429**; reset after **2xx**. Non-retryable **4xx** logged and dropped.
 5. **Backoff + jitter (thundering herd)** — env `FINOPS_BACKOFF_INITIAL_SECS` (default **1**), `FINOPS_BACKOFF_MAX_SECS` (default **30**). Sleep = `backoff + rand * (backoff * 0.3)` before doubling (AWS-style spread after gateway outages).
 

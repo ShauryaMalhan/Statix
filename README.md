@@ -7,8 +7,11 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | Phase | State | What ships |
 |-------|--------|------------|
 | **1** | Done | `sched:sched_process_exec` tracepoint, ring buffer, basic agent loop |
-| **2** | **Done** | cgroup attribution, K8s labels (optional), `memory.current` sampling, `schema_version: 2` batches on stdout |
-| **3** | **Done** | HTTP ingest API → Kafka → ClickHouse ([spec](docs/phase3-ingest-interface.md)) |
+| **2** | Done | cgroup attribution, K8s labels (optional), `memory.current` sampling, `schema_version: 2` batches |
+| **3** | Done | HTTP ingest → Kafka → ClickHouse ([spec](docs/phase3-ingest-interface.md)) |
+| **4** | Done | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
+| **5** | **Active** | TLS/auth (`FINOPS_API_TOKEN`), ring overflow metrics, `/ready`, prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md)) |
+| **6** | Done | L8 hot path: single attribution lock, `FxHashMap`, `Arc` labels/paths, `Vec<u8>` Kafka queue ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
 
 ## What’s in the repo
 
@@ -39,7 +42,7 @@ Contributing: read `.cursor/skills/finops-ebpf-agent/SKILL.md` first; update ADR
 - cgroup v2 unified hierarchy
 - **Rust:** stable (user agent) + nightly (eBPF)
 - **Tools:** `clang`, `bpf-linker`, `bpftool` (optional, for `make verify-btf`)
-- **Docker:** Phase 3 (`docker.io` + `docker-compose-v2`)
+- **Docker:** dev stack (`docker.io` + `docker-compose-v2`)
 - **Privileges:** root or `CAP_BPF` + `CAP_PERFMON` to load programs
 
 ## Install & build
@@ -64,7 +67,7 @@ Binaries:
 sudo RUST_LOG=info make run
 ```
 
-**Phase 3 (ingest pipeline):**
+**Ingest pipeline (dev):**
 
 ```bash
 make compose-up    # one command — frees :3000, starts stack, recreates API if needed

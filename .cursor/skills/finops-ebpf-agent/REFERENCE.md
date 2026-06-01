@@ -11,7 +11,7 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `FinopsEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` |
-| Ingest API | `GET /health`, `GET /metrics`, `POST /ingest` → `try_send((Bytes, Bytes))` — one `node` key alloc per batch ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| Ingest API | `GET /health`, `GET /metrics`, `POST /ingest` → `try_send((Vec<u8>, Vec<u8>))` — one `node_vec` per batch; no `Bytes` memcpy at produce ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
 | Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
 ## File map
@@ -26,7 +26,7 @@ finops-core/
 └── .cursor/skills/finops-ebpf-agent/
 ```
 
-## Data flow (Phase 3)
+## Data flow (ingest pipeline)
 
 ```
 ring buffer → aggregator → emit_batch
@@ -38,9 +38,11 @@ ring buffer → aggregator → emit_batch
 
 | Phase | Status |
 |-------|--------|
-| 1–2 | Done |
-| 3 | Done (HTTP ingest) |
-| 4–8 | Analyzer, GitOps, dashboard |
+| 1–3 | Done (E2E ingest) |
+| 4 | Done (scale, lineage, bootstrap, metrics) |
+| 5 | **Active** ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) |
+| 6 | Done (L8 hot path — [ADR 018](../../../docs/adr/018-phase-roadmap-status.md)) |
+| 7–10 | Wire crate, K8s deploy, portability, cost |
 
 ## Operational notes
 
@@ -55,7 +57,7 @@ ring buffer → aggregator → emit_batch
 - Batch lineage: `batch_id` (UUID v4) + `agent_version` on every flush — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)
 - ClickHouse `ReplacingMergeTree` + `FINAL` billing reads: [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)
 - ClickHouse Kafka engine: `kafka_skip_broken_messages`, `kafka_num_consumers` — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)
-- Agent HTTP: `init_http_client()` + `init_retry_worker()` — env timeouts (5s / 55s defaults), backoff — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)
+- Agent HTTP: `init_http_client()` + `init_retry_worker()` — env timeouts (5s / 55s defaults), backoff; queue full → sync `try_lock` drop-oldest (no spawn) — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)
 - Merge conflicts: resolve all `<<<<<<<` markers before `make run`
 
 ## Deferred work

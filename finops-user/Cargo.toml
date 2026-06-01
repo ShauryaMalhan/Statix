@@ -39,7 +39,7 @@ uuid       = { version = "1.8", features = ["v4"] }
 parking_lot = "0.12"
 
 # Fast HashMap for internal cgroup_id keys (not exposed to untrusted input).
-rustc-hash = "2"
+rustc-hash = "1.1"
 
 # Our shared memory contract — enable the `user` feature so we get
 # the aya::Pod implementation for ProcessEvent

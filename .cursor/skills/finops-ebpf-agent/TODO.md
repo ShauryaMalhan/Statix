@@ -2,17 +2,21 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Gate:** Phase 1–3 E2E (agent → API → Kafka → ClickHouse) is validated locally; use [phase3-validation.md](../../../docs/phase3-validation.md) after infra changes. Start Phase 4 only when that checklist passes on your target environment.
+**Current focus:** **Phase 5** — production-critical security & readiness ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)).
+
+**Completed:** Phases 1–3 (E2E ingest pipeline), **Phase 4** (scale & reliability), **Phase 6** (L8 mechanical sympathy). Roadmap snapshot: [ADR 018](../../../docs/adr/018-phase-roadmap-status.md).
+
+**Validate after infra changes:** [phase3-validation.md](../../../docs/phase3-validation.md) (stack + agent + ClickHouse `FINAL`).
 
 ---
 
-## Phase 4 — Scale & reliability (production roadmap)
+## Phase 4 — Scale & reliability ✅ complete
 
 ### P1 — Before AWS ECS / production billing
 
 - [x] **Kafka partition routing (1.1):** `node` as Kafka key + `DefaultHasher % partitions`; multi `PartitionClient` from broker metadata ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
 - [x] **Agent ingest retry (3.2):** Background worker in `output.rs` — bounded queue 60, env backoff + 30% jitter on 5xx/429/transport; drop-oldest when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md))
-- [x] **Dedupe / idempotency (4.4):** `ReplacingMergeTree` + `ORDER BY (node, window_start_ns, cgroup_id)`; billing queries use `FINAL` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)). Optional: `batch_id` on wire for audit (see Data lineage 4.6 below)
+- [x] **Dedupe / idempotency (4.4):** `ReplacingMergeTree` + `ORDER BY (node, window_start_ns, cgroup_id)`; billing queries use `FINAL` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md))
 - [x] **Prometheus metrics (3.5):** `GET /metrics`; ingest counter/histogram; channel full + depth gauge; Kafka produce histogram ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md))
 
 ### P2 — Scale & audit correctness
@@ -25,9 +29,13 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Bootstrap running workloads (1.7):** `bootstrap_existing_cgroups` walks cgroup v2; inode = `cgroup_id`; synthetic identity events ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
 
+### Phase 3 ingest hardening (shipped under Phase 4 timeline)
+
+- [x] **Kafka producer env tuning:** `FINOPS_KAFKA_CHANNEL_SIZE` / `BATCH_MAX` / `LINGER_MS` in `kafka.rs` ([ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md))
+
 ---
 
-## Phase 5 — Production-critical (pre-deploy blockers)
+## Phase 5 — Production-critical security & readiness (active)
 
 > Items here gate any real deployment. None are optional.
 
@@ -46,18 +54,17 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
-## Phase 6 — Mechanical sympathy (throughput ceiling)
-
-> These are the optimizations that separate "works in staging" from "scales in production."
+## Phase 6 — Mechanical sympathy (L8 hot path) ✅ complete
 
 ### Hot-path lock contention
 
-- [ ] **`labels_for_cgroup` lock consolidation:** Current implementation acquires up to 4 separate `RwLock` read guards per call (called on every event + every cgroup during flush). Consolidate `AttributionCache` into a single `RwLock<AttributionState>` wrapping all maps, or adopt `arc-swap` snapshot pattern so readers never block.
-- [ ] **`AttributionCache`: switch `std::HashMap` → `FxHashMap` for `u64` keys:** `cgroup_paths`, `memory_current_paths`, `cgroup_labels` all use SipHash (~15ns/lookup) on integer keys. FxHash is ~2ns. 4 maps x thousands of lookups/sec = measurable.
+- [x] **`enqueue_batch_json` queue-full path:** Drop-oldest via `rx_arc.try_lock()` — no `tokio::spawn` on retry queue full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md))
+- [x] **`labels_for_cgroup` lock consolidation:** Single `RwLock<CacheState>`; one read guard per `labels_for_cgroup` call
+- [x] **`AttributionCache`: `std::HashMap` → `FxHashMap`:** All maps in `CacheState` use `FxHashMap` (`rustc-hash` 1.1)
 
 ### Hot-path allocation reduction
 
-- [ ] **`WorkloadLabels` → `Arc<WorkloadLabels>`:** Every `labels_for_cgroup` call clones up to 4x `Option<String>` (heap allocs). Store as `Arc` in cache — consumers clone the Arc (refcount bump, zero heap alloc).
+- [x] **`WorkloadLabels` → `Arc<WorkloadLabels>`:** Cache + `WorkloadStats` use `Arc`; flush reads `s.labels` only
 - [ ] **Split `WorkloadStats` into hot/cold:** Hot counters (24 bytes: exec_count, sample_count, memory_bytes_max, memory_bytes_last) share cache lines with cold label metadata (~120 bytes). Split so hot counters fit one cache line.
 - [ ] **Cache `agent_version` as `&'static str`:** `env!("CARGO_PKG_VERSION").to_string()` heap-allocates on every flush. Use `&'static str` in `BatchPayload`.
 - [ ] **UUID without syscall:** `Uuid::new_v4()` calls `getrandom(2)` on every flush. Seed a thread-local `SmallRng` once at startup.
@@ -65,7 +72,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### Memory sampler
 
-- [ ] **`Arc<Path>` in memory_current_paths:** Every sample cycle clones every tracked `PathBuf` into a `Vec`. With 4000 cgroups, that's 4000 allocations per sample tick. Store `Arc<Path>` in the cache.
+- [x] **`Arc<PathBuf>` in memory_current_paths:** Sampler snapshots refcount clones only (no per-tick `to_path_buf()` storm)
+
+### Kafka / API hot path (zero-copy)
+
+- [x] **Kafka queue `Vec<u8>` (no `Bytes`→`to_vec`):** `KafkaQueueItem` = `(Vec<u8>, Vec<u8>)`; `rskafka` takes owned buffers directly ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
 
 ---
 
@@ -125,4 +136,4 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### Performance (shipped)
 
-- [x] **Zero-copy node key in `ingest.rs`:** `KafkaQueueItem` = `(Bytes, Bytes)`; `node_bytes` once per batch, `node_bytes.clone()` per row ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
+- [x] **Kafka queue `Vec<u8>` (no `Bytes`→`to_vec`):** `KafkaQueueItem` = `(Vec<u8>, Vec<u8>)`; `rskafka` takes owned buffers directly ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))

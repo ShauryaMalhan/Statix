@@ -1,4 +1,5 @@
-//! finops-user — attribution, memory sampling, batched stdout or HTTP ingest (Phase 3).
+//! finops-user — eBPF agent: attribution, memory sampling, batched stdout or HTTP ingest.
+//! Phases 1–4 + 6 shipped; Phase 5 adds ingest auth (`FINOPS_API_TOKEN`).
 
 mod aggregator;
 mod attribution;
@@ -56,7 +57,8 @@ async fn main() -> anyhow::Result<()> {
 
     if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
         log::info!("Ingest: POST batches to {url}");
-        log::info!("Phase 3: start API first — make compose-up (other terminal)");
+        log::info!("Phase 5 (Production Readiness): API must be secured via FINOPS_API_TOKEN");
+        log::info!("Dev stack: make compose-up (other terminal) until auth is enforced");
     } else {
         log::info!("Ingest: stdout (set FINOPS_INGEST_URL for HTTP ingest)");
     }

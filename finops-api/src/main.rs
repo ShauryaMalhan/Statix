@@ -1,4 +1,5 @@
-//! finops-api — Phase 3 ingest: POST /ingest → mpsc → Kafka (non-blocking handler).
+//! finops-api — ingest gateway: POST /ingest → mpsc → Kafka (non-blocking handler).
+//! Phases 3–4 + 6 shipped; Phase 5 adds TLS/auth on `/ingest` (`FINOPS_API_TOKEN`).
 
 mod kafka;
 mod routes;
@@ -51,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     log::info!(
-        "finops-api listening on http://{addr}/ingest (brokers={brokers}, /metrics for Prometheus)"
+        "finops-api (Phase 5): http://{addr}/ingest — brokers={brokers}; /metrics ready; \
+         production requires FINOPS_API_TOKEN on /ingest (planned)"
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

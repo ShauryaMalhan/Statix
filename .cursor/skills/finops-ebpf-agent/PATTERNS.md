@@ -59,7 +59,7 @@ if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
 
 ## Pattern 6 — Memory sampling (userspace hot path)
 
-Precompute `memory.current` on identity; `sample_tracked_cgroups` is `async` — snapshot paths, `spawn_blocking` + stack `[u8; 32]` read (not `read_to_string` on the runtime worker).
+Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snapshots `Arc::clone` only (no per-tick `PathBuf` alloc). `spawn_blocking` + stack `[u8; 32]` read (not `read_to_string` on the runtime worker).
 
 ---
 
@@ -77,7 +77,8 @@ Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016]
 
 ## Pattern 6b — Attribution cache
 
-`AttributionCache`: `Clone` via `Arc<RwLock<...>>` maps; K8s refresh in background task.  
+`AttributionCache`: one `Arc<RwLock<CacheState>>` with `FxHashMap` for paths, labels (`Arc<WorkloadLabels>`), and `pod_by_uid`.  
+`labels_for_cgroup`: single `.read()` — no quadruple-lock herd. K8s refresh in background task.  
 `cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
 Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
@@ -118,11 +119,11 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `init_retry_worker` — `mpsc(60)`, exponential backoff + **30% jitter** (`FINOPS_BACKOFF_*`); `emit_batch` → `try_send` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `init_retry_worker` — `mpsc(60)`, exponential backoff + **30% jitter** (`FINOPS_BACKOFF_*`); `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest (no `tokio::spawn`) ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
 **API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 
-**Kafka:** channel `(Bytes, Bytes)`; env `FINOPS_KAFKA_CHANNEL_SIZE` / `BATCH_MAX` / `LINGER_MS` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md); partition routing — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
+**Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `FINOPS_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
 **ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). `ReplacingMergeTree`: LC only `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing `SELECT … FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
 

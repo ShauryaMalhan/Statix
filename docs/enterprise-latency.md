@@ -26,7 +26,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | Agent event drain | μs per event | `on_finops_event` + map insert; flush work off hot path where possible |
 | cgroup `memory.current` sample | async | Path snapshot + per-file `spawn_blocking` — never sync `File::open` on the runtime worker |
 | `emit_batch` (HTTP path) | &lt; 1 ms on caller | Serialize + `try_send` to retry queue only |
-| `POST /ingest` handler | &lt; 1 ms typical | Deserialize + `try_send` per row; one `Bytes` alloc for `node` key per batch |
+| `POST /ingest` handler | &lt; 1 ms typical | Deserialize + `try_send` per row; one `Vec<u8>` key per batch; produce moves vecs (no `Bytes::to_vec`) |
 | Kafka produce | async | Isolated to background task |
 | Node overhead | &lt; 0.1% CPU/core idle | See phase2-validation overhead check |
 

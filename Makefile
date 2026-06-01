@@ -66,8 +66,8 @@ build: build-ebpf build-user build-api
 	@echo "  Agent binary  : $(WORKSPACE_ROOT)/target/release/finops-user"
 	@echo "  API binary    : $(WORKSPACE_ROOT)/target/release/finops-api"
 	@echo ""
-	@echo "Phase 2: make run"
-	@echo "Phase 3: make compose-up  (stack)  then  FINOPS_INGEST_URL=$(FINOPS_INGEST_URL) sudo -E make run"
+	@echo "Phase 2: make run  (stdout only)"
+	@echo "Phase 5 dev: make compose-up  then  FINOPS_INGEST_URL=$(FINOPS_INGEST_URL) sudo -E make run"
 
 run: build
 	@if [ ! -d "$(BPF_BUNDLE_DIR)" ] || [ -z "$$(ls -A '$(BPF_BUNDLE_DIR)' 2>/dev/null)" ]; then \
@@ -91,7 +91,7 @@ run-api: build-api
 		exit 1; \
 	fi
 	@echo "==> Starting finops-api on host (KAFKA_BROKERS=localhost:9092)..."
-	@echo "    Prefer Phase 3 Docker API: make compose-up"
+	@echo "    Prefer Docker stack: make compose-up"
 	RUST_LOG=info KAFKA_BROKERS=localhost:9092 \
 		$(WORKSPACE_ROOT)/target/release/finops-api
 
@@ -113,10 +113,10 @@ stop-api:
 	@sleep 1
 
 compose-down:
-	@echo "==> Stopping Phase 3 stack..."
+	@echo "==> Stopping finops stack (compose)..."
 	$(COMPOSE) down
 
-# Default Phase 3: Docker stack (API in compose). Auto-frees :3000 and fixes broken API containers.
+# Legacy alias — same as compose-up (Phases 3–4 stack; Phase 5 adds auth).
 phase3-up: compose-up
 
 compose-up: stop-api

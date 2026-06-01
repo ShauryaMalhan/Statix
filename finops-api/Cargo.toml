@@ -2,7 +2,7 @@
 name = "finops-api"
 version = "0.1.0"
 edition = "2021"
-# Phase 3: POST /ingest, GET /health, GET /metrics → Kafka (see docs/adr/012)
+# Ingest gateway: POST /ingest, GET /health, GET /metrics → Kafka (Phase 5: auth pending)
 
 [dependencies]
 axum = "0.7"
@@ -11,7 +11,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rskafka = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-bytes = "1"
 anyhow = "1"
 log = "0.4"
 env_logger = "0.11"

@@ -1,7 +1,6 @@
 //! cgroup_id and cgroup path resolution; optional Kubernetes pod/namespace labels.
 
 use std::{
-    collections::HashMap,
     fs::{self, File},
     io::Read,
     os::unix::fs::MetadataExt,
@@ -11,6 +10,7 @@ use std::{
 
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
 use walkdir::WalkDir;
 
 /// Resolved workload metadata for aggregation and JSON output.
@@ -23,85 +23,88 @@ pub struct WorkloadLabels {
     pub k8s_resolved: bool,
 }
 
+#[derive(Debug, Default)]
+struct CacheState {
+    cgroup_paths: FxHashMap<u64, PathBuf>,
+    memory_current_paths: FxHashMap<u64, Arc<PathBuf>>,
+    cgroup_labels: FxHashMap<u64, Arc<WorkloadLabels>>,
+    pod_by_uid: FxHashMap<String, Arc<WorkloadLabels>>,
+}
+
 #[derive(Clone, Debug)]
 pub struct AttributionCache {
     cgroup_root: PathBuf,
-    cgroup_paths: Arc<RwLock<HashMap<u64, PathBuf>>>,
-    memory_current_paths: Arc<RwLock<HashMap<u64, PathBuf>>>,
-    cgroup_labels: Arc<RwLock<HashMap<u64, WorkloadLabels>>>,
-    pod_by_uid: Arc<RwLock<HashMap<String, WorkloadLabels>>>,
+    state: Arc<RwLock<CacheState>>,
 }
 
 impl AttributionCache {
     pub fn new() -> Self {
         Self {
             cgroup_root: cgroup_v2_mount(),
-            cgroup_paths: Arc::new(RwLock::new(HashMap::new())),
-            memory_current_paths: Arc::new(RwLock::new(HashMap::new())),
-            cgroup_labels: Arc::new(RwLock::new(HashMap::new())),
-            pod_by_uid: Arc::new(RwLock::new(HashMap::new())),
+            state: Arc::new(RwLock::new(CacheState::default())),
         }
     }
 
     pub fn on_identity_event(&self, event: &FinopsEvent) {
+        let mut state = self.state.write();
         if let Ok(rel_path) = cgroup_path_from_pid(event.pid) {
             let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
-            self.cgroup_paths.write().insert(event.cgroup_id, rel_path);
-            self.memory_current_paths
-                .write()
-                .insert(event.cgroup_id, memory_current);
+            state.cgroup_paths.insert(event.cgroup_id, rel_path);
+            state
+                .memory_current_paths
+                .insert(event.cgroup_id, Arc::new(memory_current));
         }
-        let labels = labels_from_cgroup_path(self.cgroup_paths.read().get(&event.cgroup_id));
-        self.cgroup_labels.write().insert(event.cgroup_id, labels);
+        let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&event.cgroup_id)));
+        state.cgroup_labels.insert(event.cgroup_id, labels);
     }
 
-    /// No `Vec` allocation — safe for the memory sampler hot loop.
-    pub fn for_each_memory_current_path(&self, mut f: impl FnMut(u64, &Path)) {
-        let paths = self.memory_current_paths.read();
-        for (cgroup_id, path) in paths.iter() {
-            f(*cgroup_id, path);
+    /// Yields `Arc<PathBuf>` — refcount clone only (no per-tick path string alloc).
+    pub fn for_each_memory_current_path(&self, mut f: impl FnMut(u64, Arc<PathBuf>)) {
+        let state = self.state.read();
+        for (cgroup_id, path) in state.memory_current_paths.iter() {
+            f(*cgroup_id, Arc::clone(path));
         }
     }
 
-    pub fn labels_for_cgroup(&self, cgroup_id: u64) -> WorkloadLabels {
-        if let Some(labels) = self.cgroup_labels.read().get(&cgroup_id).cloned() {
+    /// Single read lock for the full lookup path (no quadruple-lock herd).
+    pub fn labels_for_cgroup(&self, cgroup_id: u64) -> Arc<WorkloadLabels> {
+        let state = self.state.read();
+
+        if let Some(labels) = state.cgroup_labels.get(&cgroup_id) {
             if labels.k8s_resolved {
-                return labels;
+                return Arc::clone(labels);
             }
         }
 
-        if let Some(uid) = self
-            .cgroup_paths
-            .read()
-            .get(&cgroup_id)
-            .and_then(|p| extract_pod_uid_from_path(p))
-        {
-            if let Some(pod_labels) = self.pod_by_uid.read().get(&uid) {
-                let mut merged =
-                    labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id));
-                merged.namespace = pod_labels.namespace.clone();
-                merged.pod = pod_labels.pod.clone();
-                merged.k8s_resolved = true;
-                return merged;
+        if let Some(path) = state.cgroup_paths.get(&cgroup_id) {
+            if let Some(uid) = extract_pod_uid_from_path(path) {
+                if let Some(pod_labels) = state.pod_by_uid.get(&uid) {
+                    let mut merged = labels_from_cgroup_path(Some(path));
+                    merged.namespace = pod_labels.namespace.clone();
+                    merged.pod = pod_labels.pod.clone();
+                    merged.k8s_resolved = true;
+                    return Arc::new(merged);
+                }
             }
         }
 
-        labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id))
+        Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)))
     }
 
     pub fn upsert_pod_labels(&self, uid: String, labels: WorkloadLabels) {
-        self.pod_by_uid.write().insert(uid, labels);
+        self.state.write().pod_by_uid.insert(uid, Arc::new(labels));
     }
 
     /// Register a cgroup directory discovered at startup (inode = `cgroup_id` in cgroup v2).
     pub fn register_cgroup_directory(&self, cgroup_id: u64, rel_path: PathBuf) {
+        let mut state = self.state.write();
         let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
-        self.cgroup_paths.write().insert(cgroup_id, rel_path);
-        self.memory_current_paths
-            .write()
-            .insert(cgroup_id, memory_current);
-        let labels = labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id));
-        self.cgroup_labels.write().insert(cgroup_id, labels);
+        state.cgroup_paths.insert(cgroup_id, rel_path);
+        state
+            .memory_current_paths
+            .insert(cgroup_id, Arc::new(memory_current));
+        let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)));
+        state.cgroup_labels.insert(cgroup_id, labels);
     }
 }
 

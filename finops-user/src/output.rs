@@ -170,23 +170,23 @@ fn enqueue_batch_json(json: String) {
                 log::error!("ingest retry queue full and receiver missing; dropping batch");
                 return;
             };
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                let mut rx = rx_arc.lock().await;
+
+            // Synchronous drop-oldest — never spawn on the ring-buffer hot path.
+            if let Ok(mut rx) = rx_arc.try_lock() {
                 if rx.try_recv().is_ok() {
                     log::error!(
-                        "SEVERE: ingest retry queue full (>{} windows / ~10 min backpressure); \
-                         dropping oldest batch to avoid OOM",
+                        "SEVERE: ingest retry queue full (>{} windows); dropping oldest batch to avoid OOM",
                         RETRY_QUEUE_CAPACITY
                     );
                 }
-                drop(rx);
                 if let Err(e) = tx.try_send(json) {
                     log::error!(
-                        "SEVERE: ingest retry queue still full after drop-oldest; dropping new batch: {e}"
+                        "SEVERE: ingest retry queue still full after drop; dropping new batch: {e}"
                     );
                 }
-            });
+            } else {
+                log::error!("SEVERE: ingest retry queue full and locked; dropping new batch");
+            }
         }
         Err(mpsc::error::TrySendError::Closed(_)) => {
             log::error!("ingest retry worker channel closed; dropping batch");

@@ -23,3 +23,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [015](015-cgroup-v2-bootstrap-on-startup.md) | Walk cgroup v2 on startup; inode = cgroup_id | Accepted |
 | [016](016-clock-domain-offset.md) | BPF monotonic → wall offset for aggregator windows | Accepted |
 | [017](017-batch-lineage-metadata.md) | `batch_id` + `agent_version` on every flush | Accepted |
+| [018](018-phase-roadmap-status.md) | Phases 4 & 6 complete; Phase 5 security focus | Accepted |
