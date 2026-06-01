@@ -63,10 +63,23 @@ Precompute `memory.current` on identity; `sample_tracked_cgroups` is `async` —
 
 ---
 
+## Pattern 5a — Batch lineage (audit)
+
+Each `Aggregator::flush` sets `batch_id = Uuid::new_v4()` and `agent_version = env!("CARGO_PKG_VERSION")`.  
+Propagated through `BatchJson` → ingest `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)).
+
+## Pattern 5b — Aggregator clock domain
+
+`Aggregator::new` calibrates `clock_offset_ns = wall_unix - CLOCK_MONOTONIC` once.  
+Ring-buffer events: `wall_timestamp = event.timestamp + clock_offset_ns` in `on_finops_event`.  
+`window_start_ns` / `window_end_ns` use `mono_now + offset` (not raw `SystemTime` per flush).  
+Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)).
+
 ## Pattern 6b — Attribution cache
 
 `AttributionCache`: `Clone` via `Arc<RwLock<...>>` maps; K8s refresh in background task.  
 `cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
+Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
 
 ---

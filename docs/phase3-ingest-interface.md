@@ -20,6 +20,8 @@ ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `FINOPS_NODE_NAME` |
+| `batch_id` | string | UUID v4 per flush — audit lineage ([ADR 017](adr/017-batch-lineage-metadata.md)) |
+| `agent_version` | string | `finops-user` crate version at flush time |
 | `workloads` | array | Rolled-up rows (below) |
 
 ## Workload row
@@ -45,6 +47,8 @@ API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSO
   "window_start_ns": 0,
   "window_end_ns": 0,
   "node": "host",
+  "batch_id": "550e8400-e29b-41d4-a716-446655440000",
+  "agent_version": "0.1.0",
   "cgroup_id": 1,
   "namespace": null,
   "pod": null,

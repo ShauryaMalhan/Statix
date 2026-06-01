@@ -4,12 +4,14 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Read,
+    os::unix::fs::MetadataExt,
     path::{Component, Path, PathBuf},
     sync::Arc,
 };
 
-use finops_common::FinopsEvent;
+use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use parking_lot::RwLock;
+use walkdir::WalkDir;
 
 /// Resolved workload metadata for aggregation and JSON output.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
@@ -90,6 +92,76 @@ impl AttributionCache {
     pub fn upsert_pod_labels(&self, uid: String, labels: WorkloadLabels) {
         self.pod_by_uid.write().insert(uid, labels);
     }
+
+    /// Register a cgroup directory discovered at startup (inode = `cgroup_id` in cgroup v2).
+    pub fn register_cgroup_directory(&self, cgroup_id: u64, rel_path: PathBuf) {
+        let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+        self.cgroup_paths.write().insert(cgroup_id, rel_path);
+        self.memory_current_paths
+            .write()
+            .insert(cgroup_id, memory_current);
+        let labels = labels_from_cgroup_path(self.cgroup_paths.read().get(&cgroup_id));
+        self.cgroup_labels.write().insert(cgroup_id, labels);
+    }
+}
+
+/// Walk cgroup v2 hierarchy and seed the aggregator for workloads that started before the agent.
+/// Returns any early-flush batches triggered by `max_keys` during bootstrap (caller should `emit_batch`).
+pub async fn bootstrap_existing_cgroups(
+    cache: &AttributionCache,
+    agg: &mut crate::aggregator::Aggregator,
+    node: &str,
+) -> Vec<crate::aggregator::BatchPayload> {
+    let root = cgroup_v2_mount();
+    let mut bootstrapped = 0usize;
+    let mut early_flushes = Vec::new();
+
+    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let dir = entry.path();
+        if dir == root.as_path() {
+            continue;
+        }
+
+        let Ok(meta) = fs::metadata(dir) else {
+            continue;
+        };
+        let cgroup_id = meta.ino();
+        if cgroup_id == 0 {
+            continue;
+        }
+
+        let rel_path = dir
+            .strip_prefix(&root)
+            .ok()
+            .map(|p| PathBuf::from("/").join(p));
+        if let Some(rel_path) = rel_path {
+            cache.register_cgroup_directory(cgroup_id, rel_path);
+        }
+
+        let event = FinopsEvent {
+            kind: EVENT_KIND_WORKLOAD_IDENTITY,
+            _pad: [0u8; 7],
+            pid: 0,
+            tgid: 0,
+            cpu_id: 0,
+            _pad2: 0,
+            cgroup_id,
+            timestamp: 0,
+            memory_bytes: 0,
+            comm: [0u8; 16],
+        };
+
+        if let Some(batch) = agg.on_finops_event(&event, cache, node) {
+            early_flushes.push(batch);
+        }
+        bootstrapped += 1;
+    }
+
+    log::info!("Bootstrapped {bootstrapped} existing cgroups from {}", root.display());
+    early_flushes
 }
 
 fn cgroup_v2_mount() -> PathBuf {

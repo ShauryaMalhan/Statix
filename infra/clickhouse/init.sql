@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS finops_telemetry_kafka (
     window_start_ns UInt64,
     window_end_ns UInt64,
     node String,
+    batch_id String,
+    agent_version String,
     cgroup_id UInt64,
     namespace Nullable(String),
     pod Nullable(String),
@@ -32,6 +34,8 @@ CREATE TABLE IF NOT EXISTS finops_telemetry (
     window_start_ns UInt64,
     window_end_ns UInt64,
     node LowCardinality(String),
+    batch_id String,
+    agent_version LowCardinality(String),
     cgroup_id UInt64,
     namespace LowCardinality(Nullable(String)),
     -- High-cardinality K8s fields: plain String — LowCardinality OOMs on millions of unique pods/IDs

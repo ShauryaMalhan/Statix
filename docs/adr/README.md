@@ -20,3 +20,6 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [012](012-finops-api-prometheus-metrics.md) | `GET /metrics`; ingest/Kafka Prometheus instrumentation | Accepted |
 | [013](013-configurable-ring-buffer-size.md) | Ring buffer build-time tiers + CPU-based ELF pick | Accepted |
 | [014](014-kafka-producer-env-tuning.md) | Kafka mpsc / batch / linger env tuning | Accepted |
+| [015](015-cgroup-v2-bootstrap-on-startup.md) | Walk cgroup v2 on startup; inode = cgroup_id | Accepted |
+| [016](016-clock-domain-offset.md) | BPF monotonic → wall offset for aggregator windows | Accepted |
+| [017](017-batch-lineage-metadata.md) | `batch_id` + `agent_version` on every flush | Accepted |

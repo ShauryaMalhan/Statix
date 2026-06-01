@@ -200,6 +200,8 @@ pub struct BatchJson<'a> {
     pub window_start_ns: u64,
     pub window_end_ns: u64,
     pub node: &'a str,
+    pub batch_id: &'a str,
+    pub agent_version: &'a str,
     pub workloads: &'a [WorkloadBatchRow],
 }
 
@@ -225,6 +227,8 @@ pub fn emit_batch(payload: &BatchPayload) {
         window_start_ns: payload.window_start_ns,
         window_end_ns: payload.window_end_ns,
         node: &payload.node,
+        batch_id: &payload.batch_id,
+        agent_version: &payload.agent_version,
         workloads: &payload.workloads,
     };
 

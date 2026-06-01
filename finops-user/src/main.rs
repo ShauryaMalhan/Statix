@@ -68,6 +68,10 @@ async fn main() -> anyhow::Result<()> {
         output::SCHEMA_VERSION
     );
 
+    for batch in attribution::bootstrap_existing_cgroups(&cache, &mut agg, &node).await {
+        output::emit_batch(&batch);
+    }
+
     loop {
         tokio::select! {
             guard_result = async_fd.readable_mut() => {

@@ -19,6 +19,8 @@ pub struct IngestBatch {
     pub window_start_ns: u64,
     pub window_end_ns: u64,
     pub node: String,
+    pub batch_id: String,
+    pub agent_version: String,
     pub workloads: Vec<WorkloadRow>,
 }
 
@@ -41,6 +43,8 @@ struct FlatRow<'a> {
     window_start_ns: u64,
     window_end_ns: u64,
     node: &'a str,
+    batch_id: &'a str,
+    agent_version: &'a str,
     cgroup_id: u64,
     namespace: Option<&'a str>,
     pod: Option<&'a str>,
@@ -86,6 +90,8 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             window_start_ns: batch.window_start_ns,
             window_end_ns: batch.window_end_ns,
             node: batch.node.as_str(),
+            batch_id: batch.batch_id.as_str(),
+            agent_version: batch.agent_version.as_str(),
             cgroup_id: row.cgroup_id,
             namespace: row.namespace.as_deref(),
             pod: row.pod.as_deref(),

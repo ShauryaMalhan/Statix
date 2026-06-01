@@ -18,12 +18,12 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ### P2 — Scale & audit correctness
 
 - [x] **Ring buffer size (1.2):** `build.rs` + three ELFs (`target/bpf/`); CPU-tier auto-load in `ebpf_select.rs` ([ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md))
-- [ ] **Clock domain offset (4.1):** BPF timestamps use kernel boot time; agent uses wall clock — compute offset so NTP clock steps do not warp billing windows
-- [ ] **Data lineage (4.6):** `agent_version` + `batch_id` on wire and in ClickHouse for financial audits
+- [x] **Clock domain offset (4.1):** `clock_offset_ns` in `Aggregator::new`; BPF `timestamp` + offset; window bounds via same domain ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
+- [x] **Data lineage (4.6):** `batch_id` (UUID v4 per flush) + `agent_version` on wire and ClickHouse ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
 
 ### P3 — Coverage & horizontal API
 
-- [ ] **Bootstrap running workloads (1.7):** Scan `/sys/fs/cgroup` on startup — eBPF only sees new `sched_process_exec`; miss already-running DBs until restart
+- [x] **Bootstrap running workloads (1.7):** `bootstrap_existing_cgroups` walks cgroup v2; inode = `cgroup_id`; synthetic identity events ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
 - [ ] **API `/ready` probe (1.6):** separate readiness (e.g. channel depth / Kafka lag) — `/health` shipped (`kafka_tx.is_closed()`); ALB multi-replica tuning deferred
 
 ---

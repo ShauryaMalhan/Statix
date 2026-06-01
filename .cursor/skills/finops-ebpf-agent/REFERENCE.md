@@ -50,6 +50,9 @@ ring buffer → aggregator → emit_batch
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `FINOPS_EBF_PATH`
 - Agent event loop: K8s API in `tokio::spawn`; memory samples via `spawn_blocking` ([enterprise-latency.md](../../../docs/enterprise-latency.md))
+- Startup cgroup bootstrap: `bootstrap_existing_cgroups` (walkdir + dir `ino()` = `cgroup_id`; `FINOPS_CGROUP_ROOT`) — [ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)
+- Aggregator clock: `clock_offset_ns` at `new`; window bounds in wall domain aligned with BPF timestamps — [ADR 016](../../../docs/adr/016-clock-domain-offset.md)
+- Batch lineage: `batch_id` (UUID v4) + `agent_version` on every flush — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)
 - ClickHouse `ReplacingMergeTree` + `FINAL` billing reads: [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)
 - ClickHouse Kafka engine: `kafka_skip_broken_messages`, `kafka_num_consumers` — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)
 - Agent HTTP: `init_http_client()` + `init_retry_worker()` — env timeouts (5s / 55s defaults), backoff — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)

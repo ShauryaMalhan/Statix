@@ -30,7 +30,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 - [ ] finops-common: FinopsEvent / kinds only here
 - [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0)
 - [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
-- [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap)
+- [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
 - [ ] Output: FINOPS_INGEST_URL → `init_retry_worker` + shared reqwest (`FINOPS_HTTP_TIMEOUT_SECS` / `FINOPS_HTTP_POOL_IDLE_SECS`)
 - [ ] API: GET /health; GET /metrics; POST /ingest → 400/503/200; try_send; Kafka in background task
 - [ ] make build && make check
@@ -65,7 +65,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 | `emit_batch` | Serialize + `try_send` to retry worker; HTTP env timeouts; backoff + 30% jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
-| Aggregator | Early flush at `max_keys`; flip buffer before drain |
+| Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + `clock_offset_ns` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
 Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.md)
@@ -79,9 +79,10 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 ## User-space (Phase 2)
 
-- Batched JSON `schema_version: 2`
+- Batched JSON `schema_version: 2`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
 - `FINOPS_RAW_EVENTS=1` debug only
 - K8s: `tokio::spawn` + 30s interval — never `await` API in main `select!`
+- Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`
 - Env: `FINOPS_WINDOW_SECS`, `FINOPS_SAMPLE_INTERVAL_SECS`, `FINOPS_NODE_NAME`, `FINOPS_CGROUP_ROOT`
 
@@ -101,6 +102,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Map | `rustc_hash::FxHashMap` |
 | Buffers | Two maps; flip before drain ([ADR 004](../../../docs/adr/004-swap-buffer-before-drain.md)) |
 | Cap | Early flush — never random eviction ([ADR 003](../../../docs/adr/003-early-flush-instead-of-cap-eviction.md)) |
+| Clock | `clock_offset_ns` at `new`; `on_finops_event` converts BPF mono → wall ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
 
 ### Attribution
 

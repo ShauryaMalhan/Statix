@@ -3,9 +3,11 @@
 //! - `FxHashMap`: fast `u64` keys (no SipHash DoS resistance needed).
 //! - Double-buffered maps: ping-pong + `.clear()` preserves capacity (no realloc per window).
 //! - Early flush at `max_keys`: never drop telemetry (FinOps correctness).
+//! - `clock_offset_ns`: maps BPF / monotonic timestamps to wall-clock for window boundaries.
 
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use rustc_hash::FxHashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::attribution::{AttributionCache, WorkloadLabels};
 use crate::output::WorkloadBatchRow;
@@ -24,6 +26,7 @@ struct WorkloadStats {
 #[derive(Debug)]
 pub struct Aggregator {
     window_start_ns: u64,
+    clock_offset_ns: u64,
     buffers: [FxHashMap<u64, WorkloadStats>; 2],
     active: usize,
     max_keys: usize,
@@ -31,8 +34,15 @@ pub struct Aggregator {
 
 impl Aggregator {
     pub fn new(_window_secs: u64) -> Self {
+        let clock_offset_ns = calibrate_clock_offset_ns();
+        let window_start_ns = mono_now_ns().saturating_add(clock_offset_ns);
+        log::debug!(
+            "Clock domain offset: {clock_offset_ns} ns (BPF/monotonic → wall)"
+        );
+
         Self {
-            window_start_ns: now_unix_ns(),
+            window_start_ns,
+            clock_offset_ns,
             buffers: [
                 FxHashMap::with_capacity_and_hasher(DEFAULT_MAX_KEYS, Default::default()),
                 FxHashMap::with_capacity_and_hasher(DEFAULT_MAX_KEYS, Default::default()),
@@ -42,6 +52,16 @@ impl Aggregator {
         }
     }
 
+    /// Monotonic ns → wall ns using the offset captured at `new()`.
+    fn mono_to_wall(&self, mono_ns: u64) -> u64 {
+        mono_ns.saturating_add(self.clock_offset_ns)
+    }
+
+    /// Current wall time in the same domain as converted BPF event timestamps.
+    fn wall_now_ns(&self) -> u64 {
+        self.mono_to_wall(mono_now_ns())
+    }
+
     /// Returns an early flush payload if `max_keys` was reached (no data dropped).
     pub fn on_finops_event(
         &mut self,
@@ -49,6 +69,8 @@ impl Aggregator {
         cache: &AttributionCache,
         node: &str,
     ) -> Option<BatchPayload> {
+        let wall_timestamp = self.mono_to_wall(event.timestamp);
+
         match event.kind {
             EVENT_KIND_WORKLOAD_IDENTITY => {
                 cache.on_identity_event(event);
@@ -67,6 +89,15 @@ impl Aggregator {
             }
             _ => log::warn!("Unknown event kind {}", event.kind),
         }
+
+        if wall_timestamp > 0 {
+            log::trace!(
+                "event kind={} cgroup_id={} wall_timestamp_ns={wall_timestamp}",
+                event.kind,
+                event.cgroup_id
+            );
+        }
+
         self.try_early_flush(node, cache)
     }
 
@@ -126,7 +157,7 @@ impl Aggregator {
         }
 
         let window_start_ns = self.window_start_ns;
-        let window_end_ns = now_unix_ns();
+        let window_end_ns = self.wall_now_ns();
 
         // Flip first so ingest paths use a fresh buffer while we drain the old one.
         self.active = 1 - self.active;
@@ -152,10 +183,15 @@ impl Aggregator {
 
         self.buffers[flush_idx].clear();
 
+        let batch_id = uuid::Uuid::new_v4().to_string();
+        let agent_version = env!("CARGO_PKG_VERSION").to_string();
+
         Some(BatchPayload {
             window_start_ns,
             window_end_ns,
             node: node.to_string(),
+            batch_id,
+            agent_version,
             workloads,
         })
     }
@@ -169,7 +205,7 @@ impl Aggregator {
     }
 
     fn reset_window(&mut self) {
-        self.window_start_ns = now_unix_ns();
+        self.window_start_ns = self.wall_now_ns();
     }
 }
 
@@ -177,12 +213,36 @@ pub struct BatchPayload {
     pub window_start_ns: u64,
     pub window_end_ns: u64,
     pub node: String,
+    pub batch_id: String,
+    pub agent_version: String,
     pub workloads: Vec<WorkloadBatchRow>,
 }
 
-fn now_unix_ns() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+/// Offset between wall clock and `CLOCK_MONOTONIC` at agent start (BPF `bpf_ktime_get_ns` domain).
+fn calibrate_clock_offset_ns() -> u64 {
+    let mono_now_ns = mono_now_ns();
+    let wall_now_ns = wall_unix_ns();
+    wall_now_ns.saturating_sub(mono_now_ns)
+}
+
+fn mono_now_ns() -> u64 {
+    let mut t = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: `timespec` is valid; CLOCK_MONOTONIC is always available on Linux.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
+    if rc != 0 {
+        return 0;
+    }
+    (t.tv_sec as u64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(t.tv_nsec as u64)
+}
+
+fn wall_unix_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0)
 }
