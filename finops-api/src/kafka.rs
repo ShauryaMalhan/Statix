@@ -1,8 +1,10 @@
 //! Bounded channel + background Kafka producer — HTTP handlers never await Kafka.
 //!
-//! Micro-batches rows: one `produce()` per batch (count or linger), not per message.
+//! Micro-batches rows: one `produce()` per partition batch (count or linger), not per message.
+//! Records are routed by hashing the `node` key across topic partitions from broker metadata.
 
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,9 +24,12 @@ const BATCH_MAX_RECORDS: usize = 256;
 /// Flush partial batch after this wait so low-volume windows still ship promptly.
 const BATCH_LINGER: Duration = Duration::from_millis(5);
 
+/// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
+pub type KafkaQueueItem = (String, Bytes);
+
 /// Handle to the background producer. Drop `tx` (via `shutdown`) then await the task.
 pub struct KafkaProducer {
-    pub tx: mpsc::Sender<Bytes>,
+    pub tx: mpsc::Sender<KafkaQueueItem>,
     task: JoinHandle<()>,
 }
 
@@ -52,45 +57,113 @@ pub fn spawn_producer(brokers: String) -> KafkaProducer {
     KafkaProducer { tx, task }
 }
 
-fn bytes_to_record(payload: Bytes) -> Record {
+fn hash_node_to_slot(node: &str, num_partitions: usize) -> usize {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    node.hash(&mut hasher);
+    (hasher.finish() as usize) % num_partitions
+}
+
+fn partition_id_for_node(node: &str, partition_ids: &[i32]) -> i32 {
+    let slot = hash_node_to_slot(node, partition_ids.len());
+    partition_ids[slot]
+}
+
+fn bytes_to_record(node: &str, payload: Bytes) -> Record {
     Record {
-        key: None,
+        key: Some(node.as_bytes().to_vec()),
         value: Some(payload.to_vec()),
-        headers: BTreeMap::new(),
+        headers: std::collections::BTreeMap::new(),
         timestamp: Utc::now(),
     }
 }
 
-async fn produce_batch(
-    partition_client: &Arc<rskafka::client::partition::PartitionClient>,
-    payloads: &mut Vec<Bytes>,
+async fn load_partition_clients(
+    client: &rskafka::client::Client,
+) -> anyhow::Result<(Vec<i32>, HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>)> {
+    let topics = client.list_topics().await?;
+    let mut partition_ids: Vec<i32> = topics
+        .into_iter()
+        .find(|t| t.name == TOPIC)
+        .map(|t| t.partitions.into_iter().collect())
+        .unwrap_or_else(|| {
+            log::warn!(
+                "topic {TOPIC} not in broker metadata yet; using partition 0 until auto-create"
+            );
+            vec![0]
+        });
+
+    partition_ids.sort_unstable();
+    partition_ids.dedup();
+
+    if partition_ids.is_empty() {
+        anyhow::bail!("topic {TOPIC} has no partitions in metadata");
+    }
+
+    let mut clients = HashMap::with_capacity(partition_ids.len());
+    for &pid in &partition_ids {
+        let pc = Arc::new(
+            client
+                .partition_client(TOPIC.to_owned(), pid, UnknownTopicHandling::Retry)
+                .await?,
+        );
+        clients.insert(pid, pc);
+    }
+
+    Ok((partition_ids, clients))
+}
+
+async fn produce_grouped_batch(
+    partition_ids: &[i32],
+    clients: &HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
+    batch: &mut Vec<KafkaQueueItem>,
 ) {
-    if payloads.is_empty() {
+    if batch.is_empty() {
         return;
     }
-    let n = payloads.len();
-    let batch: Vec<Record> = payloads.drain(..).map(bytes_to_record).collect();
-    if let Err(e) = partition_client
-        .produce(batch, Compression::default())
-        .await
-    {
-        log::warn!("Kafka produce failed ({n} records): {e}");
+
+    let mut by_partition: HashMap<i32, Vec<KafkaQueueItem>> = HashMap::new();
+    for (node, payload) in batch.drain(..) {
+        let pid = partition_id_for_node(&node, partition_ids);
+        by_partition.entry(pid).or_default().push((node, payload));
+    }
+
+    for (pid, mut rows) in by_partition {
+        let Some(client) = clients.get(&pid) else {
+            log::warn!("no partition client for partition {pid}; dropping {} rows", rows.len());
+            continue;
+        };
+        while !rows.is_empty() {
+            let chunk_len = rows.len().min(BATCH_MAX_RECORDS);
+            let chunk: Vec<_> = rows.drain(..chunk_len).collect();
+            let n = chunk.len();
+            let records: Vec<Record> = chunk
+                .into_iter()
+                .map(|(node, payload)| bytes_to_record(&node, payload))
+                .collect();
+            if let Err(e) = client.produce(records, Compression::default()).await {
+                log::warn!("Kafka produce failed (partition={pid}, {n} records): {e}");
+            }
+        }
     }
 }
 
-async fn fill_batch(rx: &mut mpsc::Receiver<Bytes>, payloads: &mut Vec<Bytes>, first: Bytes) {
-    payloads.clear();
-    payloads.push(first);
+async fn fill_batch(
+    rx: &mut mpsc::Receiver<KafkaQueueItem>,
+    batch: &mut Vec<KafkaQueueItem>,
+    first: KafkaQueueItem,
+) {
+    batch.clear();
+    batch.push(first);
 
     let linger = tokio::time::sleep(BATCH_LINGER);
     tokio::pin!(linger);
 
-    while payloads.len() < BATCH_MAX_RECORDS {
-        let room = BATCH_MAX_RECORDS - payloads.len();
+    while batch.len() < BATCH_MAX_RECORDS {
+        let room = BATCH_MAX_RECORDS - batch.len();
         tokio::select! {
             biased;
             _ = &mut linger => break,
-            n = rx.recv_many(payloads, room) => {
+            n = rx.recv_many(batch, room) => {
                 if n == 0 {
                     break;
                 }
@@ -101,39 +174,36 @@ async fn fill_batch(rx: &mut mpsc::Receiver<Bytes>, payloads: &mut Vec<Bytes>, f
 
 async fn run_producer_loop(
     brokers: String,
-    mut rx: mpsc::Receiver<Bytes>,
+    mut rx: mpsc::Receiver<KafkaQueueItem>,
 ) -> anyhow::Result<()> {
     let client = ClientBuilder::new(vec![brokers]).build().await?;
-    let partition_client = Arc::new(
-        client
-            .partition_client(TOPIC.to_owned(), 0, UnknownTopicHandling::Retry)
-            .await?,
-    );
+    let (partition_ids, clients) = load_partition_clients(&client).await?;
 
     log::info!(
-        "Kafka producer ready (topic={TOPIC}, partition=0, batch_max={BATCH_MAX_RECORDS}, linger_ms={})",
+        "Kafka producer ready (topic={TOPIC}, partitions={:?}, batch_max={BATCH_MAX_RECORDS}, linger_ms={})",
+        partition_ids,
         BATCH_LINGER.as_millis()
     );
 
-    let mut payloads = Vec::with_capacity(BATCH_MAX_RECORDS);
+    let mut batch = Vec::with_capacity(BATCH_MAX_RECORDS);
 
     loop {
         match rx.recv().await {
             Some(first) => {
-                fill_batch(&mut rx, &mut payloads, first).await;
-                produce_batch(&partition_client, &mut payloads).await;
+                fill_batch(&mut rx, &mut batch, first).await;
+                produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
             }
             None => {
-                // All senders dropped (graceful shutdown): drain channel into `payloads` (no scratch vec).
+                // All senders dropped (graceful shutdown): drain channel into `batch` (no scratch vec).
                 while {
-                    let room = BATCH_MAX_RECORDS - payloads.len();
-                    rx.recv_many(&mut payloads, room).await > 0
+                    let room = BATCH_MAX_RECORDS - batch.len();
+                    rx.recv_many(&mut batch, room).await > 0
                 } {
-                    if payloads.len() >= BATCH_MAX_RECORDS {
-                        produce_batch(&partition_client, &mut payloads).await;
+                    if batch.len() >= BATCH_MAX_RECORDS {
+                        produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
                     }
                 }
-                produce_batch(&partition_client, &mut payloads).await;
+                produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
                 log::info!("Kafka producer drained channel and flushed final batch");
                 break;
             }

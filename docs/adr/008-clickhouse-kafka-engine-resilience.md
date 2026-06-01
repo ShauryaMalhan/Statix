@@ -11,7 +11,7 @@ Kafka engine `SETTINGS` on `finops_telemetry_kafka`:
 - **`kafka_skip_broken_messages = 1000`** — skip malformed JSON per block instead of halting the consumer on the first bad row.
 - **`kafka_num_consumers = 1`** — local Docker (single partition). **Production:** set to match Kafka topic partition count (e.g. `8`) so ClickHouse consumes partitions in parallel.
 
-MergeTree target (`finops_telemetry`) unchanged — see [ADR 007](007-clickhouse-mergetree-tuning.md).
+Storage target (`finops_telemetry`) — `ReplacingMergeTree` + sort key — [ADR 007](007-clickhouse-mergetree-tuning.md), [ADR 011](011-replacingmergetree-dedupe-identity.md).
 
 ## Rationale
 

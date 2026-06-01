@@ -44,7 +44,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer |
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `POST /ingest`, mpsc → Kafka (`rskafka`) |
+| `finops-api` | host | `POST /ingest`, mpsc `(node, Bytes)` → keyed Kafka (`rskafka`, [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)) |
 
 **Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 
@@ -119,7 +119,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
-| CH MergeTree | LC on `node`/`namespace` only; `ORDER BY (node, namespace, time, cgroup_id)`; 30d TTL ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md)) |
+| CH storage | `ReplacingMergeTree`; LC on `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing queries `FINAL`; 30d TTL ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)) |
 
 Spec: [docs/phase3-ingest-interface.md](../../../docs/phase3-ingest-interface.md)  
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md)

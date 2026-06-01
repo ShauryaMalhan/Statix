@@ -16,7 +16,7 @@ aya = { version = "0.13", features = ["async_tokio"] }
 # instead of blocking a thread waiting for kernel data, we register the
 # ring buffer file descriptor with the OS epoll, and Tokio wakes our
 # task only when events arrive. Zero CPU usage while waiting.
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 
 # serde + serde_json for structured JSON output.
 # Phase 1 prints to stdout. Phase 3 will stream over gRPC instead.

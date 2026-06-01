@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub kafka_tx: mpsc::Sender<bytes::Bytes>,
+    pub kafka_tx: mpsc::Sender<kafka::KafkaQueueItem>,
 }
 
 #[tokio::main]

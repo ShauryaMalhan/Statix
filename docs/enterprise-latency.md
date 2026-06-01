@@ -13,6 +13,8 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); agent must not stall on ring-buffer path |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
 | **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (3s timeout, 90s pool idle); one Kafka producer task per API process |
+| **Partition by node** | Kafka record key = `node`; producer hashes to broker partition count ([ADR 010](adr/010-kafka-partition-key-by-node.md)) |
+| **Storage dedupe** | `ReplacingMergeTree`; sort key `(node, window_start_ns, cgroup_id)`; billing reads use `FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
 | **Bounded background work** | Agent HTTP tasks must not hang on black-hole TCP; ClickHouse Kafka engine skips broken rows ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)) |
 
 ## Latency budget (targets)

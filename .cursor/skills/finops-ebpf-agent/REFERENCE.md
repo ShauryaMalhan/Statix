@@ -11,8 +11,8 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `FinopsEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` |
-| Ingest API | `GET /health`, `POST /ingest` (`400`/`503`/`200`) → `try_send` → background Kafka |
-| Storage | Kafka → CH Kafka engine → MergeTree |
+| Ingest API | `GET /health`, `POST /ingest` (`400`/`503`/`200`) → `try_send((node, Bytes))` → keyed Kafka produce ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)) |
+| Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
 ## File map
 

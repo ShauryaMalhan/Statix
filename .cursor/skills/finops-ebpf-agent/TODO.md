@@ -10,9 +10,9 @@ Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed d
 
 ### P1 — Before AWS ECS / production billing
 
-- [ ] **Kafka partition routing (1.1):** Hashed routing by node name (or similar); single partition caps ClickHouse/API throughput to ~1 consumer thread — required before multi-node ECS deploy
-- [ ] **Agent ingest retry (3.2):** Honor `503` from `POST /ingest` + exponential backoff on shared `reqwest` client; today transport errors and backpressure only `log::warn`
-- [ ] **Dedupe / idempotency (4.4):** `ReplacingMergeTree` or `batch_id` in ClickHouse — must ship **with** retries to avoid double-billing
+- [x] **Kafka partition routing (1.1):** `node` as Kafka key + `DefaultHasher % partitions`; multi `PartitionClient` from broker metadata ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
+- [x] **Agent ingest retry (3.2):** Background worker in `output.rs` — bounded queue 60, exponential backoff 1s→30s on 5xx/429/transport; drop-oldest when full (pair with dedupe before prod)
+- [x] **Dedupe / idempotency (4.4):** `ReplacingMergeTree` + `ORDER BY (node, window_start_ns, cgroup_id)`; billing queries use `FINAL` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)). Optional: `batch_id` on wire for audit (see Data lineage 4.6 below)
 - [ ] **Prometheus metrics (3.5):** `finops-api` `/metrics` — mpsc channel depth, dropped rows, ingest HTTP latency, Kafka produce latency
 
 ### P2 — Scale & audit correctness
@@ -37,6 +37,7 @@ Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed d
 
 ## Performance
 
+- [ ] **Zero-copy node key in `ingest.rs` loop:** Change the Kafka `mpsc` channel payload from `(String, Bytes)` to `(bytes::Bytes, bytes::Bytes)`. Convert `batch.node` to a `Bytes` object *once* before the workloads loop, and clone the `Bytes` reference inside the loop to eliminate O(N) heap string allocations per batch (update `kafka.rs` / `main.rs` `KafkaQueueItem` accordingly).
 - [ ] **`labels_for_cgroup`: fewer `RwLock` read passes**
 - [ ] **BPF-side memory samples** (if sysfs profiled hot)
 

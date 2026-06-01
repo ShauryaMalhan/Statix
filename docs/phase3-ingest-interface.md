@@ -57,7 +57,7 @@ API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSO
 }
 ```
 
-Topic: `finops-telemetry`
+Topic: `finops-telemetry` — each row is produced with Kafka **key** = batch `node` (partition `hash(node) % topic_partitions`; see [ADR 010](adr/010-kafka-partition-key-by-node.md)).
 
 ## ClickHouse Kafka consumer (`infra/clickhouse/init.sql`)
 
@@ -67,6 +67,16 @@ Topic: `finops-telemetry`
 | `kafka_num_consumers` | `1` | **match topic partition count** (e.g. `8`) |
 
 See [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
+
+## ClickHouse storage (`finops_telemetry`)
+
+| Item | Value |
+|------|--------|
+| Engine | `ReplacingMergeTree()` — dedupes on background merge |
+| Sort key | `(node, window_start_ns, cgroup_id)` — **not** `namespace` (mutable; retries must not change identity) |
+| Billing queries | Always `FROM finops_telemetry FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
+
+Schema change on existing volume: `docker compose down -v && make compose-up`.
 
 ## HTTP endpoints
 
@@ -121,7 +131,7 @@ Optional host API instead of container: `make run-api` ([ADR 009](adr/009-finops
 **ClickHouse HTTP (docker-compose):** user `default`, password `finops_dev` (see `docker-compose.yml`). Example:
 
 ```bash
-curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry'
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry%20FINAL'
 ```
 
 ## Deferred

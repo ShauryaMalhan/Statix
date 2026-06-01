@@ -15,3 +15,5 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [007](007-clickhouse-mergetree-tuning.md) | MergeTree daily parts, billing sort key, 30d TTL | Accepted |
 | [008](008-clickhouse-kafka-engine-resilience.md) | Kafka engine: skip broken messages, `kafka_num_consumers` | Accepted |
 | [009](009-finops-api-docker-compose.md) | `finops-api` in Docker Compose (`Dockerfile.api`) | Accepted |
+| [010](010-kafka-partition-key-by-node.md) | Kafka partition routing by `node` message key | Accepted |
+| [011](011-replacingmergetree-dedupe-identity.md) | ReplacingMergeTree; ORDER BY without `namespace`; `FINAL` reads | Accepted |

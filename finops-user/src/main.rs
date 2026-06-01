@@ -17,6 +17,9 @@ use tokio::time::{self, Duration};
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
     output::init_http_client();
+    if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
+        output::init_retry_worker(url);
+    }
     check_privileges()?;
 
     let ebpf_path = read_ebpf_path()?;

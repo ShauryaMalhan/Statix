@@ -103,13 +103,13 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `tokio::spawn` POST ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `init_retry_worker` — bounded `mpsc(60)`, single worker, exponential backoff 1s→30s cap on 5xx/429/transport; `emit_batch` → `try_send`; drop-oldest + `SEVERE` log when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
 **API:** `GET /health` (`503` if producer dead); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap.
 
-**Kafka:** micro-batch (`recv_many` + linger); hoisted `payloads`; `drain().map().collect()` per batch for `produce` (library owns `Vec<Record>` — no recycle).
+**Kafka:** channel `(node, Bytes)`; broker `list_topics` → `PartitionClient` per partition; route `hash(node) % N`; record key = `node`; micro-batch (`recv_many` + linger), group by partition then `produce` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
-**ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). MergeTree: LC only `node`/`namespace`; `ORDER BY (node, namespace, time, cgroup_id)`; 30d TTL — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md).
+**ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). `ReplacingMergeTree`: LC only `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing `SELECT … FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
 
 ---
 
@@ -119,7 +119,7 @@ limits   = requests × 1.25;
 make compose-up    # stop-api (host binary only) + stack + health check
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
-curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT count() FROM finops_telemetry'
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry%20FINAL'
 make compose-down
 ```
 

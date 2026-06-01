@@ -92,7 +92,11 @@ pub async fn handler(
             }
         };
 
-        if state.kafka_tx.try_send(bytes).is_err() {
+        if state
+            .kafka_tx
+            .try_send((batch.node.clone(), bytes))
+            .is_err()
+        {
             log::warn!("Kafka channel full (backpressure), rejecting batch");
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
