@@ -10,9 +10,9 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **Never block the ingest handler** | API uses `mpsc::try_send`; Kafka `produce` only in a background task |
 | **Bounded memory** | Aggregator early flush at `max_keys`; double-buffered maps with `.clear()` (retain capacity) |
 | **No hot-path heap churn** | Stack reads: `[u8; 32]` `memory.current`, `[u8; 1024]` `/proc/{pid}/cgroup`; `spawn_blocking` for sampler; `FxHashMap` for `u64` keys |
-| **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); agent must not stall on ring-buffer path |
+| **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); tune `FINOPS_KAFKA_CHANNEL_SIZE` for burst ([ADR 014](adr/014-kafka-producer-env-tuning.md)) |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
-| **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (3s timeout, 90s pool idle); one Kafka producer task per API process |
+| **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (`FINOPS_HTTP_TIMEOUT_SECS` default 5s, `FINOPS_HTTP_POOL_IDLE_SECS` default 55s); one Kafka producer task per API process |
 | **Partition by node** | Kafka record key = `node`; producer hashes to broker partition count ([ADR 010](adr/010-kafka-partition-key-by-node.md)) |
 | **Storage dedupe** | `ReplacingMergeTree`; sort key `(node, window_start_ns, cgroup_id)`; billing reads use `FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
 | **API metrics** | `GET /metrics`; explicit `metrics!` macros on ingest/Kafka — no middleware ([ADR 012](adr/012-finops-api-prometheus-metrics.md)) |
@@ -22,7 +22,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 
 | Stage | Target | Notes |
 |-------|--------|-------|
-| BPF → ring buffer | μs | `reserve` / `submit` only; no printk |
+| BPF → ring buffer | μs | `reserve` / `submit` only; no printk; map size tiered by host cores ([ADR 013](adr/013-configurable-ring-buffer-size.md)) |
 | Agent event drain | μs per event | `on_finops_event` + map insert; flush work off hot path where possible |
 | cgroup `memory.current` sample | async | Path snapshot + per-file `spawn_blocking` — never sync `File::open` on the runtime worker |
 | `emit_batch` (HTTP path) | &lt; 1 ms on caller | Serialize + `try_send` to retry queue only |

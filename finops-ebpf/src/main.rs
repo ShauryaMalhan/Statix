@@ -12,8 +12,10 @@ use aya_ebpf::{
 };
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 
+include!(concat!(env!("OUT_DIR"), "/ring_config.rs"));
+
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_size(512 * 1024, 0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 
 #[tracepoint(name = "sched_process_exec", category = "sched")]
 pub fn finops_sched_process_exec(ctx: TracePointContext) -> u32 {

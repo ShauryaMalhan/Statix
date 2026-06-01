@@ -25,8 +25,10 @@ unsafe impl aya::Pod for FinopsEvent {}
 ## Pattern 2 — Ring buffer map (finops-ebpf)
 
 ```rust
+include!(concat!(env!("OUT_DIR"), "/ring_config.rs"));
 #[map]
-static EVENTS: RingBuf = RingBuf::with_byte_size(512 * 1024, 0);
+static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
+// build.rs + make build-ebpf → target/bpf/finops-ebpf-{small,large,xlarge}; ebpf_select.rs picks by core count
 ```
 
 ---
@@ -103,11 +105,11 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` with `.timeout(3s)` + `.pool_idle_timeout(90s)`; `init_retry_worker` — bounded `mpsc(60)`, single worker, exponential backoff 1s→30s cap on 5xx/429/transport; `emit_batch` → `try_send`; drop-oldest + `SEVERE` log when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>` — `FINOPS_HTTP_TIMEOUT_SECS` (default 5), `FINOPS_HTTP_POOL_IDLE_SECS` (default 55); `init_retry_worker` — bounded `mpsc(60)`, single worker, exponential backoff 1s→30s cap on 5xx/429/transport; `emit_batch` → `try_send`; drop-oldest + `SEVERE` log when full ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
 **API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 
-**Kafka:** channel `(Bytes, Bytes)` — `node` key materialized once per ingest batch, `Bytes::clone` per row; broker `list_topics` → `PartitionClient` per partition; route `hash(node) % N`; micro-batch + group by partition — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
+**Kafka:** channel `(Bytes, Bytes)`; env `FINOPS_KAFKA_CHANNEL_SIZE` / `BATCH_MAX` / `LINGER_MS` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md); partition routing — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
 **ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). `ReplacingMergeTree`: LC only `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing `SELECT … FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
 

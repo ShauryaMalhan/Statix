@@ -16,16 +16,54 @@ use rskafka::record::Record;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-pub const CHANNEL_SIZE: usize = 1024;
 pub const TOPIC: &str = "finops-telemetry";
 
-/// Max rows per Kafka produce request (avoids one broker round-trip per row).
-const BATCH_MAX_RECORDS: usize = 256;
-/// Flush partial batch after this wait so low-volume windows still ship promptly.
-const BATCH_LINGER: Duration = Duration::from_millis(5);
+const DEFAULT_CHANNEL_SIZE: usize = 8192;
+const MIN_CHANNEL_SIZE: usize = 1024;
+const DEFAULT_BATCH_MAX: usize = 1024;
+const DEFAULT_LINGER_MS: u64 = 50;
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
 pub type KafkaQueueItem = (Bytes, Bytes);
+
+fn read_env_usize(name: &str, default: usize) -> usize {
+    match std::env::var(name) {
+        Ok(s) => match s.parse::<usize>() {
+            Ok(v) if v > 0 => v,
+            _ => {
+                log::warn!("Invalid {name}={s:?}; using default {default}");
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
+fn read_env_u64(name: &str, default: u64) -> u64 {
+    match std::env::var(name) {
+        Ok(s) => match s.parse::<u64>() {
+            Ok(v) if v > 0 => v,
+            _ => {
+                log::warn!("Invalid {name}={s:?}; using default {default}");
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
+fn read_kafka_channel_size() -> usize {
+    read_env_usize("FINOPS_KAFKA_CHANNEL_SIZE", DEFAULT_CHANNEL_SIZE).max(MIN_CHANNEL_SIZE)
+}
+
+fn read_kafka_batch_max() -> usize {
+    read_env_usize("FINOPS_KAFKA_BATCH_MAX", DEFAULT_BATCH_MAX).clamp(64, 16_384)
+}
+
+fn read_kafka_linger() -> Duration {
+    let ms = read_env_u64("FINOPS_KAFKA_LINGER_MS", DEFAULT_LINGER_MS).clamp(1, 1000);
+    Duration::from_millis(ms)
+}
 
 /// Called after a successful `try_send` on the ingest channel (depth gauge proxy).
 #[inline]
@@ -58,7 +96,11 @@ impl KafkaProducer {
 
 /// Spawn the background producer; returns a cloneable `tx` for ingest handlers.
 pub fn spawn_producer(brokers: String) -> KafkaProducer {
-    let (tx, rx) = mpsc::channel(CHANNEL_SIZE);
+    let channel_size = read_kafka_channel_size();
+    log::info!(
+        "Kafka ingest mpsc capacity={channel_size} (FINOPS_KAFKA_CHANNEL_SIZE, min {MIN_CHANNEL_SIZE})"
+    );
+    let (tx, rx) = mpsc::channel(channel_size);
 
     // When this task ends, `rx` drops → all `tx` clones report `is_closed()` (/health → 503).
     let task = tokio::spawn(async move {
@@ -129,6 +171,7 @@ async fn produce_grouped_batch(
     partition_ids: &[i32],
     clients: &HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
     batch: &mut Vec<KafkaQueueItem>,
+    batch_max: usize,
 ) {
     if batch.is_empty() {
         return;
@@ -146,7 +189,7 @@ async fn produce_grouped_batch(
             continue;
         };
         while !rows.is_empty() {
-            let chunk_len = rows.len().min(BATCH_MAX_RECORDS);
+            let chunk_len = rows.len().min(batch_max);
             let chunk: Vec<_> = rows.drain(..chunk_len).collect();
             let n = chunk.len();
             let records: Vec<Record> = chunk
@@ -167,18 +210,20 @@ async fn fill_batch(
     rx: &mut mpsc::Receiver<KafkaQueueItem>,
     batch: &mut Vec<KafkaQueueItem>,
     first: KafkaQueueItem,
+    batch_max: usize,
+    linger: Duration,
 ) {
     batch.clear();
     batch.push(first);
 
-    let linger = tokio::time::sleep(BATCH_LINGER);
-    tokio::pin!(linger);
+    let linger_sleep = tokio::time::sleep(linger);
+    tokio::pin!(linger_sleep);
 
-    while batch.len() < BATCH_MAX_RECORDS {
-        let room = BATCH_MAX_RECORDS - batch.len();
+    while batch.len() < batch_max {
+        let room = batch_max - batch.len();
         tokio::select! {
             biased;
-            _ = &mut linger => break,
+            _ = &mut linger_sleep => break,
             n = rx.recv_many(batch, room) => {
                 if n == 0 {
                     break;
@@ -193,39 +238,43 @@ async fn run_producer_loop(
     brokers: String,
     mut rx: mpsc::Receiver<KafkaQueueItem>,
 ) -> anyhow::Result<()> {
+    let batch_max = read_kafka_batch_max();
+    let linger = read_kafka_linger();
+
     let client = ClientBuilder::new(vec![brokers]).build().await?;
     let (partition_ids, clients) = load_partition_clients(&client).await?;
 
     log::info!(
-        "Kafka producer ready (topic={TOPIC}, partitions={:?}, batch_max={BATCH_MAX_RECORDS}, linger_ms={})",
-        partition_ids,
-        BATCH_LINGER.as_millis()
+        "Kafka producer ready (topic={TOPIC}, partitions={partition_ids:?}, \
+         channel_depth=mpsc, batch_max={batch_max}, linger_ms={})",
+        linger.as_millis()
     );
 
-    let mut batch = Vec::with_capacity(BATCH_MAX_RECORDS);
+    let mut batch = Vec::with_capacity(batch_max);
 
     loop {
         match rx.recv().await {
             Some(first) => {
                 on_kafka_dequeued(1);
-                fill_batch(&mut rx, &mut batch, first).await;
-                produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
+                fill_batch(&mut rx, &mut batch, first, batch_max, linger).await;
+                produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max).await;
             }
             None => {
                 // All senders dropped (graceful shutdown): drain channel into `batch` (no scratch vec).
                 while {
-                    let room = BATCH_MAX_RECORDS - batch.len();
+                    let room = batch_max - batch.len();
                     let n = rx.recv_many(&mut batch, room).await;
                     if n > 0 {
                         on_kafka_dequeued(n);
                     }
                     n > 0
                 } {
-                    if batch.len() >= BATCH_MAX_RECORDS {
-                        produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
+                    if batch.len() >= batch_max {
+                        produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max)
+                            .await;
                     }
                 }
-                produce_grouped_batch(&partition_ids, &clients, &mut batch).await;
+                produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max).await;
                 log::info!("Kafka producer drained channel and flushed final batch");
                 break;
             }

@@ -48,10 +48,11 @@ ring buffer → aggregator → emit_batch
 - Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `http://127.0.0.1:3000/health` and `/metrics`
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
+- eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `FINOPS_EBF_PATH`
 - Agent event loop: K8s API in `tokio::spawn`; memory samples via `spawn_blocking` ([enterprise-latency.md](../../../docs/enterprise-latency.md))
 - ClickHouse `ReplacingMergeTree` + `FINAL` billing reads: [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)
 - ClickHouse Kafka engine: `kafka_skip_broken_messages`, `kafka_num_consumers` — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)
-- Agent HTTP: `init_http_client()` + `init_retry_worker()` — 3s timeout, 90s pool idle, backoff — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)
+- Agent HTTP: `init_http_client()` + `init_retry_worker()` — env timeouts (5s / 55s defaults), backoff — [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)
 - Merge conflicts: resolve all `<<<<<<<` markers before `make run`
 
 ## Deferred work

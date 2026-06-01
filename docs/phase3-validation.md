@@ -77,6 +77,6 @@ curl -s -u default:finops_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABL
 
 ## Enterprise checks
 
-See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses retry worker + shared `reqwest` (3s timeout) — [ADR 006](adr/006-shared-http-client-for-ingest.md).
+See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses retry worker + env-tuned `reqwest` — [ADR 006](adr/006-shared-http-client-for-ingest.md).
 
 Tear down: `make compose-down`. Rebuild API after code changes: `docker compose build finops-api && docker compose up -d finops-api` ([ADR 009](adr/009-finops-api-docker-compose.md)).

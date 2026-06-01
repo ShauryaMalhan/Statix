@@ -15,6 +15,30 @@ const RETRY_QUEUE_CAPACITY: usize = 60;
 const BACKOFF_INITIAL_SECS: u64 = 1;
 const BACKOFF_MAX_SECS: u64 = 30;
 
+const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_HTTP_POOL_IDLE_SECS: u64 = 55;
+
+fn read_http_timeout_secs() -> u64 {
+    read_env_u64("FINOPS_HTTP_TIMEOUT_SECS", DEFAULT_HTTP_TIMEOUT_SECS)
+}
+
+fn read_http_pool_idle_secs() -> u64 {
+    read_env_u64("FINOPS_HTTP_POOL_IDLE_SECS", DEFAULT_HTTP_POOL_IDLE_SECS)
+}
+
+fn read_env_u64(name: &str, default: u64) -> u64 {
+    match std::env::var(name) {
+        Ok(s) => match s.parse::<u64>() {
+            Ok(v) if v > 0 => v,
+            _ => {
+                log::warn!("Invalid {name}={s:?}; using default {default}");
+                default
+            }
+        },
+        Err(_) => default,
+    }
+}
+
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static RETRY_TX: OnceLock<mpsc::Sender<String>> = OnceLock::new();
 static RETRY_RX: OnceLock<Arc<Mutex<mpsc::Receiver<String>>>> = OnceLock::new();
@@ -22,9 +46,15 @@ static RETRY_RX: OnceLock<Arc<Mutex<mpsc::Receiver<String>>>> = OnceLock::new();
 /// Call once at startup when `FINOPS_INGEST_URL` may be used (shared connection pool).
 pub fn init_http_client() {
     let _ = HTTP_CLIENT.get_or_init(|| {
+        let timeout_secs = read_http_timeout_secs();
+        let pool_idle_secs = read_http_pool_idle_secs();
+        log::info!(
+            "HTTP ingest client: timeout={timeout_secs}s, pool_idle={pool_idle_secs}s \
+             (FINOPS_HTTP_TIMEOUT_SECS / FINOPS_HTTP_POOL_IDLE_SECS)"
+        );
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(3))
-            .pool_idle_timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(timeout_secs))
+            .pool_idle_timeout(Duration::from_secs(pool_idle_secs))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     });

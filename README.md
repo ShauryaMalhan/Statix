@@ -27,7 +27,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3 adds HTTP ingest to `finops-api` (agent retry worker, 3s timeout), keyed Kafka produce by `node`, ClickHouse `ReplacingMergeTree` + Kafka engine (billing queries use `FINAL`; tune `kafka_num_consumers` to partition count in prod). Rebuild API image after API changes: `docker compose build finops-api && docker compose up -d finops-api`.
+Phase 3 adds HTTP ingest to `finops-api` (agent retry worker, configurable HTTP timeouts), keyed Kafka produce by `node`, ClickHouse `ReplacingMergeTree` + Kafka engine (billing queries use `FINAL`; tune `kafka_num_consumers` to partition count in prod). Rebuild API image after API changes: `docker compose build finops-api && docker compose up -d finops-api`.
 
 **Enterprise low-latency contract:** [docs/enterprise-latency.md](docs/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
@@ -52,7 +52,7 @@ make build
 
 Binaries:
 
-- eBPF: `finops-ebpf/target/bpfel-unknown-none/release/finops-ebpf`
+- eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}` (auto-selected by CPU count; override `FINOPS_EBF_PATH`)
 - Agent: `target/release/finops-user`
 - API: `target/release/finops-api`
 
@@ -79,12 +79,18 @@ Rebuild API image: `docker compose build finops-api && docker compose up -d fino
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | HTTP ingest URL; unset = stdout |
-| `FINOPS_EBF_PATH` | set by `make run` | Path to compiled BPF ELF |
+| `FINOPS_EBF_PATH` | (auto) | Override path to BPF ELF; else CPU-tier pick from `FINOPS_BPF_DIR` (`target/bpf`) |
+| `FINOPS_BPF_DIR` | `target/bpf` | Directory with `finops-ebpf-{small,large,xlarge}` |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation flush interval |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | `memory.current` poll interval |
 | `FINOPS_NODE_NAME` | hostname | Node id in batches |
+| `FINOPS_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
+| `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
 | `KAFKA_BROKERS` | `localhost:9092` | API → Kafka |
 | `FINOPS_API_PORT` | `3000` | API listen port |
+| `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` | API ingest mpsc depth (min 1024) |
+| `FINOPS_KAFKA_BATCH_MAX` | `1024` | API Kafka micro-batch size (64–16384) |
+| `FINOPS_KAFKA_LINGER_MS` | `50` | API partial-batch linger ms (1–1000) |
 
 ## Validate
 

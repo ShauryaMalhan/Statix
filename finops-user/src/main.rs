@@ -2,6 +2,7 @@
 
 mod aggregator;
 mod attribution;
+mod ebpf_select;
 mod loader;
 mod memory_sampler;
 mod output;
@@ -22,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     }
     check_privileges()?;
 
-    let ebpf_path = read_ebpf_path()?;
+    let ebpf_path = ebpf_select::resolve_ebpf_path()?;
     let window_secs = read_window_secs()?;
     let sample_secs = read_sample_interval_secs()?;
     let node = read_node_name();
@@ -115,14 +116,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn read_ebpf_path() -> anyhow::Result<String> {
-    std::env::var("FINOPS_EBF_PATH").map_err(|_| {
-        anyhow::anyhow!(
-            "FINOPS_EBF_PATH is not set. Build eBPF first, then run via make run."
-        )
-    })
 }
 
 fn read_window_secs() -> anyhow::Result<u64> {

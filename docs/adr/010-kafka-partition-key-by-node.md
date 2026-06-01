@@ -10,7 +10,7 @@
 2. **Broker metadata:** On producer startup, `Client::list_topics()` resolves partition IDs for `finops-telemetry` (fallback `[0]` if topic not yet auto-created).
 3. **Partition clients:** One `PartitionClient` per partition ID (no hardcoded `partition_client(..., 0)` only).
 4. **Routing:** `DefaultHasher` over `node` UTF-8 bytes (`&[u8]`) `% num_partitions` → partition slot; record **key** = `node.to_vec()` at produce time.
-5. **Micro-batch:** Keep `BATCH_MAX_RECORDS` (256) and `BATCH_LINGER` (5ms); after each channel batch, **group by partition** and `produce()` per partition sub-batch.
+5. **Micro-batch:** `FINOPS_KAFKA_BATCH_MAX` / `FINOPS_KAFKA_LINGER_MS` ([ADR 014](014-kafka-producer-env-tuning.md)); after each channel batch, **group by partition** and `produce()` per partition sub-batch.
 
 ## Consequences
 

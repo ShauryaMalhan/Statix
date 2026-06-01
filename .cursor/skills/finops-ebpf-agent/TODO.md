@@ -17,7 +17,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P2 — Scale & audit correctness
 
-- [ ] **Ring buffer size (1.2):** Make `EVENTS` ring buffer byte size configurable via env (512KB too small on large nodes / 1TB hosts)
+- [x] **Ring buffer size (1.2):** `build.rs` + three ELFs (`target/bpf/`); CPU-tier auto-load in `ebpf_select.rs` ([ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md))
 - [ ] **Clock domain offset (4.1):** BPF timestamps use kernel boot time; agent uses wall clock — compute offset so NTP clock steps do not warp billing windows
 - [ ] **Data lineage (4.6):** `agent_version` + `batch_id` on wire and in ClickHouse for financial audits
 
@@ -30,6 +30,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 3 — ingest hardening
 
+- [x] **Kafka producer env tuning:** `FINOPS_KAFKA_CHANNEL_SIZE` / `BATCH_MAX` / `LINGER_MS` in `kafka.rs` ([ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md))
 - [ ] **Production ClickHouse:** set `kafka_num_consumers` = Kafka topic partition count in env-specific SQL ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md))
 - [ ] **TLS + auth on `POST /ingest`**
 

@@ -10,6 +10,8 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 
 EBPF_OUT_NAME  := finops-ebpf
 EBPF_TARGET    := bpfel-unknown-none
+BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
+EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
 .PHONY: deps build-ebpf build-user build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
 
@@ -30,18 +32,22 @@ deps:
 	@clang --version > /dev/null || (echo "Install: apt install clang" && exit 1)
 	@echo "==> All dependencies present"
 
+# FINOPS_RING_BUF_BYTES at compile time (finops-ebpf/build.rs) → three ELFs in target/bpf/
 build-ebpf:
-	@echo "==> [1/3] Compiling eBPF kernel program..."
-	cd $(EBPF_DIR) && cargo +nightly build --release \
-		-Z build-std=core \
-		--target $(EBPF_TARGET)
-	@echo "==> eBPF build complete."
+	@echo "==> [1/3] Compiling eBPF variants (small 512KB / large 4MB / xlarge 8MB)..."
+	@mkdir -p "$(BPF_BUNDLE_DIR)"
+	@set -e; \
+	cd "$(EBPF_DIR)"; \
+	for pair in "finops-ebpf-small:524288" "finops-ebpf-large:4194304" "finops-ebpf-xlarge:8388608"; do \
+		name=$${pair%%:*}; bytes=$${pair##*:}; \
+		echo "    $$name ($$bytes bytes)"; \
+		FINOPS_RING_BUF_BYTES=$$bytes cargo +nightly build --release \
+			-Z build-std=core --target $(EBPF_TARGET); \
+		cp "$(EBPF_RELEASE)" "$(BPF_BUNDLE_DIR)/$$name"; \
+	done
+	@echo "==> eBPF bundle: $(BPF_BUNDLE_DIR)/finops-ebpf-{small,large,xlarge}"
 
-EBPF_BIN = $(shell \
-	find "$(EBPF_DIR)/target" \
-		-path "*/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)" \
-		-not -name "*.d" \
-		-type f 2>/dev/null | head -1)
+EBPF_BIN ?= $(BPF_BUNDLE_DIR)/finops-ebpf-small
 
 build-user:
 	@echo "==> [2/3] Compiling user-space agent..."
@@ -64,14 +70,13 @@ build: build-ebpf build-user build-api
 	@echo "Phase 3: make compose-up  (stack)  then  FINOPS_INGEST_URL=$(FINOPS_INGEST_URL) sudo -E make run"
 
 run: build
-	@if [ -z "$(EBPF_BIN)" ]; then \
-		echo "ERROR: Could not find compiled eBPF binary."; \
-		echo "Run 'make build-ebpf' first."; \
+	@if [ ! -d "$(BPF_BUNDLE_DIR)" ] || [ -z "$$(ls -A '$(BPF_BUNDLE_DIR)' 2>/dev/null)" ]; then \
+		echo "ERROR: eBPF bundle missing. Run 'make build-ebpf' first."; \
 		exit 1; \
 	fi
 	@echo "==> Starting agent (Ctrl+C to stop)..."
-	@echo "==> eBPF program: $(EBPF_BIN)"
-	RUST_LOG=info FINOPS_EBF_PATH=$(EBPF_BIN) \
+	@echo "==> eBPF bundle: $(BPF_BUNDLE_DIR) (auto-pick by CPU count; override: FINOPS_EBF_PATH)"
+	RUST_LOG=info FINOPS_BPF_DIR=$(BPF_BUNDLE_DIR) \
 		$(WORKSPACE_ROOT)/target/release/finops-user
 
 run-api: build-api

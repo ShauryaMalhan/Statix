@@ -18,3 +18,5 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [010](010-kafka-partition-key-by-node.md) | Kafka partition routing by `node` message key | Accepted |
 | [011](011-replacingmergetree-dedupe-identity.md) | ReplacingMergeTree; ORDER BY without `namespace`; `FINAL` reads | Accepted |
 | [012](012-finops-api-prometheus-metrics.md) | `GET /metrics`; ingest/Kafka Prometheus instrumentation | Accepted |
+| [013](013-configurable-ring-buffer-size.md) | Ring buffer build-time tiers + CPU-based ELF pick | Accepted |
+| [014](014-kafka-producer-env-tuning.md) | Kafka mpsc / batch / linger env tuning | Accepted |

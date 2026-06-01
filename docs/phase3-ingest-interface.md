@@ -103,7 +103,9 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
-| (client) | — | `init_http_client` + `init_retry_worker`: **3s** timeout, **90s** pool idle, queue 60 ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
+| `FINOPS_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (seconds) |
+| `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent pool idle timeout (seconds; &lt; ALB 60s typical) |
+| (client) | — | `init_http_client` + `init_retry_worker`; queue 60 ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
 | `FINOPS_EBF_PATH` | (required) | Path to compiled BPF ELF |
 | `FINOPS_WINDOW_SECS` | `10` | Aggregation window |
 | `FINOPS_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
@@ -117,6 +119,11 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 |----------|---------|---------|
 | `KAFKA_BROKERS` | `localhost:9092` | Kafka bootstrap (host: `localhost:9092`, in-compose: `kafka:29092`) |
 | `FINOPS_API_PORT` | `3000` | HTTP listen port |
+| `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` (min 1024) | Ingest → producer `mpsc` depth |
+| `FINOPS_KAFKA_BATCH_MAX` | `1024` (64–16384) | Micro-batch / produce chunk size |
+| `FINOPS_KAFKA_LINGER_MS` | `50` (1–1000) | Partial batch linger before flush |
+
+See [ADR 014](adr/014-kafka-producer-env-tuning.md).
 
 ## Local stack
 

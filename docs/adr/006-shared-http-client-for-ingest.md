@@ -11,10 +11,10 @@
 3. **`emit_batch`** — serialize JSON, `try_send` to retry queue (no per-batch `tokio::spawn` POST). On queue full: drop-oldest + `SEVERE` log.
 4. **Retry policy** — exponential backoff 1s → 30s cap on transport errors, **5xx**, and **429**; reset after **2xx**. Non-retryable **4xx** logged and dropped.
 
-Builder settings (process-wide):
+Builder settings (process-wide, env-configurable):
 
-- **`timeout(Duration::from_secs(3))`** — entire request (connect + send + response). Prevents black-hole TCP from pinning the retry worker indefinitely.
-- **`pool_idle_timeout(Duration::from_secs(90))`** — reuse connections between flushes.
+- **`FINOPS_HTTP_TIMEOUT_SECS`** (default **5**) — entire request timeout (connect + send + response). Cross-region VPCs need &gt;3s; still bounds black-hole TCP on the retry worker.
+- **`FINOPS_HTTP_POOL_IDLE_SECS`** (default **55**) — idle connection reuse; default stays under typical **AWS ALB 60s** idle drop so the pool refreshes before the LB silently kills sockets.
 
 ## Rationale
 

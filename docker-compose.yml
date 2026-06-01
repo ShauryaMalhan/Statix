@@ -75,6 +75,9 @@ services:
     environment:
       KAFKA_BROKERS: kafka:29092
       FINOPS_API_PORT: "3000"
+      FINOPS_KAFKA_CHANNEL_SIZE: "8192"
+      FINOPS_KAFKA_BATCH_MAX: "1024"
+      FINOPS_KAFKA_LINGER_MS: "50"
       RUST_LOG: info
     depends_on:
       kafka:
