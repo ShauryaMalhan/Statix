@@ -1,6 +1,6 @@
-# FinOps Agent — Remaining work (open only)
+# FinOps Agent — Roadmap & completed work
 
-Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed decisions.
+Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
 **Gate:** Phase 1–3 E2E (agent → API → Kafka → ClickHouse) is validated locally; use [phase3-validation.md](../../../docs/phase3-validation.md) after infra changes. Start Phase 4 only when that checklist passes on your target environment.
 
@@ -37,7 +37,7 @@ Delete a line when it ships. See [docs/adr/](../../../docs/adr/) for completed d
 
 ## Performance
 
-- [ ] **Zero-copy node key in `ingest.rs` loop:** Change the Kafka `mpsc` channel payload from `(String, Bytes)` to `(bytes::Bytes, bytes::Bytes)`. Convert `batch.node` to a `Bytes` object *once* before the workloads loop, and clone the `Bytes` reference inside the loop to eliminate O(N) heap string allocations per batch (update `kafka.rs` / `main.rs` `KafkaQueueItem` accordingly).
+- [x] **Zero-copy node key in `ingest.rs`:** `KafkaQueueItem` = `(Bytes, Bytes)`; `node_bytes` once per batch, `node_bytes.clone()` per row ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
 - [ ] **`labels_for_cgroup`: fewer `RwLock` read passes**
 - [ ] **BPF-side memory samples** (if sysfs profiled hot)
 

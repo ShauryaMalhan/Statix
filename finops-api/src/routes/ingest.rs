@@ -78,6 +78,9 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             .into_response();
     }
 
+    // One heap alloc for node key; per-row `Bytes::clone` is refcount-only (not O(N) String clones).
+    let node_bytes = Bytes::from(batch.node.clone());
+
     for row in &batch.workloads {
         let flat = FlatRow {
             window_start_ns: batch.window_start_ns,
@@ -103,7 +106,7 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             }
         };
 
-        match state.kafka_tx.try_send((batch.node.clone(), bytes)) {
+        match state.kafka_tx.try_send((node_bytes.clone(), bytes)) {
             Ok(()) => kafka::on_kafka_enqueued(),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 metrics::counter!("finops_api_kafka_channel_full_total").increment(1);

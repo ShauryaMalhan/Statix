@@ -22,7 +22,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 4. **ADR** — new file in `docs/adr/` for architectural decisions ([enterprise-latency.md](../../../docs/enterprise-latency.md))
 5. **Docs** — update README, phase validation, `phase3-ingest-interface.md` if contracts change
 6. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
-7. Deferred work → [TODO.md](TODO.md) only (open items; delete when shipped)
+7. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
 
 ## Quick start checklist
 
@@ -44,7 +44,7 @@ Phases: **2 done** (batched agent) · **3 done** (ingest API + Kafka + ClickHous
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer |
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(node, Bytes)` → keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(Bytes, Bytes)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
 
 **Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 

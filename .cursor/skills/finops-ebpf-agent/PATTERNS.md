@@ -107,7 +107,7 @@ limits   = requests × 1.25;
 
 **API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 
-**Kafka:** channel `(node, Bytes)`; broker `list_topics` → `PartitionClient` per partition; route `hash(node) % N`; record key = `node`; micro-batch (`recv_many` + linger), group by partition then `produce` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
+**Kafka:** channel `(Bytes, Bytes)` — `node` key materialized once per ingest batch, `Bytes::clone` per row; broker `list_topics` → `PartitionClient` per partition; route `hash(node) % N`; micro-batch + group by partition — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
 **ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). `ReplacingMergeTree`: LC only `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing `SELECT … FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
 

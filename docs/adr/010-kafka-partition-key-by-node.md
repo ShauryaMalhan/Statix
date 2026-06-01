@@ -6,10 +6,10 @@
 
 ## Decision
 
-1. **Channel:** `mpsc::Sender<(String, bytes::Bytes)>` — `(node, JSONEachRow payload)` from `POST /ingest`.
+1. **Channel:** `mpsc::Sender<(bytes::Bytes, bytes::Bytes)>` — Kafka key + JSONEachRow payload. Ingest converts `batch.node` to `Bytes` **once** per HTTP batch; per-row `Bytes::clone` on the key (refcount, not O(N) `String` clones).
 2. **Broker metadata:** On producer startup, `Client::list_topics()` resolves partition IDs for `finops-telemetry` (fallback `[0]` if topic not yet auto-created).
 3. **Partition clients:** One `PartitionClient` per partition ID (no hardcoded `partition_client(..., 0)` only).
-4. **Routing:** `DefaultHasher(node) % num_partitions` → slot into sorted partition ID list; attach `node` bytes as Kafka record **key**.
+4. **Routing:** `DefaultHasher` over `node` UTF-8 bytes (`&[u8]`) `% num_partitions` → partition slot; record **key** = `node.to_vec()` at produce time.
 5. **Micro-batch:** Keep `BATCH_MAX_RECORDS` (256) and `BATCH_LINGER` (5ms); after each channel batch, **group by partition** and `produce()` per partition sub-batch.
 
 ## Consequences

@@ -9,7 +9,7 @@
 Three-tier non-blocking pipeline:
 
 1. **Agent (`finops-user`)** — `emit_batch` serializes JSON, enqueues to retry worker (`try_send`, bounded 60) — [ADR 006](006-shared-http-client-for-ingest.md). Caller never awaits HTTP. K8s refresh and cgroupfs memory reads must not block the main `select!` loop (`tokio::spawn` + `spawn_blocking`).
-2. **API (`finops-api`)** — `POST /ingest` hard-gates `schema_version == 2` (`400` otherwise); denormalizes each workload row, `mpsc::try_send((node, Bytes))` to bounded channel (1024). `200 OK` when all rows enqueue; first `try_send` failure → `503` with plain-text body (handler never awaits Kafka). Partition routing + record key = `node` — [ADR 010](010-kafka-partition-key-by-node.md). `GET /metrics` — [ADR 012](012-finops-api-prometheus-metrics.md).
+2. **API (`finops-api`)** — `POST /ingest` hard-gates `schema_version == 2` (`400` otherwise); denormalizes each workload row, `mpsc::try_send((Bytes, Bytes))` to bounded channel (1024); node key as `Bytes` once per batch ([ADR 010](010-kafka-partition-key-by-node.md)). `200 OK` when all rows enqueue; first `try_send` failure → `503` with plain-text body (handler never awaits Kafka). Partition routing + record key = `node` — [ADR 010](010-kafka-partition-key-by-node.md). `GET /metrics` — [ADR 012](012-finops-api-prometheus-metrics.md).
 3. **Kafka** — micro-batch (`recv_many`, 5ms linger); group by partition; `produce()` per partition sub-batch.
 
 Infrastructure: Kafka KRaft → ClickHouse `Kafka` engine table → materialized view → **`ReplacingMergeTree`** ([ADR 007](007-clickhouse-mergetree-tuning.md), [ADR 011](011-replacingmergetree-dedupe-identity.md)). No Rust consumer.

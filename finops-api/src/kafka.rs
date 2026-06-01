@@ -25,7 +25,7 @@ const BATCH_MAX_RECORDS: usize = 256;
 const BATCH_LINGER: Duration = Duration::from_millis(5);
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
-pub type KafkaQueueItem = (String, Bytes);
+pub type KafkaQueueItem = (Bytes, Bytes);
 
 /// Called after a successful `try_send` on the ingest channel (depth gauge proxy).
 #[inline]
@@ -70,20 +70,20 @@ pub fn spawn_producer(brokers: String) -> KafkaProducer {
     KafkaProducer { tx, task }
 }
 
-fn hash_node_to_slot(node: &str, num_partitions: usize) -> usize {
+fn hash_node_to_slot(node: &[u8], num_partitions: usize) -> usize {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     node.hash(&mut hasher);
     (hasher.finish() as usize) % num_partitions
 }
 
-fn partition_id_for_node(node: &str, partition_ids: &[i32]) -> i32 {
-    let slot = hash_node_to_slot(node, partition_ids.len());
+fn partition_id_for_node(node: &Bytes, partition_ids: &[i32]) -> i32 {
+    let slot = hash_node_to_slot(node.as_ref(), partition_ids.len());
     partition_ids[slot]
 }
 
-fn bytes_to_record(node: &str, payload: Bytes) -> Record {
+fn bytes_to_record(node: &Bytes, payload: Bytes) -> Record {
     Record {
-        key: Some(node.as_bytes().to_vec()),
+        key: Some(node.to_vec()),
         value: Some(payload.to_vec()),
         headers: std::collections::BTreeMap::new(),
         timestamp: Utc::now(),
