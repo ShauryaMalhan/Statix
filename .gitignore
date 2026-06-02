@@ -3,7 +3,8 @@
 # ============================================================
 
 # ── Rust build artifacts ─────────────────────────────────────
-# The workspace target directory (finops-common, finops-user)
+# The workspace target directory (finops-common, finops-user, finops-api).
+# Includes bundled eBPF ELFs from `make build-ebpf` → target/bpf/
 /target/
 
 # finops-ebpf has its own target directory because it is excluded
@@ -22,6 +23,7 @@
 # ── Environment and secrets ──────────────────────────────────
 .env
 .env.*
+!.env.example
 *.env
 secrets/
 config.local.toml
@@ -90,3 +92,6 @@ book/
 
 # Docker build context artifacts
 .dockerignore.bak
+
+# Local Compose overrides (ports, tokens) — never commit
+docker-compose.override.yml
