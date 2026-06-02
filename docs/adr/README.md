@@ -24,3 +24,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [016](016-clock-domain-offset.md) | BPF monotonic → wall offset for aggregator windows | Accepted |
 | [017](017-batch-lineage-metadata.md) | `batch_id` + `agent_version` on every flush | Accepted |
 | [018](018-phase-roadmap-status.md) | Phases 4 & 6 complete; Phase 5 security focus | Accepted |
+| [019](019-ingest-bearer-token-auth.md) | `FINOPS_API_TOKEN` bearer on `POST /ingest` | Accepted |
+| [020](020-ingest-schema-version-window.md) | Accept `schema_version` 2 or 3 on ingest | Accepted |
+| [021](021-ingest-ready-probe.md) | `GET /ready` after Kafka connect + metadata | Accepted |
+| [022](022-bpf-ring-buffer-drop-counter.md) | `RING_DROPS` per-CPU map + agent poll | Accepted |

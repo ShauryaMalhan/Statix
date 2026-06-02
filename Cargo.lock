@@ -511,6 +511,7 @@ dependencies = [
  "kube",
  "libc",
  "log",
+ "metrics",
  "num_cpus",
  "parking_lot",
  "rand 0.8.6",

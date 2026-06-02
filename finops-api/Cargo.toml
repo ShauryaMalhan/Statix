@@ -2,7 +2,7 @@
 name = "finops-api"
 version = "0.1.0"
 edition = "2021"
-# Ingest gateway: POST /ingest, GET /health, GET /metrics → Kafka (Phase 5: auth pending)
+# Ingest gateway: POST /ingest (optional FINOPS_API_TOKEN bearer), GET /health, GET /metrics → Kafka
 
 [dependencies]
 axum = "0.7"

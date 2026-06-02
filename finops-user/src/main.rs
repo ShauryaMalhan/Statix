@@ -31,6 +31,8 @@ async fn main() -> anyhow::Result<()> {
     let raw_events = std::env::var("FINOPS_RAW_EVENTS").ok().as_deref() == Some("1");
 
     let mut bpf = loader::load_and_attach(&ebpf_path)?;
+    let ring_drops = loader::take_ring_drops_map(&mut bpf)?;
+    loader::spawn_ring_drops_monitor(ring_drops);
     let ring_buf = loader::get_events_ring_buf(&mut bpf)?;
     let mut async_fd = AsyncFd::new(ring_buf)?;
 

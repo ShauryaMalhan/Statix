@@ -35,7 +35,7 @@ static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 
 ## Pattern 3 — Tracepoint identity capture (kernel)
 
-`reserve` → fill → `submit(0)`. Never `?` after `reserve`.
+`reserve` → fill → `submit(0)`. Never `?` after `reserve`. On `None`, increment `RING_DROPS` key `0` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md)); agent polls every 10s.
 
 ---
 
@@ -119,9 +119,9 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `init_retry_worker` — `mpsc(60)`, exponential backoff + **30% jitter** (`FINOPS_BACKOFF_*`); `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest (no `tokio::spawn`) ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `FINOPS_API_TOKEN` → `default_headers` `Authorization: Bearer` in `init_http_client` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `init_retry_worker` — `mpsc(60)`, backoff + jitter; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `GET /health` (`503` if producer dead); `GET /metrics` (Prometheus); `schema_version == 2` gate (`400`); `try_send` — `200`, `400`, or `503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
+**API:** `GET /health` (liveness); `GET /ready` (`kafka_ready` + open channel — [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` (Prometheus); `FINOPS_API_TOKEN` → `401` without `Authorization: Bearer` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `schema_version` in `2..=3` gate (`400` otherwise — [ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
 
 **Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `FINOPS_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 

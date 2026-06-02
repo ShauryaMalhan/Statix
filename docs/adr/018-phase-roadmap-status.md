@@ -10,7 +10,7 @@
 |-------|--------|---------|
 | 1–3 | **Done** | eBPF agent, batched telemetry, HTTP → Kafka → ClickHouse E2E |
 | 4 | **Done** | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| 5 | **Active** | TLS/auth (`FINOPS_API_TOKEN`), ring overflow metrics, `/ready`, prod ClickHouse/Kafka ops |
+| 5 | **Active** | Bearer auth + schema 2..3 + `/ready` + ring-drop counter shipped; TLS, prod ClickHouse/Kafka ops remain |
 | 6 | **Done** | Single attribution lock, `FxHashMap`, `Arc<WorkloadLabels>`, `Arc<PathBuf>`, sync retry drop-oldest, `Vec<u8>` Kafka queue |
 | 7–10 | **Planned** | Wire crate, K8s deploy, portability, extended observability |
 

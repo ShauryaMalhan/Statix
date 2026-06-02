@@ -4,6 +4,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use finops_common::FinopsEvent;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Serialize;
 use tokio::sync::{mpsc, Mutex};
 
@@ -53,9 +54,33 @@ pub fn init_http_client() {
             "HTTP ingest client: timeout={timeout_secs}s, pool_idle={pool_idle_secs}s \
              (FINOPS_HTTP_TIMEOUT_SECS / FINOPS_HTTP_POOL_IDLE_SECS)"
         );
-        reqwest::Client::builder()
+
+        let mut builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
-            .pool_idle_timeout(Duration::from_secs(pool_idle_secs))
+            .pool_idle_timeout(Duration::from_secs(pool_idle_secs));
+
+        if let Ok(token) = std::env::var("FINOPS_API_TOKEN") {
+            if !token.is_empty() {
+                let mut headers = HeaderMap::new();
+                let bearer = format!("Bearer {token}");
+                match HeaderValue::from_str(&bearer) {
+                    Ok(value) => {
+                        headers.insert(AUTHORIZATION, value);
+                        log::info!(
+                            "API Token Authentication is configured; Authorization header will be attached to every ingest request"
+                        );
+                        builder = builder.default_headers(headers);
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "FINOPS_API_TOKEN is set but invalid for HTTP headers ({e}); client built without auth"
+                        );
+                    }
+                }
+            }
+        }
+
+        builder
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     });

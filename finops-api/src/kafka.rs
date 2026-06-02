@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -80,6 +81,8 @@ fn on_kafka_dequeued(count: usize) {
 /// Handle to the background producer. Drop `tx` (via `shutdown`) then await the task.
 pub struct KafkaProducer {
     pub tx: mpsc::Sender<KafkaQueueItem>,
+    /// Set `true` after broker connect + partition metadata load (`Ordering::Release`).
+    pub is_ready: Arc<AtomicBool>,
     task: JoinHandle<()>,
 }
 
@@ -100,15 +103,21 @@ pub fn spawn_producer(brokers: String) -> KafkaProducer {
         "Kafka ingest mpsc capacity={channel_size} (FINOPS_KAFKA_CHANNEL_SIZE, min {MIN_CHANNEL_SIZE})"
     );
     let (tx, rx) = mpsc::channel(channel_size);
+    let is_ready = Arc::new(AtomicBool::new(false));
 
     // When this task ends, `rx` drops → all `tx` clones report `is_closed()` (/health → 503).
+    let task_is_ready = Arc::clone(&is_ready);
     let task = tokio::spawn(async move {
-        if let Err(e) = run_producer_loop(brokers, rx).await {
+        if let Err(e) = run_producer_loop(brokers, rx, task_is_ready).await {
             log::error!("Kafka producer task exited: {e:#}");
         }
     });
 
-    KafkaProducer { tx, task }
+    KafkaProducer {
+        tx,
+        is_ready,
+        task,
+    }
 }
 
 fn hash_node_to_slot(node: &[u8], num_partitions: usize) -> usize {
@@ -236,12 +245,16 @@ async fn fill_batch(
 async fn run_producer_loop(
     brokers: String,
     mut rx: mpsc::Receiver<KafkaQueueItem>,
+    is_ready: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let batch_max = read_kafka_batch_max();
     let linger = read_kafka_linger();
 
     let client = ClientBuilder::new(vec![brokers]).build().await?;
     let (partition_ids, clients) = load_partition_clients(&client).await?;
+
+    is_ready.store(true, Ordering::Release);
+    log::info!("Kafka producer connected and ready to accept traffic");
 
     log::info!(
         "Kafka producer ready (topic={TOPIC}, partitions={partition_ids:?}, \

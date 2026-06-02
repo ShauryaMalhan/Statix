@@ -7,7 +7,7 @@ use aya_ebpf::{
         bpf_get_smp_processor_id, bpf_ktime_get_ns,
     },
     macros::{map, tracepoint},
-    maps::RingBuf,
+    maps::{PerCpuArray, RingBuf},
     programs::TracePointContext,
 };
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
@@ -17,16 +17,33 @@ include!(concat!(env!("OUT_DIR"), "/ring_config.rs"));
 #[map]
 static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 
+/// Per-CPU drops when `EVENTS.reserve` fails (key 0 only).
+#[map]
+static RING_DROPS: PerCpuArray<u64> = PerCpuArray::with_max_entries(1, 0);
+
 #[tracepoint(name = "sched_process_exec", category = "sched")]
 pub fn finops_sched_process_exec(ctx: TracePointContext) -> u32 {
     capture_identity(&ctx);
     0
 }
 
+#[inline(always)]
+fn record_ring_drop() {
+    if let Some(ptr) = RING_DROPS.get_ptr_mut(0) {
+        // SAFETY: Per-CPU slot; preemption disabled for the duration of this program.
+        unsafe {
+            *ptr = (*ptr).wrapping_add(1);
+        }
+    }
+}
+
 fn capture_identity(_ctx: &TracePointContext) {
     let mut entry = match EVENTS.reserve::<FinopsEvent>(0) {
         Some(e) => e,
-        None => return,
+        None => {
+            record_ring_drop();
+            return;
+        }
     };
 
     let ptr: *mut FinopsEvent = entry.as_mut_ptr();

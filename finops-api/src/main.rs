@@ -5,6 +5,8 @@ mod kafka;
 mod routes;
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::State;
@@ -18,6 +20,10 @@ use tokio::sync::mpsc;
 #[derive(Clone)]
 pub struct AppState {
     pub kafka_tx: mpsc::Sender<kafka::KafkaQueueItem>,
+    /// `true` after Kafka broker connect + partition metadata load.
+    pub kafka_ready: Arc<AtomicBool>,
+    /// When set, `POST /ingest` requires `Authorization: Bearer <token>`.
+    pub api_token: Option<String>,
 }
 
 #[tokio::main]
@@ -38,22 +44,32 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(3000);
 
+    let api_token = std::env::var("FINOPS_API_TOKEN").ok();
+    match &api_token {
+        Some(_) => log::info!("API Token authentication: ENABLED (FINOPS_API_TOKEN)"),
+        None => log::warn!(
+            "API Token authentication: DISABLED — set FINOPS_API_TOKEN before production"
+        ),
+    }
+
     let producer = kafka::spawn_producer(brokers.clone());
     let state = AppState {
         kafka_tx: producer.tx.clone(),
+        kafka_ready: producer.is_ready.clone(),
+        api_token,
     };
 
     let metrics_handle = prometheus_handle.clone();
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/ready", get(readiness_check))
         .route("/metrics", get(move || metrics_endpoint(metrics_handle.clone())))
         .route("/ingest", post(routes::ingest::handler))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     log::info!(
-        "finops-api (Phase 5): http://{addr}/ingest — brokers={brokers}; /metrics ready; \
-         production requires FINOPS_API_TOKEN on /ingest (planned)"
+        "finops-api (Phase 5): http://{addr} — /health (liveness), /ready (Kafka connected), /ingest; brokers={brokers}"
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -91,12 +107,21 @@ async fn metrics_endpoint(handle: PrometheusHandle) -> impl IntoResponse {
     )
 }
 
-/// Readiness: if the background producer task exited, `rx` was dropped and `tx.is_closed()`.
+/// Liveness: HTTP server up and producer task has not dropped the ingest channel.
 async fn health_check(State(state): State<AppState>) -> StatusCode {
     if state.kafka_tx.is_closed() {
         StatusCode::SERVICE_UNAVAILABLE
     } else {
         StatusCode::OK
+    }
+}
+
+/// Readiness: Kafka broker connected + partition metadata loaded; ingest channel open.
+async fn readiness_check(State(state): State<AppState>) -> StatusCode {
+    if state.kafka_ready.load(Ordering::Acquire) && !state.kafka_tx.is_closed() {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
     }
 }
 

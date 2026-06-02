@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -57,24 +57,45 @@ struct FlatRow<'a> {
 
 pub async fn handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(batch): Json<IngestBatch>,
 ) -> Response {
     let started = Instant::now();
+
+    if let Some(expected_token) = state.api_token.as_ref() {
+        let expected = format!("Bearer {expected_token}");
+        let authorized = headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            == Some(expected.as_str());
+
+        if !authorized {
+            log::warn!("Rejected /ingest: missing or invalid Authorization bearer token");
+            let response = StatusCode::UNAUTHORIZED.into_response();
+            record_ingest_metrics(response.status(), started.elapsed());
+            return response;
+        }
+    }
+
     let response = ingest_inner(state, batch).await;
     record_ingest_metrics(response.status(), started.elapsed());
     response
 }
 
+/// Inclusive schema versions accepted during rolling agent/gateway upgrades (N and N+1).
+const MIN_SCHEMA_VERSION: u32 = 2;
+const MAX_SCHEMA_VERSION: u32 = 3;
+
 async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
-    if batch.schema_version != 2 {
+    if batch.schema_version < MIN_SCHEMA_VERSION || batch.schema_version > MAX_SCHEMA_VERSION {
         log::warn!(
-            "Rejected batch with invalid schema_version={}",
+            "Rejected batch with unsupported schema_version={} (accepted {MIN_SCHEMA_VERSION}..={MAX_SCHEMA_VERSION})",
             batch.schema_version
         );
         return (
             StatusCode::BAD_REQUEST,
             format!(
-                "Unsupported schema_version={}. Expected 2.",
+                "Unsupported schema_version={}. Expected 2 or 3.",
                 batch.schema_version
             ),
         )

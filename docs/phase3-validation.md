@@ -32,13 +32,15 @@ Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
 | Test | Pass |
 |------|------|
 | API liveness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health` → `200` |
+| API readiness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ready` → `200` after Kafka metadata load (may `503` for first seconds) |
 | Prometheus | `curl -s http://127.0.0.1:3000/metrics \| grep finops_api_` → lines present (404 = rebuild API image; space required: `grep finops_api_`) |
-| API ingest | `curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:3000/ingest -H 'Content-Type: application/json' -d '{"schema_version":2,"window_start_ns":0,"window_end_ns":1,"node":"test","batch_id":"00000000-0000-4000-8000-000000000001","agent_version":"0.1.0","workloads":[]}'` → `200` |
+| API ingest | `curl ... -X POST http://127.0.0.1:3000/ingest` (no auth when `FINOPS_API_TOKEN` unset) → `200` |
+| Ingest auth | With `FINOPS_API_TOKEN` set on API: missing header → `401`; `curl -H 'Authorization: Bearer <token>' ...` → `200` ([ADR 019](adr/019-ingest-bearer-token-auth.md)) |
 | Kafka topic | Kafka UI `:8080` shows topic `finops-telemetry` with messages |
 | ClickHouse rows | `curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry%20FINAL'` → count &gt; 0 after traffic |
 | Agent non-blocking | Ring buffer loop responsive under load; ingest retries log `warn` on backoff |
 | Backpressure signal | Saturate channel (load test) → `POST /ingest` returns `503` with plain-text body (not `200`) |
-| Schema gate | `schema_version: 1` in POST body → `400` (not `200`) |
+| Schema gate | `schema_version: 1` or `4` → `400`; `2` or `3` → `200` ([ADR 020](adr/020-ingest-schema-version-window.md)) |
 | Stdout fallback | Unset `FINOPS_INGEST_URL` → batched JSON on stdout (Phase 2 behavior) |
 
 ## ClickHouse schema check

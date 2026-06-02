@@ -28,11 +28,11 @@ Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 don
 
 ```
 - [ ] finops-common: FinopsEvent / kinds only here
-- [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0)
+- [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0); on reserve fail increment `RING_DROPS` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md))
 - [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
-- [ ] Output: FINOPS_INGEST_URL → `init_retry_worker` + shared reqwest (`FINOPS_HTTP_TIMEOUT_SECS` / `FINOPS_HTTP_POOL_IDLE_SECS`)
-- [ ] API: GET /health; GET /metrics; POST /ingest → 400/503/200; try_send; Kafka in background task
+- [ ] Output: `FINOPS_INGEST_URL` → `init_http_client` (+ optional `FINOPS_API_TOKEN`) + `init_retry_worker` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md))
+- [ ] API: GET /health; GET /ready; GET /metrics; POST /ingest → 400/503/200; try_send; Kafka in background task
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -44,7 +44,7 @@ Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 don
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`FINOPS_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `GET /health`, `GET /metrics`, `POST /ingest` → mpsc `(Vec<u8>, Vec<u8>)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| `finops-api` | host | `GET /health`, `GET /ready`, `GET /metrics`, `POST /ingest` → mpsc `(Vec<u8>, Vec<u8>)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md), [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)) |
 
 **Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
 
@@ -63,7 +63,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
 | `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
-| `POST /ingest` | `schema_version == 2` or `400`; `try_send`; `200` or `503` on channel full |
+| `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + `clock_offset_ns` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
@@ -116,8 +116,8 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 | Component | Rule |
 |-----------|------|
-| Agent | `init_retry_worker` — bounded queue 60, exponential backoff; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
-| API | `GET /health`, `GET /metrics`; `try_send((Vec<u8>, Vec<u8>))`; owned buffers into `rskafka` (no `Bytes::to_vec`) — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md) |
+| Agent | `init_http_client` (`FINOPS_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
+| API | `GET /health` (liveness), `GET /ready` (Kafka ready — [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `POST /ingest` bearer ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `try_send` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |

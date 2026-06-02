@@ -11,7 +11,7 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `FinopsEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` |
-| Ingest API | `GET /health`, `GET /metrics`, `POST /ingest` → `try_send((Vec<u8>, Vec<u8>))` — one `node_vec` per batch; no `Bytes` memcpy at produce ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)) |
+| Ingest API | `POST /ingest` optional `FINOPS_API_TOKEN` bearer ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md) |
 | Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
 ## File map

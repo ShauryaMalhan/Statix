@@ -16,7 +16,7 @@ ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | u32 | Always `2` |
+| `schema_version` | u32 | `2` or `3` (gateway accepts both during rolling upgrades — [ADR 020](adr/020-ingest-schema-version-window.md)) |
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `FINOPS_NODE_NAME` |
@@ -86,7 +86,8 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 
 | Route | Method | Response |
 |-------|--------|----------|
-| `/health` | GET | `200` if Kafka producer task is alive; `503` if `mpsc` sender is closed (producer crashed or never started) |
+| `/health` | GET | **Liveness:** `200` if ingest `mpsc` sender not closed; `503` if producer task exited |
+| `/ready` | GET | **Readiness:** `200` if Kafka connected + partition metadata loaded and channel open ([ADR 021](adr/021-ingest-ready-probe.md)); else `503` |
 | `/metrics` | GET | Prometheus text exposition ([ADR 012](adr/012-finops-api-prometheus-metrics.md)) |
 | `/ingest` | POST | See table below |
 
@@ -95,7 +96,8 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 | Status | When | Body |
 |--------|------|------|
 | `200 OK` | Every workload row enqueued to the Kafka `mpsc` channel | empty |
-| `400 Bad Request` | `schema_version != 2` (poison-pill defense — reject before Kafka/ClickHouse) | `Unsupported schema_version=N. Expected 2.` |
+| `401 Unauthorized` | `FINOPS_API_TOKEN` set on API and `Authorization` missing or wrong ([ADR 019](adr/019-ingest-bearer-token-auth.md)) | empty |
+| `400 Bad Request` | `schema_version` not in `2..=3` (poison-pill defense — reject before Kafka/ClickHouse) | `Unsupported schema_version=N. Expected 2 or 3.` |
 | `503 Service Unavailable` | First `try_send` fails (channel full / broker backpressure) | `Ingest channel full. Broker backpressure active.` |
 
 Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the agent retry worker backs off (1s→30s — [ADR 006](adr/006-shared-http-client-for-ingest.md)). Storage dedupe: [ADR 011](adr/011-replacingmergetree-dedupe-identity.md). Partial rows may already be enqueued before `503` until `batch_id` ships ([TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md) 4.6).
@@ -107,6 +109,7 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FINOPS_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
+| `FINOPS_API_TOKEN` | (unset) | If set, send `Authorization: Bearer <token>` (must match API) |
 | `FINOPS_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (seconds) |
 | `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent pool idle timeout (seconds; &lt; ALB 60s typical) |
 | `FINOPS_BACKOFF_INITIAL_SECS` | `1` | Retry worker base backoff (seconds) |
@@ -125,6 +128,7 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 |----------|---------|---------|
 | `KAFKA_BROKERS` | `localhost:9092` | Kafka bootstrap (host: `localhost:9092`, in-compose: `kafka:29092`) |
 | `FINOPS_API_PORT` | `3000` | HTTP listen port |
+| `FINOPS_API_TOKEN` | (unset) | If set, require `Authorization: Bearer <token>` on `POST /ingest` |
 | `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` (min 1024) | Ingest → producer `mpsc` depth |
 | `FINOPS_KAFKA_BATCH_MAX` | `1024` (64–16384) | Micro-batch / produce chunk size |
 | `FINOPS_KAFKA_LINGER_MS` | `50` (1–1000) | Partial batch linger before flush |
