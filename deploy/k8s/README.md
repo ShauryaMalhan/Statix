@@ -7,6 +7,7 @@ Namespace: `finops-system`. Apply from repo root:
 kubectl create namespace finops-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n finops-system create secret generic finops-secrets \
   --from-literal=api-token='CHANGE_ME' \
+  --from-literal=clickhouse-password='CHANGE_ME' \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # 2) Gateway (includes Namespace)
@@ -34,5 +35,6 @@ Build and push to your registry, then set image on manifests (replace `finops-ga
 ## Notes
 
 - **Kafka:** `KAFKA_BROKERS` points at `kafka-broker.default.svc.cluster.local:9092` — adjust for your cluster.
+- **ClickHouse:** `CLICKHOUSE_URL` on gateway — adjust host; password from `finops-secrets` key `clickhouse-password` ([ADR 027](../../docs/adr/027-api-read-path-clickhouse.md)).
 - **Agent:** `privileged: true`, `hostPID: true`, host `/proc` and `/sys/fs/cgroup` mounts ([ADR 024](../../docs/adr/024-agent-production-container.md)).
 - **Metrics:** scrape agent pods on port `9091` (`finops_agent_ring_drops_total`, etc.).

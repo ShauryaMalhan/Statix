@@ -60,7 +60,7 @@ services:
       CLICKHOUSE_PASSWORD: finops_dev
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      - ./infra/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./deploy/clickhouse/01_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     depends_on:
       - kafka
 
@@ -78,6 +78,9 @@ services:
       FINOPS_KAFKA_CHANNEL_SIZE: "8192"
       FINOPS_KAFKA_BATCH_MAX: "1024"
       FINOPS_KAFKA_LINGER_MS: "50"
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: finops_dev
       # FINOPS_API_TOKEN: "dev-secret"   # uncomment for auth; set same value on agent
       RUST_LOG: info
     depends_on:

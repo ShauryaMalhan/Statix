@@ -10,8 +10,9 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | **2** | Done | cgroup attribution, K8s labels (optional), `memory.current` sampling, `schema_version: 2` batches |
 | **3** | Done | HTTP ingest → Kafka → ClickHouse ([spec](docs/phase3-ingest-interface.md)) |
 | **4** | Done | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| **5** | **Active** | Auth, `/ready`, ring drops + agent `:9091/metrics`, hot-path fixes shipped; TLS, prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md), [ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
-| **6** | Done | L8 hot path: single attribution lock, `FxHashMap`, `Arc` labels/paths, `Vec<u8>` Kafka queue ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
+| **5** | **Active** | TLS; prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md)) — P0 security/hot-path shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
+| **6** | Done | L8 hot path ([ADR 018](docs/adr/018-phase-roadmap-status.md), [ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
+| **T1–3** | Done | Prod deploy, CH init, `GET /api/v1/workloads/summary` ([ADR 024](docs/adr/024-agent-production-container.md)–[027](docs/adr/027-api-read-path-clickhouse.md)) |
 
 ## What’s in the repo
 
@@ -20,7 +21,7 @@ Four crates + infra:
 - **`finops-ebpf`** — BPF program (nightly, `bpfel-unknown-none`)
 - **`finops-common`** — shared event layout (`FinopsEvent`, kinds, sizes)
 - **`finops-user`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
-- **`finops-api`** — `POST /ingest` → Kafka (`mpsc` + background producer); `GET /health`, `GET /metrics` (Prometheus)
+- **`finops-api`** — `POST /ingest` → Kafka; `GET /api/v1/workloads/summary` → ClickHouse; `GET /health`, `GET /ready`, `GET /metrics`
 - **`docker-compose.yml`** — Kafka KRaft, Kafka UI, ClickHouse with Kafka engine table
 
 Phase 2 behavior in short:
@@ -30,7 +31,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3 adds HTTP ingest to `finops-api` (agent retry worker, configurable HTTP timeouts), keyed Kafka produce by `node`, ClickHouse `ReplacingMergeTree` + Kafka engine (billing queries use `FINAL`; tune `kafka_num_consumers` to partition count in prod). Rebuild API image after API changes: `docker compose build finops-api && docker compose up -d finops-api`.
+Phase 3 adds HTTP ingest, keyed Kafka by `node`, ClickHouse Kafka engine → `finops.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). Production packaging: [deploy/](deploy/).
 
 **Enterprise low-latency contract:** [docs/enterprise-latency.md](docs/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
@@ -96,6 +97,9 @@ Rebuild API image: `docker compose build finops-api && docker compose up -d fino
 | `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` | API ingest mpsc depth (min 1024) |
 | `FINOPS_KAFKA_BATCH_MAX` | `1024` | API Kafka micro-batch size (64–16384) |
 | `FINOPS_KAFKA_LINGER_MS` | `50` | API partial-batch linger ms (1–1000) |
+| `CLICKHOUSE_URL` | `http://localhost:8123` | API read-path HTTP endpoint |
+| `CLICKHOUSE_USER` | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: `finops_dev`) |
 
 ## Validate
 
@@ -107,6 +111,16 @@ make verify-btf
 - Phase 2: [docs/phase2-validation.md](docs/phase2-validation.md)
 - Phase 3: [docs/phase3-validation.md](docs/phase3-validation.md)
 
+## Production deploy
+
+```bash
+docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
+docker build -f deploy/docker/Dockerfile.agent -t finops-agent:latest .
+kubectl apply -f deploy/k8s/gateway.yaml -f deploy/k8s/agent-daemonset.yaml
+```
+
+See [deploy/docker/README.md](deploy/docker/README.md), [deploy/k8s/README.md](deploy/k8s/README.md), [deploy/clickhouse/README.md](deploy/clickhouse/README.md).
+
 ## Layout
 
 ```
@@ -115,8 +129,9 @@ finops-core/
 ├── finops-common/
 ├── finops-user/
 ├── finops-api/
-├── infra/clickhouse/
+├── deploy/          # docker, k8s, clickhouse (prod)
 ├── docker-compose.yml
+├── Dockerfile.api   # dev Compose API only
 ├── docs/
 ├── Makefile
 └── README.md

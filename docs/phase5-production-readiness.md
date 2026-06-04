@@ -24,7 +24,16 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 | **`GET /ready`** | **Shipped:** `kafka_ready` after broker + partition metadata ([ADR 021](adr/021-ingest-ready-probe.md)). Optional: channel depth &lt; 80% gate. |
 | **ClickHouse `kafka_num_consumers`** | Match Kafka partition count in prod ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)). |
 | **Kafka retention + disk alerts** | Prevent broker fill → throttle → consumer lag. |
-| **Broken-message alerting** | `kafka_skip_broken_messages` can hide poison pills; monitor `system.kafka_consumers`. |
+| **Broken-message alerting** | `kafka_skip_broken_messages = 1000` in [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql); monitor `system.kafka_consumers` when skipped > 0. |
+
+## Deploy artifacts (Targets 1–2)
+
+| Artifact | Path |
+|----------|------|
+| Gateway image | `deploy/docker/Dockerfile.gateway` |
+| Agent image | `deploy/docker/Dockerfile.agent` |
+| K8s | `deploy/k8s/gateway.yaml`, `agent-daemonset.yaml` |
+| ClickHouse | `deploy/clickhouse/01_init.sql` — `finops.workload_metrics FINAL` |
 
 ## Local dev
 
@@ -42,3 +51,4 @@ sudo -E make run
 - [enterprise-latency.md](enterprise-latency.md)
 - [phase3-ingest-interface.md](phase3-ingest-interface.md)
 - [ADR 005](adr/005-non-blocking-ingest-pipeline.md), [ADR 012](adr/012-finops-api-prometheus-metrics.md)
+- [ADR 024](adr/024-agent-production-container.md)–[026](adr/026-clickhouse-finops-database-init.md)

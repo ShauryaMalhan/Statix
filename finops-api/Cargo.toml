@@ -2,10 +2,11 @@
 name = "finops-api"
 version = "0.1.0"
 edition = "2021"
-# Ingest gateway: POST /ingest (optional FINOPS_API_TOKEN bearer), GET /health, GET /metrics → Kafka
+# Ingest gateway: POST /ingest → Kafka; GET read-path → ClickHouse
 
 [dependencies]
 axum = "0.7"
+clickhouse = "0.13"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

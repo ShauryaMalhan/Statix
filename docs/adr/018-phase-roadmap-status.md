@@ -1,27 +1,31 @@
-# ADR 018: Phase roadmap status (Phases 4–6 complete → Phase 5 focus)
+# ADR 018: Phase roadmap status
 
-**Status:** Accepted  
+**Status:** Accepted (updated 2026-06-04)  
 **Date:** 2026-06-01  
-**Context:** Phase 4 (scale & reliability) and Phase 6 (L8 mechanical sympathy) shipped; logs and `TODO.md` still referenced Phase 3 as “current,” causing onboarding drift.
+**Context:** Onboarding drift when phase labels, deploy targets, and ADRs fall out of sync.
 
 ## Decision
 
-| Phase | Status | Summary |
-|-------|--------|---------|
+| Phase / target | Status | Summary |
+|----------------|--------|---------|
 | 1–3 | **Done** | eBPF agent, batched telemetry, HTTP → Kafka → ClickHouse E2E |
 | 4 | **Done** | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| 5 | **Active** | Auth, schema 2..3, `/ready`, ring drops + agent `:9091/metrics`, attribution/bearer hot-path fixes ([ADR 023](023-phase5-hot-path-fixes.md)); TLS + prod CH/Kafka ops remain |
-| 6 | **Done** | Single attribution lock, `FxHashMap`, `Arc` labels/paths, sync retry drop-oldest, `Vec<u8>` Kafka queue; P0 regressions fixed in [ADR 023](023-phase5-hot-path-fixes.md) |
-| 7–10 | **Planned** | Wire crate, K8s deploy, portability, extended observability |
+| 5 | **Active** | TLS; `/ready` channel gate; prod `kafka_num_consumers` / retention / CH alerting |
+| 6 | **Done** | L8 hot path + P0 fixes ([ADR 023](023-phase5-hot-path-fixes.md)); micro-opts remain in TODO |
+| **Target 1** | **Done** | `deploy/docker/*`, `deploy/k8s/*` ([ADR 024](024-agent-production-container.md), [025](025-kubernetes-gateway-and-agent.md)) |
+| **Target 2** | **Done** | `deploy/clickhouse/01_init.sql` → `finops.workload_metrics` ([ADR 026](026-clickhouse-finops-database-init.md)) |
+| **Target 3** | **Done** | `GET /api/v1/workloads/summary` → ClickHouse ([ADR 027](027-api-read-path-clickhouse.md)) |
+| 7–10 | **Planned** | Wire crate, K8s hardening, portability, extended observability |
 
-Engineering gate doc: [phase5-production-readiness.md](../phase5-production-readiness.md).
+Engineering gate: [phase5-production-readiness.md](../phase5-production-readiness.md).  
+Canonical task list: [.cursor/skills/finops-ebpf-agent/TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md).
 
 ## Consequences
 
-- **Positive:** Single source of truth for “what’s next” (Phase 5 security).
-- **Negative:** Historical docs still titled “Phase 3” where they describe the ingest *interface* (unchanged wire contract).
+- **Positive:** Single map from phases → code → `deploy/` artifacts.
+- **Negative:** Phase 3 doc titles still describe the ingest *wire* contract (unchanged paths).
 
 ## References
 
-- [.cursor/skills/finops-ebpf-agent/TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md)
-- `finops-user/src/main.rs`, `finops-api/src/main.rs`
+- ADRs [019](019-ingest-bearer-token-auth.md)–[026](026-clickhouse-finops-database-init.md)
+- `deploy/` tree

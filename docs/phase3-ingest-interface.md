@@ -9,7 +9,7 @@ Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch
 ```
 finops-user  --POST /ingest-->  finops-api  --try_send-->  mpsc  --produce-->  Kafka
                                                                                     |
-ClickHouse  finops_telemetry_kafka  <--MATERIALIZED VIEW-->  finops_telemetry
+ClickHouse  finops.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  finops.workload_metrics
 ```
 
 ## Batch envelope (agent → API)
@@ -63,7 +63,7 @@ API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSO
 
 Topic: `finops-telemetry` — each row is produced with Kafka **key** = batch `node` (partition `hash(node) % topic_partitions`; see [ADR 010](adr/010-kafka-partition-key-by-node.md)).
 
-## ClickHouse Kafka consumer (`infra/clickhouse/init.sql`)
+## ClickHouse Kafka consumer (`deploy/clickhouse/01_init.sql`)
 
 | Setting | Local dev | Production |
 |---------|-----------|------------|
@@ -72,13 +72,13 @@ Topic: `finops-telemetry` — each row is produced with Kafka **key** = batch `n
 
 See [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
 
-## ClickHouse storage (`finops_telemetry`)
+## ClickHouse storage (`finops.workload_metrics`)
 
 | Item | Value |
 |------|--------|
 | Engine | `ReplacingMergeTree()` — dedupes on background merge |
 | Sort key | `(node, window_start_ns, cgroup_id)` — **not** `namespace` (mutable; retries must not change identity) |
-| Billing queries | Always `FROM finops_telemetry FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
+| Billing queries | Always `FROM finops.workload_metrics FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
 
 Schema change on existing volume: `docker compose down -v && make compose-up`.
 
@@ -132,8 +132,30 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` (min 1024) | Ingest → producer `mpsc` depth |
 | `FINOPS_KAFKA_BATCH_MAX` | `1024` (64–16384) | Micro-batch / produce chunk size |
 | `FINOPS_KAFKA_LINGER_MS` | `50` (1–1000) | Partial batch linger before flush |
+| `CLICKHOUSE_URL` | `http://localhost:8123` | Read-path HTTP endpoint ([ADR 027](adr/027-api-read-path-clickhouse.md)) |
+| `CLICKHOUSE_USER` | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD` | (empty) | Password (Compose: `finops_dev`) |
 
 See [ADR 014](adr/014-kafka-producer-env-tuning.md).
+
+## Read API (Target 3)
+
+`GET /api/v1/workloads/summary?hours=<u64>` — optional lookback (default **24** hours). Returns JSON array of:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cgroup_id` | u64 | Cgroup inode id |
+| `namespace` | string? | K8s namespace |
+| `pod` | string? | Pod name |
+| `container` | string? | Container name |
+| `peak_memory` | u64 | `MAX(memory_bytes_max)` in window |
+| `total_execs` | u64 | `SUM(exec_count)` in window |
+
+Query uses `finops.workload_metrics FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md), [ADR 027](adr/027-api-read-path-clickhouse.md)).
+
+```bash
+curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
+```
 
 ## Local stack
 
@@ -149,7 +171,7 @@ Optional host API instead of container: `make run-api` ([ADR 009](adr/009-finops
 **ClickHouse HTTP (docker-compose):** user `default`, password `finops_dev` (see `docker-compose.yml`). Example:
 
 ```bash
-curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry%20FINAL'
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops.workload_metrics%20FINAL'
 ```
 
 ## Deferred

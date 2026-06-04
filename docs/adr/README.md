@@ -31,3 +31,5 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [023](023-phase5-hot-path-fixes.md) | Attribution lock/label cache; agent `:9091/metrics`; `expected_bearer` | Accepted |
 | [024](024-agent-production-container.md) | `Dockerfile.agent` — BPF bundle + privileged runtime | Accepted |
 | [025](025-kubernetes-gateway-and-agent.md) | `deploy/k8s` gateway Deployment + agent DaemonSet | Accepted |
+| [026](026-clickhouse-finops-database-init.md) | `deploy/clickhouse/01_init.sql` — `finops.workload_metrics` | Accepted |
+| [027](027-api-read-path-clickhouse.md) | `GET /api/v1/workloads/summary` → ClickHouse | Accepted |

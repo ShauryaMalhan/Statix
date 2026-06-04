@@ -6,7 +6,7 @@
 
 ## Decision
 
-`finops_telemetry` in `infra/clickhouse/init.sql`:
+`finops.workload_metrics` in `deploy/clickhouse/01_init.sql`:
 
 - **Engine:** `ReplacingMergeTree()` (default row selection on merge — later insert typically wins).
 - **ORDER BY:** `(node, window_start_ns, cgroup_id)` — stable workload identity per aggregation window.
@@ -18,7 +18,7 @@
 ReplacingMergeTree deduplicates **asynchronously** during background merges. For billing aggregates and dashboards, queries **must** use `FINAL`:
 
 ```sql
-SELECT sum(memory_bytes_max) FROM finops_telemetry FINAL WHERE node = 'node-1';
+SELECT sum(memory_bytes_max) FROM finops.workload_metrics FINAL WHERE node = 'node-1';
 ```
 
 Without `FINAL`, duplicate rows may appear until merges complete.
@@ -38,5 +38,5 @@ Without `FINAL`, duplicate rows may appear until merges complete.
 
 ## References
 
-- `infra/clickhouse/init.sql`
+- `deploy/clickhouse/01_init.sql`
 - [ADR 007](007-clickhouse-mergetree-tuning.md) — partitions, TTL, LowCardinality

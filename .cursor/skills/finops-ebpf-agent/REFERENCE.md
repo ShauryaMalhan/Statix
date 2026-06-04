@@ -11,7 +11,8 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `FinopsEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` |
-| Ingest API | `POST /ingest`; `AppState.expected_bearer` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md) |
+| Ingest API | `POST /ingest`; `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md) |
+| Read API | `GET /api/v1/workloads/summary?hours=` → `AppState.ch_client` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://<host>:9091/metrics` — `finops_agent_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
@@ -25,7 +26,8 @@ finops-core/
 ├── deploy/docker/Dockerfile.agent
 ├── deploy/k8s/gateway.yaml
 ├── deploy/k8s/agent-daemonset.yaml
-├── infra/clickhouse/init.sql
+├── deploy/clickhouse/01_init.sql
+├── infra/clickhouse/README.md
 ├── finops-ebpf/, finops-common/, finops-user/, finops-api/
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
 └── .cursor/skills/finops-ebpf-agent/
@@ -36,7 +38,7 @@ finops-core/
 ```
 ring buffer → aggregator → emit_batch
   ├─ stdout (no FINOPS_INGEST_URL)
-  └─ POST /ingest → Kafka → finops_telemetry (query with FINAL)
+  └─ POST /ingest → Kafka → finops.workload_metrics (query with FINAL)
 ```
 
 ## Roadmap
@@ -47,11 +49,14 @@ ring buffer → aggregator → emit_batch
 | 4 | Done (scale, lineage, bootstrap, metrics) |
 | 5 | **Active** — TLS + prod CH/Kafka ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) |
 | 6 | Done — L8 + P0 fixes ([ADR 018](../../../docs/adr/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
-| 7–10 | Wire crate, K8s deploy, portability, cost |
+| T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
+| 8 | Partial — base manifests shipped; informer/drain/registry pins open |
+| 7, 9–10 | Wire crate, portability, extended observability |
 
 ## Operational notes
 
-- Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md))
+- Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)); CH schema change → `docker compose down -v` then `make compose-up` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md))
+- Prod: `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`
 - Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `:3000` (`/health`, `/ready`, `/metrics`); agent `:9091/metrics`
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)

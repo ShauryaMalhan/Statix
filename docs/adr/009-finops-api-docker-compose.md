@@ -23,4 +23,6 @@
 - **Positive:** Repeatable Phase 3 dev; API health-gated before agent ingest.
 - **Negative:** Image rebuild after API changes: `docker compose build finops-api && docker compose up -d finops-api` (stale images lack routes such as `/metrics` → 404).
 - **Negative:** Dev agent remains host-only (`sudo make run`). Production agent image: [ADR 024](024-agent-production-container.md) (`deploy/docker/Dockerfile.agent`).
+- **ClickHouse init:** `deploy/clickhouse/01_init.sql` mounted in `docker-compose.yml` ([ADR 026](026-clickhouse-finops-database-init.md)).
+- **Read-path env on `finops-api`:** `CLICKHOUSE_URL=http://clickhouse:8123`, `CLICKHOUSE_PASSWORD=finops_dev` ([ADR 027](027-api-read-path-clickhouse.md)).
 - **Code:** `Dockerfile.api`, `deploy/docker/Dockerfile.gateway`, `docker-compose.yml`, `Makefile`, `.dockerignore`

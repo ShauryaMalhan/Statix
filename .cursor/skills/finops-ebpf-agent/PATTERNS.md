@@ -111,7 +111,7 @@ limits   = requests × 1.25;
 ```markdown
 ## Test plan
 - [ ] `make build` && `make check`
-- [ ] Phase 3: `make compose-up` → `/health` + `/ready` + API `/metrics` + agent `:9091/metrics` → ingest → `SELECT count() FROM finops_telemetry FINAL` > 0
+- [ ] Phase 3: `make compose-up` → `/health` + `/ready` + API `/metrics` + agent `:9091/metrics` → ingest → `SELECT count() FROM finops.workload_metrics FINAL` > 0
 - [ ] ADR + skills + docs updated in same PR
 ```
 
@@ -135,7 +135,7 @@ limits   = requests × 1.25;
 make compose-up    # stop-api (host binary only) + stack + health check
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
-curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops_telemetry%20FINAL'
+curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops.workload_metrics%20FINAL'
 make compose-down
 ```
 
@@ -160,4 +160,22 @@ kubectl apply -f deploy/k8s/agent-daemonset.yaml
 
 See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)).
 
+## Pattern 13 — ClickHouse Target 2 (`finops` database)
+
+```bash
+clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
+```
+
+`finops.workload_metrics` + `kafka_telemetry_queue` + `telemetry_mv`; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md)).
+
 **API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
+
+## Pattern 14 — API read-path (Target 3)
+
+```bash
+curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
+```
+
+- Env: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)).
+- SQL uses `finops.workload_metrics FINAL`; default lookback 24h.
+- Rebuild API after changes: `docker compose build finops-api && docker compose up -d finops-api`.

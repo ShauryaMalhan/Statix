@@ -2,11 +2,11 @@
 
 **Status:** Accepted (amended by [ADR 011](011-replacingmergetree-dedupe-identity.md))  
 **Date:** 2026-05-30  
-**Context:** `finops_telemetry` storage layout for Phase 3 Kafka ingest.
+**Context:** ClickHouse storage layout for Phase 3 Kafka ingest.
 
 ## Decision
 
-`infra/clickhouse/init.sql` for `finops_telemetry`:
+`deploy/clickhouse/01_init.sql` for `finops.workload_metrics`:
 
 - **Engine:** `ReplacingMergeTree()` — dedupe on merge; billing queries use `FINAL` ([ADR 011](011-replacingmergetree-dedupe-identity.md)).
 - **Partition:** `toYYYYMMDD(...)` on `window_start_ns` (daily parts, not monthly).

@@ -36,6 +36,15 @@ spec:
                   key: api-token
             - name: KAFKA_BROKERS
               value: kafka-broker.default.svc.cluster.local:9092
+            - name: CLICKHOUSE_URL
+              value: http://clickhouse.finops-system.svc.cluster.local:8123
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: finops-secrets
+                  key: clickhouse-password
             - name: FINOPS_API_PORT
               value: "3000"
             - name: RUST_LOG

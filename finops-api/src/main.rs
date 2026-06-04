@@ -1,5 +1,5 @@
-//! finops-api — ingest gateway: POST /ingest → mpsc → Kafka (non-blocking handler).
-//! Phases 3–4 + 6 shipped; Phase 5 adds TLS/auth on `/ingest` (`FINOPS_API_TOKEN`).
+//! finops-api — ingest gateway: POST /ingest → mpsc → Kafka; read-path → ClickHouse.
+//! Phases 3–4 + 6 shipped; Target 3: GET `/api/v1/workloads/summary`.
 
 mod kafka;
 mod routes;
@@ -24,6 +24,7 @@ pub struct AppState {
     pub kafka_ready: Arc<AtomicBool>,
     /// When set, full `Authorization` header value (`Bearer <token>`) for `POST /ingest`.
     pub expected_bearer: Option<String>,
+    pub ch_client: clickhouse::Client,
 }
 
 #[tokio::main]
@@ -52,11 +53,23 @@ async fn main() -> anyhow::Result<()> {
         ),
     }
 
+    let ch_url =
+        std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".to_string());
+    let ch_user =
+        std::env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".to_string());
+    let ch_password = std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default();
+    let ch_client = clickhouse::Client::default()
+        .with_url(ch_url.clone())
+        .with_user(ch_user)
+        .with_password(ch_password);
+    log::info!("ClickHouse read-path: {ch_url}");
+
     let producer = kafka::spawn_producer(brokers.clone());
     let state = AppState {
         kafka_tx: producer.tx.clone(),
         kafka_ready: producer.is_ready.clone(),
         expected_bearer: api_token.map(|t| format!("Bearer {t}")),
+        ch_client,
     };
 
     let metrics_handle = prometheus_handle.clone();
@@ -65,11 +78,15 @@ async fn main() -> anyhow::Result<()> {
         .route("/ready", get(readiness_check))
         .route("/metrics", get(move || metrics_endpoint(metrics_handle.clone())))
         .route("/ingest", post(routes::ingest::handler))
+        .route(
+            "/api/v1/workloads/summary",
+            get(routes::query::workloads_summary),
+        )
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     log::info!(
-        "finops-api (Phase 5): http://{addr} — /health (liveness), /ready (Kafka connected), /ingest; brokers={brokers}"
+        "finops-api: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={brokers}"
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
