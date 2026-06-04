@@ -33,3 +33,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [025](025-kubernetes-gateway-and-agent.md) | `deploy/k8s` gateway Deployment + agent DaemonSet | Accepted |
 | [026](026-clickhouse-finops-database-init.md) | `deploy/clickhouse/01_init.sql` — `finops.workload_metrics` | Accepted |
 | [027](027-api-read-path-clickhouse.md) | `GET /api/v1/workloads/summary` → ClickHouse | Accepted |
+| [028](028-finops-wire-and-agent-rename.md) | `finops-wire` + `finops-user` → `finops-agent` | Accepted |
+| [029](029-ready-channel-depth-gate.md) | `/ready` fails when ingest mpsc &gt; 80% full | Accepted |
+| [030](030-finops-api-config-struct.md) | `finops-api` `Config::from_env()` | Accepted |
+| [031](031-grafana-clickhouse-compose.md) | Grafana + ClickHouse plugin on `:3001` (dev) | Accepted |

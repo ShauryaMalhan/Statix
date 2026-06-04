@@ -4,14 +4,14 @@
 
 - Phase 2 prerequisites ([phase2-validation.md](phase2-validation.md))
 - Docker: `docker.io` + `docker-compose-v2` (`make compose-up` checks for `docker`)
-- `make build` includes `finops-api` and `finops-user`
+- `make build` includes `finops-api`, `finops-agent`, and `finops-wire`
 
 ## Stack smoke test
 
 ```bash
 cd finops-core
 make compose-up
-docker compose ps   # kafka, kafka-ui, clickhouse, finops-api running
+docker compose ps   # kafka, kafka-ui, clickhouse, grafana, finops-api running
 # API in compose listens :3000 — or use `make run-api` on host (not both)
 ```
 
@@ -78,6 +78,7 @@ curl -s -u default:finops_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABL
 | Kafka UI | 8080 |
 | ClickHouse HTTP | 8123 |
 | finops-api | 3000 |
+| Grafana | 3001 |
 
 ## Enterprise checks
 

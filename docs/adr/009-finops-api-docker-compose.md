@@ -25,4 +25,5 @@
 - **Negative:** Dev agent remains host-only (`sudo make run`). Production agent image: [ADR 024](024-agent-production-container.md) (`deploy/docker/Dockerfile.agent`).
 - **ClickHouse init:** `deploy/clickhouse/01_init.sql` mounted in `docker-compose.yml` ([ADR 026](026-clickhouse-finops-database-init.md)).
 - **Read-path env on `finops-api`:** `CLICKHOUSE_URL=http://clickhouse:8123`, `CLICKHOUSE_PASSWORD=finops_dev` ([ADR 027](027-api-read-path-clickhouse.md)).
+- **Grafana (dev):** `finops-grafana` on host `:3001`, ClickHouse plugin — [ADR 031](031-grafana-clickhouse-compose.md).
 - **Code:** `Dockerfile.api`, `deploy/docker/Dockerfile.gateway`, `docker-compose.yml`, `Makefile`, `.dockerignore`

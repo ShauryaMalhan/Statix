@@ -1,5 +1,5 @@
 -- FinOps telemetry: Kafka engine → ReplacingMergeTree (single source of truth)
--- Wire: JSONEachRow on topic `finops-telemetry` (FlatRow in finops-api/src/routes/ingest.rs)
+-- Wire: JSONEachRow on topic `finops-telemetry` (finops_wire::FlatRow)
 --
 -- Billing: SELECT * FROM finops.workload_metrics FINAL WHERE node = '...';
 --

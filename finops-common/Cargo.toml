@@ -5,11 +5,11 @@ edition = "2021"
 
 # This crate must compile in two very different environments:
 #   1. Kernel space  (finops-ebpf): no operating system, no heap, no std library
-#   2. User space    (finops-user): full std, tokio, serde, etc.
+#   2. User space    (finops-agent): full std, tokio, serde, etc.
 #
 # The `user` feature gates any dependency that only makes sense in user-space
 # (like aya's Pod trait). When finops-ebpf depends on this crate, it uses
-# default features (none). When finops-user depends on it, it enables `user`.
+# default features (none). When finops-agent depends on it, it enables `user`.
 [features]
 default = []
 user    = ["aya"]

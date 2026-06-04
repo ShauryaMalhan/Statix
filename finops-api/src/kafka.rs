@@ -52,7 +52,8 @@ fn read_env_u64(name: &str, default: u64) -> u64 {
     }
 }
 
-fn read_kafka_channel_size() -> usize {
+/// Configured ingest `mpsc` capacity (`FINOPS_KAFKA_CHANNEL_SIZE`, default [`DEFAULT_CHANNEL_SIZE`], min [`MIN_CHANNEL_SIZE`]).
+pub fn ingest_channel_capacity() -> usize {
     read_env_usize("FINOPS_KAFKA_CHANNEL_SIZE", DEFAULT_CHANNEL_SIZE).max(MIN_CHANNEL_SIZE)
 }
 
@@ -81,6 +82,8 @@ fn on_kafka_dequeued(count: usize) {
 /// Handle to the background producer. Drop `tx` (via `shutdown`) then await the task.
 pub struct KafkaProducer {
     pub tx: mpsc::Sender<KafkaQueueItem>,
+    /// Capacity passed to `mpsc::channel` (same as [`ingest_channel_capacity`] at startup).
+    pub channel_capacity: usize,
     /// Set `true` after broker connect + partition metadata load (`Ordering::Release`).
     pub is_ready: Arc<AtomicBool>,
     task: JoinHandle<()>,
@@ -98,7 +101,7 @@ impl KafkaProducer {
 
 /// Spawn the background producer; returns a cloneable `tx` for ingest handlers.
 pub fn spawn_producer(brokers: String) -> KafkaProducer {
-    let channel_size = read_kafka_channel_size();
+    let channel_size = ingest_channel_capacity();
     log::info!(
         "Kafka ingest mpsc capacity={channel_size} (FINOPS_KAFKA_CHANNEL_SIZE, min {MIN_CHANNEL_SIZE})"
     );
@@ -115,6 +118,7 @@ pub fn spawn_producer(brokers: String) -> KafkaProducer {
 
     KafkaProducer {
         tx,
+        channel_capacity: channel_size,
         is_ready,
         task,
     }

@@ -66,7 +66,7 @@ Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snap
 ## Pattern 5a — Batch lineage (audit)
 
 Each `Aggregator::flush` sets `batch_id = Uuid::new_v4()` and `agent_version = env!("CARGO_PKG_VERSION")`.  
-Propagated through `BatchJson` → ingest `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)).
+Propagated through `finops_wire::IngestBatch` → `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)).
 
 ## Pattern 5b — Aggregator clock domain
 
@@ -93,7 +93,7 @@ Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino(
 
 ## Pattern 7 — Batched JSON (schema v2)
 
-Agent → API envelope unchanged; see `output::BatchJson`.
+Agent → API envelope: `finops_wire::IngestBatch` from `output::emit_batch`.
 
 ---
 
@@ -132,7 +132,7 @@ limits   = requests × 1.25;
 ## Pattern 11 — Docker / Makefile (Phase 3 dev)
 
 ```bash
-make compose-up    # stop-api (host binary only) + stack + health check
+make compose-up    # stop-api (host binary only) + stack + health check; Grafana :3001
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
 curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops.workload_metrics%20FINAL'
@@ -169,6 +169,21 @@ clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 `finops.workload_metrics` + `kafka_telemetry_queue` + `telemetry_mv`; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md)).
 
 **API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
+
+## Pattern 15 — Gateway `Config` (Phase 7)
+
+All `finops-api` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
+
+| Env | `Config` field | Default |
+|-----|----------------|---------|
+| `KAFKA_BROKERS` | `kafka_brokers` | `localhost:9092` |
+| `FINOPS_API_PORT` | `api_port` | `3000` (invalid u16 → process exit) |
+| `FINOPS_API_TOKEN` | `api_token` | `None` |
+| `CLICKHOUSE_URL` | `clickhouse_url` | `http://localhost:8123` |
+| `CLICKHOUSE_USER` | `clickhouse_user` | `default` |
+| `CLICKHOUSE_PASSWORD` | `clickhouse_password` | `""` |
+
+Do not add new `std::env::var` calls in `main.rs` — extend `config.rs` instead.
 
 ## Pattern 14 — API read-path (Target 3)
 

@@ -13,7 +13,7 @@
 
 `KafkaProducer.is_ready` is set with `Ordering::Release` immediately after successful broker connect + metadata load; `readiness_check` loads with `Ordering::Acquire`.
 
-Channel depth &lt; 80% is deferred (Prometheus gauge exists; not gating `/ready` yet).
+Channel depth &gt; 80% full fails `/ready` — [ADR 029](029-ready-channel-depth-gate.md).
 
 ## Consequences
 

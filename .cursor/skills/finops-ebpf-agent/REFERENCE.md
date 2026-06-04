@@ -28,7 +28,7 @@ finops-core/
 ├── deploy/k8s/agent-daemonset.yaml
 ├── deploy/clickhouse/01_init.sql
 ├── infra/clickhouse/README.md
-├── finops-ebpf/, finops-common/, finops-user/, finops-api/
+├── finops-ebpf/, finops-common/, finops-wire/, finops-agent/, finops-api/ (`src/config.rs`)
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
 └── .cursor/skills/finops-ebpf-agent/
 ```
@@ -51,13 +51,15 @@ ring buffer → aggregator → emit_batch
 | 6 | Done — L8 + P0 fixes ([ADR 018](../../../docs/adr/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
 | 8 | Partial — base manifests shipped; informer/drain/registry pins open |
-| 7, 9–10 | Wire crate, portability, extended observability |
+| 7 | Partial — `finops-wire`, `finops-agent`, `Config` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md), [030](../../../docs/adr/030-finops-api-config-struct.md)) |
+| 9–10 | Portability, extended observability |
 
 ## Operational notes
 
 - Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)); CH schema change → `docker compose down -v` then `make compose-up` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md))
 - Prod: `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`
-- Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `:3000` (`/health`, `/ready`, `/metrics`); agent `:9091/metrics`
+- Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `:3000` (`/health`, `/ready`, `/metrics`); Grafana `:3001` (anonymous admin, ClickHouse plugin — [ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md)); agent `:9091/metrics`
+- **Gateway env:** `config::Config::from_env()` in `finops-api/src/config.rs` — `KAFKA_BROKERS`, `FINOPS_API_PORT` (invalid → exit 1), `FINOPS_API_TOKEN`, `CLICKHOUSE_*` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); Kafka tuning still in `kafka.rs` (`FINOPS_KAFKA_CHANNEL_SIZE`, …)
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `FINOPS_EBF_PATH`

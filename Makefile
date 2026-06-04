@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-agent build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
+.PHONY: deps build-ebpf build-agent build-user build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -48,6 +48,9 @@ build-ebpf:
 	@echo "==> eBPF bundle: $(BPF_BUNDLE_DIR)/finops-ebpf-{small,large,xlarge}"
 
 EBPF_BIN ?= $(BPF_BUNDLE_DIR)/finops-ebpf-small
+
+# Back-compat alias (removed crate name finops-user).
+build-user: build-agent
 
 build-agent:
 	@echo "==> [2/3] Compiling finops-agent..."

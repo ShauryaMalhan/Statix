@@ -3,7 +3,7 @@ name: finops-ebpf-agent
 description: >-
   Enterprise low-latency standards for the FinOps eBPF stack (finops-core):
   BPF ring buffer, batched agent, HTTP→Kafka→ClickHouse; Phase 5 security focus.
-  Use when editing finops-common, finops-ebpf, finops-user, finops-api; adding probes;
+  Use when editing finops-common, finops-ebpf, finops-wire, finops-agent, finops-api; adding probes;
   ingest, Docker infra, or ADRs. Always read this skill first, then build with make,
   and update docs/adr/skills in the same change.
 ---
@@ -17,12 +17,13 @@ Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase
 ## Mandatory workflow (every change)
 
 1. Read [SKILL.md](SKILL.md) → [REFERENCE.md](REFERENCE.md) → [PATTERNS.md](PATTERNS.md)
-2. Implement using patterns below (do not invent parallel conventions)
-3. `make build && make check` (add `make verify-btf` if BPF/deploy changed)
-4. **ADR** — new file in `docs/adr/` for architectural decisions ([enterprise-latency.md](../../../docs/enterprise-latency.md))
-5. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
-6. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
-7. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
+2. **For hot-path / performance fixes:** Read [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — contains exact before/after code, dependency order, and pitfalls. Follow the prescribed approach exactly; do not invent alternatives.
+3. Implement using patterns below (do not invent parallel conventions)
+4. `make build && make check` (add `make verify-btf` if BPF/deploy changed)
+5. **ADR** — new file in `docs/adr/` for architectural decisions ([enterprise-latency.md](../../../docs/enterprise-latency.md))
+6. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
+7. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
+8. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
 
 ## Quick start checklist
 
@@ -32,7 +33,7 @@ Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase
 - [ ] Agent: no await on ring-buffer path; Prometheus on `:9091` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); procfs before write lock in `on_identity_event`
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
 - [ ] Output: `FINOPS_INGEST_URL` → `init_http_client` (+ optional `FINOPS_API_TOKEN`) + `init_retry_worker` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md))
-- [ ] API: GET /health; GET /ready; GET /metrics; POST /ingest; GET `/api/v1/workloads/summary` (`CLICKHOUSE_*` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)); try_send on ingest
+- [ ] API: `Config::from_env()` first in `main` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); GET /health; GET /ready; POST /ingest `try_send`; read API
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -42,11 +43,12 @@ Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase
 | Crate | Target | Responsibility |
 |-------|--------|----------------|
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
+| `finops-wire` | host lib | `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)) |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`FINOPS_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
-| `finops-user` | host | loader (`RING_DROPS` poll), attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
-| `finops-api` | host | Ingest: `POST /ingest` → mpsc; read: `GET /api/v1/workloads/summary` → ClickHouse ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)); probes + `/metrics` ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md), [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)) |
+| `finops-agent` | host | loader, attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
+| `finops-api` | host | `config::Config::from_env()` at startup ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); ingest + read API ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)); probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)) |
 
-**Infra:** `docker-compose.yml`, `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql` (single CH init)
+**Infra:** `docker-compose.yml` (Kafka, ClickHouse, Grafana `:3001`, API), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -118,7 +120,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Component | Rule |
 |-----------|------|
 | Agent | `init_http_client` (`FINOPS_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
-| API | `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `POST /ingest` `expected_bearer` + `try_send` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)); read `GET /api/v1/workloads/summary?hours=` ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
+| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://0.0.0.0:9091/metrics` — ring drops + future counters ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
@@ -133,7 +135,7 @@ Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md)
 
 ```bash
 make deps          # first time
-make build         # ebpf + finops-user + finops-api
+make build         # ebpf + finops-agent + finops-api
 make check
 make verify-btf    # when BPF / kernel portability touched
 make compose-up    # Dev stack (API in Docker on :3000); Phase 5: add FINOPS_API_TOKEN in prod
@@ -151,6 +153,18 @@ curl -s http://127.0.0.1:9091/metrics | grep finops_agent_ring_drops   # agent (
 Phase 2 validation: [docs/phase2-validation.md](../../../docs/phase2-validation.md)  
 ADRs: [docs/adr/](../../../docs/adr/)  
 Deferred: [TODO.md](TODO.md)
+
+## L8 Audit Fixes (Phase 5.5)
+
+**Playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — 14 fixes with exact code, dependency order, and validation steps.
+
+| Priority | Fixes | Summary |
+|----------|-------|---------|
+| P0-SHIP (day 1) | F1–F8 | `OnceLock` env cache, thread-local UUID RNG, `&'static` agent version, `DEFAULT_LABELS` in default, consume `BatchPayload`, `Arc<str>` retry body, batch `spawn_blocking`, ring drain budget |
+| P1-WEEK | F9–F12 | Reuse HashMap + batch `Utc::now` in Kafka producer, cache `kube::Client`, partition metadata refresh |
+| P2-SPRINT | F13–F14 | `Arc<[u8]>` node key in gateway, remove `FINAL` from operational queries |
+
+**Critical rule:** When implementing any fix from [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md), follow the exact prescribed approach. The file documents pitfalls and regressions that will occur with alternative implementations. Check the **Dependency Notes** section at the bottom of that file before reordering fixes.
 
 ## OOM-safe remediation (Phases 4–5)
 

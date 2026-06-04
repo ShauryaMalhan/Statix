@@ -15,7 +15,8 @@
 | **Target 1** | **Done** | `deploy/docker/*`, `deploy/k8s/*` ([ADR 024](024-agent-production-container.md), [025](025-kubernetes-gateway-and-agent.md)) |
 | **Target 2** | **Done** | `deploy/clickhouse/01_init.sql` → `finops.workload_metrics` ([ADR 026](026-clickhouse-finops-database-init.md)) |
 | **Target 3** | **Done** | `GET /api/v1/workloads/summary` → ClickHouse ([ADR 027](027-api-read-path-clickhouse.md)) |
-| 7–10 | **Planned** | Wire crate, K8s hardening, portability, extended observability |
+| 7 | **Partial** | `finops-wire`, `finops-agent`, `Config` shipped ([ADR 028](028-finops-wire-and-agent-rename.md), [030](030-finops-api-config-struct.md)); gateway rename open |
+| 8–10 | **Planned** | K8s hardening, portability, extended observability |
 
 Engineering gate: [phase5-production-readiness.md](../phase5-production-readiness.md).  
 Canonical task list: [.cursor/skills/finops-ebpf-agent/TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md).

@@ -21,7 +21,7 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 
 | Item | Why |
 |------|-----|
-| **`GET /ready`** | **Shipped:** `kafka_ready` after broker + partition metadata ([ADR 021](adr/021-ingest-ready-probe.md)). Optional: channel depth &lt; 80% gate. |
+| **`GET /ready`** | **Shipped:** `kafka_ready` + ingest mpsc &lt; 80% full ([ADR 021](adr/021-ingest-ready-probe.md), [ADR 029](adr/029-ready-channel-depth-gate.md)). |
 | **ClickHouse `kafka_num_consumers`** | Match Kafka partition count in prod ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)). |
 | **Kafka retention + disk alerts** | Prevent broker fill → throttle → consumer lag. |
 | **Broken-message alerting** | `kafka_skip_broken_messages = 1000` in [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql); monitor `system.kafka_consumers` when skipped > 0. |

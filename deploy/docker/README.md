@@ -13,7 +13,7 @@ docker run --rm -p 3000:3000 \
   finops-gateway:latest
 ```
 
-## eBPF node agent (`finops-user`)
+## eBPF node agent (`finops-agent`)
 
 `Dockerfile.agent` — builds eBPF bundle + agent; **must run privileged/root**.
 

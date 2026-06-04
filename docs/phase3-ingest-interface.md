@@ -7,7 +7,7 @@ Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch
 ## Flow
 
 ```
-finops-user  --POST /ingest-->  finops-api  --try_send-->  mpsc  --produce-->  Kafka
+finops-agent  --POST /ingest-->  finops-api  --try_send-->  mpsc  --produce-->  Kafka
                                                                                     |
 ClickHouse  finops.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  finops.workload_metrics
 ```
@@ -21,7 +21,7 @@ ClickHouse  finops.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  finops.worklo
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `FINOPS_NODE_NAME` |
 | `batch_id` | string | UUID v4 per flush — audit lineage ([ADR 017](adr/017-batch-lineage-metadata.md)) |
-| `agent_version` | string | `finops-user` crate version at flush time |
+| `agent_version` | string | `finops-agent` crate version at flush time |
 | `workloads` | array | Rolled-up rows (below) |
 
 ## Workload row
@@ -104,7 +104,9 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 
 ## Environment variables
 
-### Agent (`finops-user`)
+### Agent (`finops-agent`)
+
+Wire types: `finops_wire::IngestBatch` ([ADR 028](adr/028-finops-wire-and-agent-rename.md)).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -123,6 +125,8 @@ Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the a
 | `FINOPS_RAW_EVENTS` | off | Per-event debug JSON |
 
 ### API (`finops-api`)
+
+Loaded by `config::Config::from_env()` in `finops-api/src/config.rs` ([ADR 030](adr/030-finops-api-config-struct.md)).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|

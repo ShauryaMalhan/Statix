@@ -1,6 +1,7 @@
 //! finops-api — ingest gateway: POST /ingest → mpsc → Kafka; read-path → ClickHouse.
 //! Phases 3–4 + 6 shipped; Target 3: GET `/api/v1/workloads/summary`.
 
+mod config;
 mod kafka;
 mod routes;
 
@@ -17,9 +18,14 @@ use axum::Router;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::sync::mpsc;
 
+/// Ingest mpsc considered under backpressure when more than this percent of slots are in use.
+const READY_CHANNEL_FULL_THRESHOLD_PCT: u8 = 80;
+
 #[derive(Clone)]
 pub struct AppState {
     pub kafka_tx: mpsc::Sender<kafka::KafkaQueueItem>,
+    /// Configured `mpsc` capacity (`FINOPS_KAFKA_CHANNEL_SIZE` at startup).
+    pub kafka_channel_capacity: usize,
     /// `true` after Kafka broker connect + partition metadata load.
     pub kafka_ready: Arc<AtomicBool>,
     /// When set, full `Authorization` header value (`Bearer <token>`) for `POST /ingest`.
@@ -29,7 +35,16 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let config = config::Config::from_env();
     env_logger::init();
+
+    match &config.api_token {
+        Some(_) => log::info!("API Token authentication: ENABLED (FINOPS_API_TOKEN)"),
+        None => log::warn!(
+            "API Token authentication: DISABLED — set FINOPS_API_TOKEN before production"
+        ),
+    }
+    log::info!("ClickHouse read-path: {}", config.clickhouse_url);
 
     // Global recorder for `metrics::counter!` / `histogram!` / `gauge!`; Axum serves `/metrics`.
     let prometheus_handle = PrometheusBuilder::new()
@@ -38,37 +53,17 @@ async fn main() -> anyhow::Result<()> {
 
     spawn_prometheus_upkeep(prometheus_handle.clone());
 
-    let brokers =
-        std::env::var("KAFKA_BROKERS").unwrap_or_else(|_| "localhost:9092".to_string());
-    let port: u16 = std::env::var("FINOPS_API_PORT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(3000);
-
-    let api_token = std::env::var("FINOPS_API_TOKEN").ok();
-    match &api_token {
-        Some(_) => log::info!("API Token authentication: ENABLED (FINOPS_API_TOKEN)"),
-        None => log::warn!(
-            "API Token authentication: DISABLED — set FINOPS_API_TOKEN before production"
-        ),
-    }
-
-    let ch_url =
-        std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".to_string());
-    let ch_user =
-        std::env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".to_string());
-    let ch_password = std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default();
-    let ch_client = clickhouse::Client::default()
-        .with_url(ch_url.clone())
-        .with_user(ch_user)
-        .with_password(ch_password);
-    log::info!("ClickHouse read-path: {ch_url}");
-
-    let producer = kafka::spawn_producer(brokers.clone());
+    let ch_client = config.clickhouse_client();
+    let producer = kafka::spawn_producer(config.kafka_brokers.clone());
+    let kafka_channel_capacity = producer.channel_capacity;
+    log::info!(
+        "Ingest readiness: /ready fails when mpsc > {READY_CHANNEL_FULL_THRESHOLD_PCT}% full (capacity={kafka_channel_capacity})"
+    );
     let state = AppState {
         kafka_tx: producer.tx.clone(),
+        kafka_channel_capacity,
         kafka_ready: producer.is_ready.clone(),
-        expected_bearer: api_token.map(|t| format!("Bearer {t}")),
+        expected_bearer: config.expected_bearer(),
         ch_client,
     };
 
@@ -84,9 +79,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_state(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     log::info!(
-        "finops-api: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={brokers}"
+        "finops-api: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={}",
+        config.kafka_brokers
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -133,12 +129,55 @@ async fn health_check(State(state): State<AppState>) -> StatusCode {
     }
 }
 
-/// Readiness: Kafka broker connected + partition metadata loaded; ingest channel open.
+/// Readiness: Kafka connected, ingest channel open, and mpsc not under backpressure (&gt;80% full).
 async fn readiness_check(State(state): State<AppState>) -> StatusCode {
-    if state.kafka_ready.load(Ordering::Acquire) && !state.kafka_tx.is_closed() {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
+    if state.kafka_tx.is_closed() {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    }
+
+    if !state.kafka_ready.load(Ordering::Acquire) {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    }
+
+    let remaining = state.kafka_tx.capacity();
+    let total = state.kafka_channel_capacity;
+    if ingest_channel_over_threshold(remaining, total, READY_CHANNEL_FULL_THRESHOLD_PCT) {
+        let used = total.saturating_sub(remaining);
+        let used_pct = if total > 0 {
+            (used * 100) / total
+        } else {
+            0
+        };
+        log::warn!(
+            "Ingest mpsc backpressure: channel {used_pct}% full ({used}/{total} slots used, {remaining} remaining); /ready -> 503"
+        );
+        return StatusCode::SERVICE_UNAVAILABLE;
+    }
+
+    StatusCode::OK
+}
+
+/// `true` when fewer than `(100 - threshold_pct)%` of `total` slots remain (channel over threshold full).
+fn ingest_channel_over_threshold(remaining: usize, total: usize, threshold_pct: u8) -> bool {
+    if total == 0 {
+        return false;
+    }
+    let free_pct = remaining.saturating_mul(100) / total;
+    free_pct < 100usize.saturating_sub(threshold_pct as usize)
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::ingest_channel_over_threshold;
+
+    #[test]
+    fn over_threshold_when_more_than_80_percent_full() {
+        assert!(ingest_channel_over_threshold(1_000, 8_192, 80));
+    }
+
+    #[test]
+    fn under_threshold_when_half_full() {
+        assert!(!ingest_channel_over_threshold(4_096, 8_192, 80));
     }
 }
 
