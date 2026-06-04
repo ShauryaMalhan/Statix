@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::attribution::{AttributionCache, WorkloadLabels};
-use crate::output::WorkloadBatchRow;
+use finops_wire::WorkloadRow;
 
 const DEFAULT_MAX_KEYS: usize = 4096;
 
@@ -175,9 +175,9 @@ impl Aggregator {
         self.active = 1 - self.active;
         self.reset_window();
 
-        let workloads: Vec<WorkloadBatchRow> = self.buffers[flush_idx]
+        let workloads: Vec<WorkloadRow> = self.buffers[flush_idx]
             .iter()
-            .map(|(cgroup_id, s)| WorkloadBatchRow {
+            .map(|(cgroup_id, s)| WorkloadRow {
                 cgroup_id: *cgroup_id,
                 namespace: s.labels.namespace.clone(),
                 pod: s.labels.pod.clone(),
@@ -224,7 +224,7 @@ pub struct BatchPayload {
     pub node: String,
     pub batch_id: String,
     pub agent_version: String,
-    pub workloads: Vec<WorkloadBatchRow>,
+    pub workloads: Vec<WorkloadRow>,
 }
 
 /// Offset between wall clock and `CLOCK_MONOTONIC` at agent start (BPF `bpf_ktime_get_ns` domain).

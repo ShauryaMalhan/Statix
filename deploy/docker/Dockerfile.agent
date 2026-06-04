@@ -1,4 +1,4 @@
-# FinOps eBPF Node Agent (finops-user) — production multi-stage image.
+# FinOps eBPF Node Agent (finops-agent) — production multi-stage image.
 # Requires privileged/root at runtime (CAP_BPF, cgroup reads).
 # Build from repo root (finops-core):
 #   docker build -f deploy/docker/Dockerfile.agent -t finops-agent:latest .
@@ -31,7 +31,7 @@ RUN set -eux; \
         cp target/bpfel-unknown-none/release/finops-ebpf "../target/bpf/${name}"; \
     done; \
     cd ..; \
-    cargo build --release -p finops-user
+    cargo build --release -p finops-agent
 
 FROM debian:bookworm-slim
 
@@ -42,7 +42,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Agent must run as root (or CAP_BPF + CAP_PERFMON + CAP_SYS_ADMIN) to load BPF.
-COPY --from=builder /usr/src/finops/target/release/finops-user /usr/local/bin/finops-agent
+COPY --from=builder /usr/src/finops/target/release/finops-agent /usr/local/bin/finops-agent
 COPY --from=builder /usr/src/finops/target/bpf /app/bpf
 
 ENV RUST_LOG=info

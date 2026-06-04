@@ -9,6 +9,7 @@ use serde::Serialize;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::aggregator::BatchPayload;
+use finops_wire::IngestBatch;
 
 pub const SCHEMA_VERSION: u32 = 2;
 
@@ -219,42 +220,15 @@ fn enqueue_batch_json(json: String) {
     }
 }
 
-#[derive(Serialize)]
-pub struct BatchJson<'a> {
-    pub schema_version: u32,
-    pub window_start_ns: u64,
-    pub window_end_ns: u64,
-    pub node: &'a str,
-    pub batch_id: &'a str,
-    pub agent_version: &'a str,
-    pub workloads: &'a [WorkloadBatchRow],
-}
-
-#[derive(Clone, Serialize)]
-pub struct WorkloadBatchRow {
-    pub cgroup_id: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub namespace: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pod: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub container: Option<String>,
-    pub k8s_resolved: bool,
-    pub memory_bytes_max: u64,
-    pub memory_bytes_last: u64,
-    pub exec_count: u32,
-    pub sample_count: u32,
-}
-
 pub fn emit_batch(payload: &BatchPayload) {
-    let batch = BatchJson {
+    let batch = IngestBatch {
         schema_version: SCHEMA_VERSION,
         window_start_ns: payload.window_start_ns,
         window_end_ns: payload.window_end_ns,
-        node: &payload.node,
-        batch_id: &payload.batch_id,
-        agent_version: &payload.agent_version,
-        workloads: &payload.workloads,
+        node: payload.node.clone(),
+        batch_id: payload.batch_id.clone(),
+        agent_version: payload.agent_version.clone(),
+        workloads: payload.workloads.clone(),
     };
 
     let json = match serde_json::to_string(&batch) {

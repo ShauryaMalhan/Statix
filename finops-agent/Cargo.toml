@@ -1,5 +1,5 @@
 [package]
-name    = "finops-user"
+name = "finops-agent"
 version = "0.1.0"
 edition = "2021"
 
@@ -18,16 +18,12 @@ aya = { version = "0.13", features = ["async_tokio"] }
 # task only when events arrive. Zero CPU usage while waiting.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 
-# serde + serde_json for structured JSON output.
-# Phase 1 prints to stdout. Phase 3 will stream over gRPC instead.
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
+finops-wire = { path = "../finops-wire" }
 
-# anyhow gives us the ? operator and readable error messages without
-# defining a custom error enum for every failure mode.
 anyhow = "1"
 
-# log crate for structured logging (aya-log integrates with this)
 log = "0.4"
 env_logger = "0.11"
 metrics  = "0.24"
@@ -37,21 +33,13 @@ num_cpus   = "1"
 walkdir    = "2"
 uuid       = { version = "1.8", features = ["v4"] }
 
-# Faster RwLock than std (no OS futex on uncontended paths) — attribution cache.
 parking_lot = "0.12"
-
-# Fast HashMap for internal cgroup_id keys (not exposed to untrusted input).
 rustc-hash = "1.1"
 
-# Our shared memory contract — enable the `user` feature so we get
-# the aya::Pod implementation for ProcessEvent
 finops-common = { path = "../finops-common", features = ["user"] }
 
-# Phase 3: HTTP ingest with bounded retry worker when FINOPS_INGEST_URL is set.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rand    = "0.8"
 
-# Optional in-cluster pod/namespace resolution (skipped when not on Kubernetes).
 kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
 k8s-openapi = { version = "0.24", features = ["v1_30"] }
-

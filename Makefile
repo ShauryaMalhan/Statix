@@ -4,7 +4,7 @@
 
 WORKSPACE_ROOT := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 EBPF_DIR       := $(WORKSPACE_ROOT)/finops-ebpf
-USER_DIR       := $(WORKSPACE_ROOT)/finops-user
+AGENT_DIR      := $(WORKSPACE_ROOT)/finops-agent
 
 export PATH := $(HOME)/.cargo/bin:$(PATH)
 
@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-user build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
+.PHONY: deps build-ebpf build-agent build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -49,9 +49,9 @@ build-ebpf:
 
 EBPF_BIN ?= $(BPF_BUNDLE_DIR)/finops-ebpf-small
 
-build-user:
-	@echo "==> [2/3] Compiling user-space agent..."
-	cd $(WORKSPACE_ROOT) && cargo build -p finops-user --release
+build-agent:
+	@echo "==> [2/3] Compiling finops-agent..."
+	cd $(WORKSPACE_ROOT) && cargo build -p finops-agent --release
 	@echo "==> Agent build complete."
 
 build-api:
@@ -59,11 +59,11 @@ build-api:
 	cd $(WORKSPACE_ROOT) && cargo build -p finops-api --release
 	@echo "==> API build complete."
 
-build: build-ebpf build-user build-api
+build: build-ebpf build-agent build-api
 	@echo ""
 	@echo "Build complete."
 	@echo "  eBPF bytecode : $(EBPF_BIN)"
-	@echo "  Agent binary  : $(WORKSPACE_ROOT)/target/release/finops-user"
+	@echo "  Agent binary  : $(WORKSPACE_ROOT)/target/release/finops-agent"
 	@echo "  API binary    : $(WORKSPACE_ROOT)/target/release/finops-api"
 	@echo ""
 	@echo "Phase 2: make run  (stdout only)"
@@ -77,7 +77,7 @@ run: build
 	@echo "==> Starting agent (Ctrl+C to stop)..."
 	@echo "==> eBPF bundle: $(BPF_BUNDLE_DIR) (auto-pick by CPU count; override: FINOPS_EBF_PATH)"
 	RUST_LOG=info FINOPS_BPF_DIR=$(BPF_BUNDLE_DIR) \
-		$(WORKSPACE_ROOT)/target/release/finops-user
+		$(WORKSPACE_ROOT)/target/release/finops-agent
 
 run-api: build-api
 	@if $(COMPOSE) ps finops-api 2>/dev/null | grep -q '3000->3000'; then \
@@ -146,7 +146,8 @@ check:
 	cd $(WORKSPACE_ROOT) && cargo check -p finops-common
 	cd $(EBPF_DIR) && cargo +nightly check \
 		-Z build-std=core --target $(EBPF_TARGET)
-	cd $(WORKSPACE_ROOT) && cargo check -p finops-user
+	cd $(WORKSPACE_ROOT) && cargo check -p finops-wire
+	cd $(WORKSPACE_ROOT) && cargo check -p finops-agent
 	cd $(WORKSPACE_ROOT) && cargo check -p finops-api
 
 verify: build-ebpf

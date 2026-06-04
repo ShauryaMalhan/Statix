@@ -5,7 +5,8 @@
 # cargo to try building it for x86_64, which would fail.
 members = [
     "finops-common",
-    "finops-user",
+    "finops-wire",
+    "finops-agent",
     "finops-api",
 ]
 resolver = "2"

@@ -1,4 +1,4 @@
-//! finops-user — eBPF agent: attribution, memory sampling, batched stdout or HTTP ingest.
+//! finops-agent — eBPF agent: attribution, memory sampling, batched stdout or HTTP ingest.
 //! Phases 1–4 + 6 shipped; Phase 5 adds ingest auth (`FINOPS_API_TOKEN`).
 
 mod aggregator;
