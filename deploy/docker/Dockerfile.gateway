@@ -2,8 +2,8 @@
 # Build from repo root (finops-core):
 #   docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
 
-# Cargo.lock / metrics deps need Rust ≥ 1.85 (see root Dockerfile.api).
-FROM rust:1.85-bookworm AS builder
+# Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86 (see Dockerfile.api).
+FROM rust:1.86-bookworm AS builder
 
 WORKDIR /usr/src/finops
 

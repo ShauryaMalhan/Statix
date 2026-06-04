@@ -7,7 +7,7 @@
 ## Decision
 
 1. **`deploy/docker/Dockerfile.agent`** — multi-stage:
-   - **Builder:** `rust:1.85-bookworm`; clang/llvm/libelf; nightly + `bpf-linker`; `make build-ebpf` equivalent → `target/bpf/{small,large,xlarge}`; `cargo build --release -p finops-user`.
+   - **Builder:** `rust:1.86-bookworm`; clang/llvm/libelf; nightly + `bpf-linker`; `make build-ebpf` equivalent → `target/bpf/{small,large,xlarge}`; `cargo build --release -p finops-user`.
    - **Runtime:** `debian:bookworm-slim`; `ca-certificates`; **no non-root user** (BPF load requires root/CAPs).
 2. **Binary name in image:** `/usr/local/bin/finops-agent` (crate `finops-user`).
 3. **BPF bundle:** copied to `/app/bpf`; `FINOPS_BPF_DIR=/app/bpf` (compile-time default in `ebpf_select.rs` points at build tree — runtime must set env in container).

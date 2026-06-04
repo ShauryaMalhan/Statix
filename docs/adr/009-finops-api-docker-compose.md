@@ -6,7 +6,7 @@
 
 ## Decision
 
-- **`Dockerfile.api`** — dev Compose image (`rust:1.85-slim` builder; `debian:bookworm-slim` runtime); `KAFKA_BROKERS=kafka:29092` on `finops-net`.
+- **`Dockerfile.api`** — dev Compose image (`rust:1.86-slim` builder; `debian:bookworm-slim` runtime); `KAFKA_BROKERS=kafka:29092` on `finops-net`.
 - **`deploy/docker/Dockerfile.gateway`** — production gateway image (non-root `finops` user, `ca-certificates`, `ENTRYPOINT finops-api`); build: `docker build -f deploy/docker/Dockerfile.gateway .`
 - **`docker-compose.yml`** — `finops-api` service on port `3000`, `depends_on: kafka: service_healthy`, Kafka healthcheck via `kafka-broker-api-versions.sh`.
 - **Makefile** — `make compose-up` (default Phase 3 stack): stops **host-only** `finops-api` binaries (by `/proc/exe`, never `fuser -k 3000`), starts compose, verifies `http://127.0.0.1:3000/health`, recreates API container if unhealthy. `make compose-down` tears down stack.

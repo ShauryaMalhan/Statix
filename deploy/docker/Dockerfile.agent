@@ -3,7 +3,7 @@
 # Build from repo root (finops-core):
 #   docker build -f deploy/docker/Dockerfile.agent -t finops-agent:latest .
 
-FROM rust:1.85-bookworm AS builder
+FROM rust:1.86-bookworm AS builder
 
 WORKDIR /usr/src/finops
 
