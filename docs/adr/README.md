@@ -28,3 +28,6 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [020](020-ingest-schema-version-window.md) | Accept `schema_version` 2 or 3 on ingest | Accepted |
 | [021](021-ingest-ready-probe.md) | `GET /ready` after Kafka connect + metadata | Accepted |
 | [022](022-bpf-ring-buffer-drop-counter.md) | `RING_DROPS` per-CPU map + agent poll | Accepted |
+| [023](023-phase5-hot-path-fixes.md) | Attribution lock/label cache; agent `:9091/metrics`; `expected_bearer` | Accepted |
+| [024](024-agent-production-container.md) | `Dockerfile.agent` — BPF bundle + privileged runtime | Accepted |
+| [025](025-kubernetes-gateway-and-agent.md) | `deploy/k8s` gateway Deployment + agent DaemonSet | Accepted |

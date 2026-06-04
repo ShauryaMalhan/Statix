@@ -11,7 +11,8 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `FinopsEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` |
-| Ingest API | `POST /ingest` optional `FINOPS_API_TOKEN` bearer ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md) |
+| Ingest API | `POST /ingest`; `AppState.expected_bearer` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md) |
+| Agent metrics | `http://<host>:9091/metrics` — `finops_agent_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
 ## File map
@@ -20,6 +21,10 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 finops-core/
 ├── docker-compose.yml
 ├── Dockerfile.api
+├── deploy/docker/Dockerfile.gateway
+├── deploy/docker/Dockerfile.agent
+├── deploy/k8s/gateway.yaml
+├── deploy/k8s/agent-daemonset.yaml
 ├── infra/clickhouse/init.sql
 ├── finops-ebpf/, finops-common/, finops-user/, finops-api/
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
@@ -40,14 +45,14 @@ ring buffer → aggregator → emit_batch
 |-------|--------|
 | 1–3 | Done (E2E ingest) |
 | 4 | Done (scale, lineage, bootstrap, metrics) |
-| 5 | **Active** ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) |
-| 6 | Done (L8 hot path — [ADR 018](../../../docs/adr/018-phase-roadmap-status.md)) |
+| 5 | **Active** — TLS + prod CH/Kafka ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) |
+| 6 | Done — L8 + P0 fixes ([ADR 018](../../../docs/adr/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | 7–10 | Wire crate, K8s deploy, portability, cost |
 
 ## Operational notes
 
 - Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md))
-- Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `http://127.0.0.1:3000/health` and `/metrics`
+- Kafka UI `:8080`; ClickHouse `:8123` (`default` / `finops_dev`); API `:3000` (`/health`, `/ready`, `/metrics`); agent `:9091/metrics`
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `FINOPS_EBF_PATH`

@@ -1,0 +1,37 @@
+# FinOps API Gateway (finops-api) — production multi-stage image.
+# Build from repo root (finops-core):
+#   docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
+
+# Cargo.lock / metrics deps need Rust ≥ 1.85 (see root Dockerfile.api).
+FROM rust:1.85-bookworm AS builder
+
+WORKDIR /usr/src/finops
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN cargo build --release -p finops-api
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -ms /bin/bash finops \
+    && chown -R finops:finops /app
+
+USER finops
+
+COPY --from=builder /usr/src/finops/target/release/finops-api /usr/local/bin/finops-api
+
+ENV FINOPS_API_PORT=3000
+ENV RUST_LOG=info
+
+EXPOSE 3000
+
+ENTRYPOINT ["finops-api"]

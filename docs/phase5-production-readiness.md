@@ -13,7 +13,8 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 |------|-----|
 | **Bearer auth on `POST /ingest`** | **Shipped:** set `FINOPS_API_TOKEN` on API and agent ([ADR 019](adr/019-ingest-bearer-token-auth.md)). |
 | **TLS on `POST /ingest`** | Terminate HTTPS at load balancer or sidecar (still required on untrusted networks). |
-| **BPF ring buffer overflow metric** | **Shipped:** `RING_DROPS` per-CPU map + 10s agent poll → error log + `finops_agent_ring_drops_total` ([ADR 022](adr/022-bpf-ring-buffer-drop-counter.md)). |
+| **BPF ring buffer overflow metric** | **Shipped:** `RING_DROPS` + scrape `http://<node>:9091/metrics` ([ADR 022](adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](adr/023-phase5-hot-path-fixes.md)). |
+| **Attribution / ingest hot path** | **Shipped:** procfs before write lock; label cache + `DEFAULT_LABELS`; `expected_bearer` precomputed ([ADR 023](adr/023-phase5-hot-path-fixes.md)). |
 | **Schema evolution** | **Shipped:** gateway accepts `schema_version` 2 or 3 ([ADR 020](adr/020-ingest-schema-version-window.md)). |
 
 ## P1 — Operational readiness

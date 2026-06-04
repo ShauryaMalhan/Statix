@@ -22,8 +22,8 @@ pub struct AppState {
     pub kafka_tx: mpsc::Sender<kafka::KafkaQueueItem>,
     /// `true` after Kafka broker connect + partition metadata load.
     pub kafka_ready: Arc<AtomicBool>,
-    /// When set, `POST /ingest` requires `Authorization: Bearer <token>`.
-    pub api_token: Option<String>,
+    /// When set, full `Authorization` header value (`Bearer <token>`) for `POST /ingest`.
+    pub expected_bearer: Option<String>,
 }
 
 #[tokio::main]
@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         kafka_tx: producer.tx.clone(),
         kafka_ready: producer.is_ready.clone(),
-        api_token,
+        expected_bearer: api_token.map(|t| format!("Bearer {t}")),
     };
 
     let metrics_handle = prometheus_handle.clone();

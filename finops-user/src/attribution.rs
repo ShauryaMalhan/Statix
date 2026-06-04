@@ -5,7 +5,7 @@ use std::{
     io::Read,
     os::unix::fs::MetadataExt,
     path::{Component, Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
@@ -22,6 +22,9 @@ pub struct WorkloadLabels {
     pub pod_uid: Option<String>,
     pub k8s_resolved: bool,
 }
+
+static DEFAULT_LABELS: LazyLock<Arc<WorkloadLabels>> =
+    LazyLock::new(|| Arc::new(WorkloadLabels::default()));
 
 #[derive(Debug, Default)]
 struct CacheState {
@@ -46,8 +49,9 @@ impl AttributionCache {
     }
 
     pub fn on_identity_event(&self, event: &FinopsEvent) {
+        let rel_path = cgroup_path_from_pid(event.pid).ok();
         let mut state = self.state.write();
-        if let Ok(rel_path) = cgroup_path_from_pid(event.pid) {
+        if let Some(rel_path) = rel_path {
             let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
             state.cgroup_paths.insert(event.cgroup_id, rel_path);
             state
@@ -83,12 +87,26 @@ impl AttributionCache {
                     merged.namespace = pod_labels.namespace.clone();
                     merged.pod = pod_labels.pod.clone();
                     merged.k8s_resolved = true;
-                    return Arc::new(merged);
+                    let arc_merged = Arc::new(merged);
+                    drop(state);
+                    self.state
+                        .write()
+                        .cgroup_labels
+                        .insert(cgroup_id, Arc::clone(&arc_merged));
+                    return arc_merged;
                 }
             }
+            let arc = Arc::new(labels_from_cgroup_path(Some(path)));
+            drop(state);
+            self.state
+                .write()
+                .cgroup_labels
+                .insert(cgroup_id, Arc::clone(&arc));
+            return arc;
         }
 
-        Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)))
+        drop(state);
+        Arc::clone(&DEFAULT_LABELS)
     }
 
     pub fn upsert_pod_labels(&self, uid: String, labels: WorkloadLabels) {

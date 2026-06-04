@@ -18,6 +18,11 @@ use tokio::time::{self, Duration};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
+    metrics_exporter_prometheus::PrometheusBuilder::new()
+        .with_http_listener(([0, 0, 0, 0], 9091))
+        .install()
+        .unwrap_or_else(|e| log::warn!("Failed to install prometheus recorder: {e}"));
+    log::info!("Agent Prometheus metrics exposed on http://0.0.0.0:9091/metrics");
     output::init_http_client();
     if let Ok(url) = std::env::var("FINOPS_INGEST_URL") {
         output::init_retry_worker(url);

@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 done** (L8 hot path) · **5 active** (security/readiness — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md))
+Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **5 active** (TLS + prod ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md))
 
 ## Mandatory workflow (every change)
 
@@ -29,10 +29,10 @@ Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 don
 ```
 - [ ] finops-common: FinopsEvent / kinds only here
 - [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0); on reserve fail increment `RING_DROPS` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md))
-- [ ] Agent: no await on ring-buffer path for HTTP/K8s blocking work
+- [ ] Agent: no await on ring-buffer path; Prometheus on `:9091` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); procfs before write lock in `on_identity_event`
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
 - [ ] Output: `FINOPS_INGEST_URL` → `init_http_client` (+ optional `FINOPS_API_TOKEN`) + `init_retry_worker` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md))
-- [ ] API: GET /health; GET /ready; GET /metrics; POST /ingest → 400/503/200; try_send; Kafka in background task
+- [ ] API: GET /health; GET /ready; GET /metrics; POST /ingest (`expected_bearer` — [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); try_send
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -43,10 +43,10 @@ Phases: **1–3 done** (E2E ingest) · **4 done** (scale/reliability) · **6 don
 |-------|--------|----------------|
 | `finops-common` | host + bpf | `FinopsEvent`, kind constants, `Pod` via `user` feature |
 | `finops-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`FINOPS_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
-| `finops-user` | host | loader, attribution, memory_sampler, aggregator, output, main |
-| `finops-api` | host | `GET /health`, `GET /ready`, `GET /metrics`, `POST /ingest` → mpsc `(Vec<u8>, Vec<u8>)` keyed Kafka ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md), [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)) |
+| `finops-user` | host | loader (`RING_DROPS` poll), attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
+| `finops-api` | host | `GET /health`, `GET /ready`, `GET /metrics`, `POST /ingest` → mpsc `(Vec<u8>, Vec<u8>)` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md), [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)) |
 
-**Infra:** `docker-compose.yml`, `Dockerfile.api`, `infra/clickhouse/init.sql`
+**Infra:** `docker-compose.yml` (dev), `deploy/docker/` (images), `deploy/k8s/` (prod), `infra/clickhouse/init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -108,7 +108,8 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 | Rule | Detail |
 |------|--------|
-| Locks | `parking_lot::RwLock` |
+| Locks | `parking_lot::RwLock`; **procfs before `write()`** on identity ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
+| Labels | `DEFAULT_LABELS` `LazyLock`; cache K8s/path merges in `cgroup_labels` |
 | cgroup v2 | `split_once("::")` not `split_once(':')` |
 | Paths | `Path::components()` — no full-path `to_string_lossy()` |
 
@@ -117,7 +118,8 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Component | Rule |
 |-----------|------|
 | Agent | `init_http_client` (`FINOPS_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
-| API | `GET /health` (liveness), `GET /ready` (Kafka ready — [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `POST /ingest` bearer ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `try_send` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md) |
+| API | `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `POST /ingest` compares `expected_bearer` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `try_send` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md) |
+| Agent metrics | `http://0.0.0.0:9091/metrics` — ring drops + future counters ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-api` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
@@ -140,6 +142,7 @@ make compose-down  # tear down stack
 # Host-only API dev (not with compose-up): make run-api
 # After API code changes in Docker: docker compose build finops-api && docker compose up -d finops-api
 curl -s http://127.0.0.1:3000/metrics | grep finops_api_
+curl -s http://127.0.0.1:9091/metrics | grep finops_agent_ring_drops   # agent (root)
 ```
 
 Phase 2 validation: [docs/phase2-validation.md](../../../docs/phase2-validation.md)  

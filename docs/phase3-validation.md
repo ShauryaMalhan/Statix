@@ -33,7 +33,8 @@ Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
 |------|------|
 | API liveness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health` → `200` |
 | API readiness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ready` → `200` after Kafka metadata load (may `503` for first seconds) |
-| Prometheus | `curl -s http://127.0.0.1:3000/metrics \| grep finops_api_` → lines present (404 = rebuild API image; space required: `grep finops_api_`) |
+| Prometheus (API) | `curl -s http://127.0.0.1:3000/metrics \| grep finops_api_` → lines present (404 = rebuild API image) |
+| Prometheus (agent) | With agent running: `curl -s http://127.0.0.1:9091/metrics \| grep finops_agent_ring_drops` → metric registered ([ADR 023](adr/023-phase5-hot-path-fixes.md)) |
 | API ingest | `curl ... -X POST http://127.0.0.1:3000/ingest` (no auth when `FINOPS_API_TOKEN` unset) → `200` |
 | Ingest auth | With `FINOPS_API_TOKEN` set on API: missing header → `401`; `curl -H 'Authorization: Bearer <token>' ...` → `200` ([ADR 019](adr/019-ingest-bearer-token-auth.md)) |
 | Kafka topic | Kafka UI `:8080` shows topic `finops-telemetry` with messages |

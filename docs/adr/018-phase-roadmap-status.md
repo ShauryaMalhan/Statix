@@ -10,8 +10,8 @@
 |-------|--------|---------|
 | 1–3 | **Done** | eBPF agent, batched telemetry, HTTP → Kafka → ClickHouse E2E |
 | 4 | **Done** | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| 5 | **Active** | Bearer auth + schema 2..3 + `/ready` + ring-drop counter shipped; TLS, prod ClickHouse/Kafka ops remain |
-| 6 | **Done** | Single attribution lock, `FxHashMap`, `Arc<WorkloadLabels>`, `Arc<PathBuf>`, sync retry drop-oldest, `Vec<u8>` Kafka queue |
+| 5 | **Active** | Auth, schema 2..3, `/ready`, ring drops + agent `:9091/metrics`, attribution/bearer hot-path fixes ([ADR 023](023-phase5-hot-path-fixes.md)); TLS + prod CH/Kafka ops remain |
+| 6 | **Done** | Single attribution lock, `FxHashMap`, `Arc` labels/paths, sync retry drop-oldest, `Vec<u8>` Kafka queue; P0 regressions fixed in [ADR 023](023-phase5-hot-path-fixes.md) |
 | 7–10 | **Planned** | Wire crate, K8s deploy, portability, extended observability |
 
 Engineering gate doc: [phase5-production-readiness.md](../phase5-production-readiness.md).

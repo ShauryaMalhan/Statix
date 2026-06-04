@@ -10,7 +10,7 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | **2** | Done | cgroup attribution, K8s labels (optional), `memory.current` sampling, `schema_version: 2` batches |
 | **3** | Done | HTTP ingest → Kafka → ClickHouse ([spec](docs/phase3-ingest-interface.md)) |
 | **4** | Done | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| **5** | **Active** | Bearer auth, schema 2..=3, `/ready`, ring-drop counter shipped; TLS, prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md)) |
+| **5** | **Active** | Auth, `/ready`, ring drops + agent `:9091/metrics`, hot-path fixes shipped; TLS, prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md), [ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
 | **6** | Done | L8 hot path: single attribution lock, `FxHashMap`, `Arc` labels/paths, `Vec<u8>` Kafka queue ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
 
 ## What’s in the repo

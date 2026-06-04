@@ -3,3 +3,5 @@ finops-ebpf/target/
 .git/
 .cursor/
 **/*.md
+**/*.rs.bk
+.env

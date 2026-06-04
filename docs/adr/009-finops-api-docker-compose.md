@@ -6,7 +6,8 @@
 
 ## Decision
 
-- **`Dockerfile.api`** — multi-stage build (`rust:1.85-slim` builder — metrics deps need ≥1.85; `debian:bookworm-slim` runtime); `KAFKA_BROKERS=kafka:29092` on `finops-net`.
+- **`Dockerfile.api`** — dev Compose image (`rust:1.85-slim` builder; `debian:bookworm-slim` runtime); `KAFKA_BROKERS=kafka:29092` on `finops-net`.
+- **`deploy/docker/Dockerfile.gateway`** — production gateway image (non-root `finops` user, `ca-certificates`, `ENTRYPOINT finops-api`); build: `docker build -f deploy/docker/Dockerfile.gateway .`
 - **`docker-compose.yml`** — `finops-api` service on port `3000`, `depends_on: kafka: service_healthy`, Kafka healthcheck via `kafka-broker-api-versions.sh`.
 - **Makefile** — `make compose-up` (default Phase 3 stack): stops **host-only** `finops-api` binaries (by `/proc/exe`, never `fuser -k 3000`), starts compose, verifies `http://127.0.0.1:3000/health`, recreates API container if unhealthy. `make compose-down` tears down stack.
 - **Agent on host** — `FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest` (avoid `localhost` → IPv6 `::1` refused). Do **not** run `make run-api` and compose API together on `:3000`.
@@ -21,5 +22,5 @@
 
 - **Positive:** Repeatable Phase 3 dev; API health-gated before agent ingest.
 - **Negative:** Image rebuild after API changes: `docker compose build finops-api && docker compose up -d finops-api` (stale images lack routes such as `/metrics` → 404).
-- **Negative:** eBPF agent remains host-only (root/CAP_BPF) — not containerized in this ADR.
-- **Code:** `Dockerfile.api`, `docker-compose.yml`, `Makefile`, `.dockerignore`
+- **Negative:** Dev agent remains host-only (`sudo make run`). Production agent image: [ADR 024](024-agent-production-container.md) (`deploy/docker/Dockerfile.agent`).
+- **Code:** `Dockerfile.api`, `deploy/docker/Dockerfile.gateway`, `docker-compose.yml`, `Makefile`, `.dockerignore`

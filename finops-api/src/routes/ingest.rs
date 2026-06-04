@@ -62,12 +62,11 @@ pub async fn handler(
 ) -> Response {
     let started = Instant::now();
 
-    if let Some(expected_token) = state.api_token.as_ref() {
-        let expected = format!("Bearer {expected_token}");
+    if let Some(expected_bearer) = state.expected_bearer.as_ref() {
         let authorized = headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
-            == Some(expected.as_str());
+            == Some(expected_bearer.as_str());
 
         if !authorized {
             log::warn!("Rejected /ingest: missing or invalid Authorization bearer token");

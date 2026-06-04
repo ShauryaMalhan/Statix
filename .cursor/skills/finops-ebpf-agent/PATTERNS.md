@@ -78,7 +78,7 @@ Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016]
 ## Pattern 6b — Attribution cache
 
 `AttributionCache`: one `Arc<RwLock<CacheState>>` with `FxHashMap` for paths, labels (`Arc<WorkloadLabels>`), and `pod_by_uid`.  
-`labels_for_cgroup`: single `.read()` — no quadruple-lock herd. K8s refresh in background task.  
+`labels_for_cgroup`: single `.read()` — no quadruple-lock herd; K8s/path misses cache under write lock; `DEFAULT_LABELS` `LazyLock` for unknown cgroups. `on_identity_event`: procfs read **before** `state.write()`. K8s refresh in background task.  
 `cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
 Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
@@ -111,7 +111,7 @@ limits   = requests × 1.25;
 ```markdown
 ## Test plan
 - [ ] `make build` && `make check`
-- [ ] Phase 3: `make compose-up` → `/health` + `/metrics` → agent ingest → `SELECT count() FROM finops_telemetry FINAL` > 0
+- [ ] Phase 3: `make compose-up` → `/health` + `/ready` + API `/metrics` + agent `:9091/metrics` → ingest → `SELECT count() FROM finops_telemetry FINAL` > 0
 - [ ] ADR + skills + docs updated in same PR
 ```
 
@@ -119,9 +119,9 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
 
-**Agent:** `OnceLock<reqwest::Client>` — HTTP timeout/pool idle env; `FINOPS_API_TOKEN` → `default_headers` `Authorization: Bearer` in `init_http_client` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `init_retry_worker` — `mpsc(60)`, backoff + jitter; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>`; `FINOPS_API_TOKEN` → `default_headers` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `PrometheusBuilder` → `:9091/metrics` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `init_retry_worker` — `mpsc(60)`; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `GET /health` (liveness); `GET /ready` (`kafka_ready` + open channel — [ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` (Prometheus); `FINOPS_API_TOKEN` → `401` without `Authorization: Bearer` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `schema_version` in `2..=3` gate (`400` otherwise — [ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`; shutdown drain 10s cap — [ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md).
+**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
 
 **Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `FINOPS_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
@@ -143,5 +143,21 @@ make compose-down
 - **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
 
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
+
+## Pattern 12 — Production container images (Target 1)
+
+```bash
+docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
+docker build -f deploy/docker/Dockerfile.agent -t finops-agent:latest .
+```
+
+Gateway: non-root `finops` user ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)). Agent: root/privileged, `FINOPS_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
+
+```bash
+kubectl apply -f deploy/k8s/gateway.yaml
+kubectl apply -f deploy/k8s/agent-daemonset.yaml
+```
+
+See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)).
 
 **API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
