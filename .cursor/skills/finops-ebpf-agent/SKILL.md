@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **T1–3 done** (deploy/CH/read API — [ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **5 active** (TLS + prod ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **8 partial** (K8s GA hardening shipped [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md) — [TODO](TODO.md))
+Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **T1–3 done** (deploy/CH/read API — [ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **5 partial** (TLS at ALB [ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md); prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **8 partial** (K8s GA hardening [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md)–[043](../../../docs/adr/043-kubernetes-alb-tls-termination.md) — [TODO](TODO.md))
 
 ## Mandatory workflow (every change)
 
@@ -49,7 +49,7 @@ Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase
 | `finops-gateway` | host | `Config::from_env()`; `GatewayError` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)); ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)) |
 | `finops-infra` | lib | `read_env_u64`/`read_env_usize`, clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md)) |
 
-**Infra:** `docker-compose.yml` (Kafka, ClickHouse, Grafana `:3001`, API), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
+**Infra:** `docker-compose.yml` (Kafka, ClickHouse, Grafana `:3001`, API), `deploy/docker/`, `deploy/k8s/` (incl. `gateway-ingress.yaml` ALB TLS), `deploy/clickhouse/01_init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -65,7 +65,7 @@ Ring record: **`FinopsEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
+| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)) |
 | `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + `clock_offset_ns` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
@@ -129,7 +129,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Component | Rule |
 |-----------|------|
 | Agent | `init_http_client` (`FINOPS_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
-| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
+| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` + `finops_api_ingest_lag_seconds` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://0.0.0.0:9091/metrics` — ring drops + future counters ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
@@ -174,7 +174,7 @@ Deferred: [TODO.md](TODO.md)
 
 **L8 playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — all fixes shipped (ADR index).
 
-**L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — Waves 1–4 / P0 GA shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)); open: V2-15–18 (P2).
+**L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

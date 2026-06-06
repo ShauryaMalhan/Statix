@@ -67,6 +67,8 @@ const MIN_SCHEMA_VERSION: u32 = 2;
 const MAX_SCHEMA_VERSION: u32 = 3;
 
 async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
+    let batch_window_end_ns = batch.window_end_ns;
+
     if batch.schema_version < MIN_SCHEMA_VERSION || batch.schema_version > MAX_SCHEMA_VERSION {
         log::warn!(
             "Rejected batch with unsupported schema_version={} (accepted {MIN_SCHEMA_VERSION}..={MAX_SCHEMA_VERSION})",
@@ -145,6 +147,13 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             }
         }
     }
+
+    let now_ns = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let lag_secs = now_ns.saturating_sub(batch_window_end_ns) as f64 / 1_000_000_000.0;
+    metrics::histogram!("finops_api_ingest_lag_seconds").record(lag_secs);
 
     StatusCode::OK.into_response()
 }

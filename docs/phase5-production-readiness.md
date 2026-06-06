@@ -12,7 +12,7 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 | Item | Why |
 |------|-----|
 | **Bearer auth on `POST /ingest`** | **Shipped:** set `FINOPS_API_TOKEN` on API and agent ([ADR 019](adr/019-ingest-bearer-token-auth.md)). |
-| **TLS on `POST /ingest`** | Terminate HTTPS at load balancer or sidecar (still required on untrusted networks). |
+| **TLS on `POST /ingest`** | **Shipped:** AWS ALB Ingress (`deploy/k8s/gateway-ingress.yaml`) — HTTPS :443, ACM cert ([ADR 043](adr/043-kubernetes-alb-tls-termination.md)). |
 | **BPF ring buffer overflow metric** | **Shipped:** `RING_DROPS` + scrape `http://<node>:9091/metrics` ([ADR 022](adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](adr/023-phase5-hot-path-fixes.md)). |
 | **Attribution / ingest hot path** | **Shipped:** procfs before write lock; label cache + `DEFAULT_LABELS`; `expected_bearer` precomputed ([ADR 023](adr/023-phase5-hot-path-fixes.md)). |
 | **Schema evolution** | **Shipped:** gateway accepts `schema_version` 2 or 3 ([ADR 020](adr/020-ingest-schema-version-window.md)). |
@@ -32,7 +32,7 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 |----------|------|
 | Gateway image | `deploy/docker/Dockerfile.gateway` |
 | Agent image | `deploy/docker/Dockerfile.agent` |
-| K8s | `deploy/k8s/gateway.yaml`, `agent-daemonset.yaml` |
+| K8s | `deploy/k8s/gateway.yaml`, `gateway-ingress.yaml`, `agent-daemonset.yaml` |
 | ClickHouse | `deploy/clickhouse/01_init.sql` — `finops.workload_metrics FINAL` |
 
 ## Local dev

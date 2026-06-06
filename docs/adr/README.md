@@ -47,3 +47,5 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [039](039-phase55-v2-wave2-l8-fixes.md) | Phase 5.5 V2 Wave 2 — procfs dedup, FxHasher, key hoist, K8s merge lock | Accepted |
 | [040](040-phase55-v2-wave3-l8-fixes.md) | Phase 5.5 V2 Wave 3 — Kafka produce retry, agent preStop, gateway PDB | Accepted |
 | [041](041-phase55-v2-wave4-l8-fixes.md) | Phase 5.5 V2 Wave 4 — K8s watch, digest pins, cross-AZ spread | Accepted |
+| [042](042-phase55-v2-p2-sprint-l8-fixes.md) | Phase 5.5 V2 P2-SPRINT — jitter recovery, ingest lag, CH merge SQL | Accepted |
+| [043](043-kubernetes-alb-tls-termination.md) | AWS ALB Ingress TLS termination for `/ingest` | Accepted |

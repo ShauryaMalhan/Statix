@@ -48,9 +48,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
-## Phase 5 — Production-critical blockers (TLS remains)
+## Phase 5 — Production-critical blockers (prod ops tuning remains)
 
-> P0 regressions shipped ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)). Open: TLS, prod ops tuning.
+> P0 regressions shipped ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)). TLS shipped at ALB ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md)).
 
 ### P0 — Regressions & critical fixes ✅
 
@@ -61,7 +61,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ### P0 — Data integrity & security
 
 - [x] **Bearer auth:** `expected_bearer` + agent `FINOPS_API_TOKEN` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [ ] **TLS on `POST /ingest`:** Terminate HTTPS at LB/sidecar or gateway
+- [x] **TLS on `POST /ingest`:** AWS ALB Ingress HTTPS :443 → `finops-gateway-svc:3000` ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md))
 - [x] **BPF ring buffer overflow counter:** `RING_DROPS` + `finops_agent_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md))
 - [x] **Schema evolution:** `schema_version` 2..=3 ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md))
 
@@ -119,10 +119,10 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P2-SPRINT — Thundering Herd & Observability
 
-- [ ] **V2-15: Agent-side jittered backoff recovery** — Add `rand(0, window_secs)` delay between retry flushes after outage recovery (`finops-agent/src/output.rs`)
-- [ ] **V2-16: ClickHouse merge pressure monitoring** — `system.merges`, `system.parts` per partition, background merge queue depth
+- [x] **V2-15: Agent-side jittered backoff recovery** — 0–5s jitter after recovery when `backoff_secs > initial_backoff` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **V2-16: ClickHouse merge pressure monitoring** — `deploy/grafana/clickhouse_monitoring.sql` parts + merges queries ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **V2-17: Kafka produce error rate metric** — `finops_api_kafka_produce_errors_total` + `finops_api_kafka_produce_dropped_total` (shipped with V2-11, [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- [ ] **V2-18: End-to-end latency histogram** — Agent→Gateway→Kafka→ClickHouse pipeline latency via `batch_id` correlation
+- [x] **V2-18: End-to-end latency histogram** — `finops_api_ingest_lag_seconds` from `window_end_ns` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 
 ---
 
@@ -195,9 +195,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Grafana in Compose:** `:3001` + `grafana-clickhouse-datasource` ([ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md))
 - [x] **Agent `/metrics` baseline:** `:9091` + ring drops ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (→ V2-17/V2-18)
+- [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
-- [ ] **ClickHouse merge pressure monitoring** (→ moved to V2-16)
+- [x] **ClickHouse merge pressure monitoring** — V2-16 ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [ ] **ClickHouse skip index / granularity tuning:** Add `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` for cgroup-filtered queries
 - [ ] **ClickHouse Kafka engine lag monitoring:** Alert on `system.kafka_consumers` lag exceeding threshold
 
@@ -206,8 +206,6 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ## Execution Summary (L8 V2 recommended order)
 
 ```
-P0-BLOCKS-GA (GA):      V2-1…8 shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)); open: TLS
-P2-SPRINT:              V2-15 (jittered recovery), V2-16 (CH merge mon), V2-18 (e2e latency)
-                         — V2-17 shipped with V2-11 ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+L8 V2 (GA):             V2-1…18 shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)); TLS at ALB ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md))
 MONTH 2 (P3):            arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
 ```

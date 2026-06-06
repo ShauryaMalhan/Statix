@@ -15,12 +15,16 @@ kubectl apply -f deploy/k8s/gateway.yaml
 
 # 3) Agent DaemonSet (+ ServiceAccount + RBAC for in-cluster pod labels)
 kubectl apply -f deploy/k8s/agent-daemonset.yaml
+
+# 4) Gateway Ingress (AWS ALB TLS termination — requires AWS LB Controller + ACM cert)
+#    Replace certificate-arn in gateway-ingress.yaml before apply.
+kubectl apply -f deploy/k8s/gateway-ingress.yaml
 ```
 
 ## Verify
 
 ```bash
-kubectl -n finops-system get deploy,ds,svc,pods
+kubectl -n finops-system get deploy,ds,svc,ingress,pods
 kubectl -n finops-system rollout status deployment/finops-gateway
 curl -s "http://$(kubectl -n finops-system get svc finops-gateway-svc -o jsonpath='{.spec.clusterIP}'):3000/health"
 ```
@@ -43,3 +47,4 @@ Build and push to your registry, then update the `@sha256:...` digests in manife
 - **Cross-AZ spread:** gateway `topologySpreadConstraints` on `topology.kubernetes.io/zone` ([ADR 041](../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)).
 - **Digest pins:** images use `@sha256:<64-hex>` — template from CI/CD ([ADR 041](../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)).
 - **Agent K8s labels:** `watch_k8s_pods` streams node-scoped pod events (no 30s list poll) ([ADR 041](../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)).
+- **TLS / Ingress:** `gateway-ingress.yaml` — ALB terminates HTTPS on `ingest.your-startup.com/ingest`; gateway pod stays HTTP :3000 ([ADR 043](../../docs/adr/043-kubernetes-alb-tls-termination.md)).

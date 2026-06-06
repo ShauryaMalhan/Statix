@@ -112,6 +112,10 @@ pub fn init_retry_worker(url: String) {
             loop {
                 match post_ingest(&url, body.clone()).await {
                     PostOutcome::Success => {
+                        if backoff_secs > initial_backoff {
+                            let jitter = rand::random::<f64>() * 5.0;
+                            tokio::time::sleep(Duration::from_secs_f64(jitter)).await;
+                        }
                         backoff_secs = initial_backoff;
                         break;
                     }
