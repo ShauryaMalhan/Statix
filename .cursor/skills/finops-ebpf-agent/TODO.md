@@ -2,13 +2,13 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 5** — P0 hot-path fixes, TLS, prod Kafka/CH tuning. Phase 7: gateway `Config` shipped ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
+**Current focus:** **Phase 5** — TLS, prod Kafka/CH tuning. Phase 7 **done** ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md)–[036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)).
 
 **Completed:** Phases 1–4, **6** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)). **Targets 1–3** (packaging, CH init, API read-path). Roadmap: [ADR 018](../../../docs/adr/018-phase-roadmap-status.md).
 
-**Validate:** [phase3-validation.md](../../../docs/phase3-validation.md). After API route changes: `docker compose build finops-api && docker compose up -d finops-api`. After CH schema change: `docker compose down -v && make compose-up`. Billing table: `finops.workload_metrics FINAL`.
+**Validate:** [phase3-validation.md](../../../docs/phase3-validation.md). After gateway route changes: `docker compose build finops-gateway && docker compose up -d finops-gateway`. After CH schema change: `docker compose down -v && make compose-up`. Billing table: `finops.workload_metrics FINAL`.
 
-**Build tip:** `cargo check -p finops-wire -p finops-agent -p finops-api`; full stack `make build`; prod images `deploy/docker/README.md`.
+**Build tip:** `cargo check --workspace`; full stack `make build`; prod images `deploy/docker/README.md`.
 
 ---
 
@@ -75,29 +75,21 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
-## Phase 5.5 — L8 Audit: P0 hot-path fixes (NEW — ship before prod)
+## Phase 5.5 — L8 Audit fixes
 
-> From L8 audit. Every item here eliminates a measurable production bottleneck.
-> Estimated effort: 1–2 days for all P0-SHIP items.
+> Playbook: [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md). Shipped fixes are removed from the playbook; historical record in ADRs.
 
-### P0-SHIP — Immediate (each is a 1–10 line change)
+### P0-SHIP — Shipped ✅
 
-- [ ] **Consume `BatchPayload` in `emit_batch`:** Change `&BatchPayload` → `BatchPayload`; move instead of clone. Eliminates ~500 heap allocations per flush. (`output.rs:223`)
-- [ ] **Cache `FINOPS_INGEST_URL` with `OnceLock`:** Replace `std::env::var` call on every flush with static lookup. (`output.rs:242`)
-- [ ] **Thread-local RNG for `batch_id` UUID:** Replace `Uuid::new_v4()` (getrandom syscall) with `SmallRng`-seeded UUID generation. (`aggregator.rs:195`)
-- [ ] **`&'static str` for `agent_version`:** Replace `env!("CARGO_PKG_VERSION").to_string()` with `static AGENT_VERSION: &str = env!("CARGO_PKG_VERSION")`. (`aggregator.rs:196`)
-- [ ] **Batch `spawn_blocking` in memory sampler:** Replace per-cgroup `spawn_blocking` with single batched call. Prevents Tokio blocking thread pool saturation at 500+ cgroups. (`memory_sampler.rs:31-33`)
-- [ ] **Ring buffer drain budget:** Add `DRAIN_BUDGET = 256` to `while let Some(item) = rb.next()` loop. Prevents Tokio reactor starvation during exec storms. (`main.rs:89-101`)
-- [ ] **Use `DEFAULT_LABELS` in `WorkloadStats::default`:** Replace `Arc::new(WorkloadLabels::default())` with `Arc::clone(&DEFAULT_LABELS)`. (`aggregator.rs:34`)
+- [x] **Agent hot-path P0 fixes** — [ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md) (OnceLock env, thread-local RNG, static `agent_version`, `DEFAULT_LABELS`, move `BatchPayload`, batched `spawn_blocking`, ring drain budget)
 
-### P1-WEEK — Ship within 1 week
+### P1-WEEK — Shipped ✅
 
-- [ ] **Fix `post_ingest` body clone:** Use `Bytes` or `Arc<str>` instead of `body.to_string()` on every HTTP retry attempt. (`output.rs:168`)
-- [ ] **Reuse `by_partition` HashMap in `produce_grouped_batch`:** Hoist into `run_producer_loop`, `.clear()` between batches. (`kafka.rs:192`)
-- [ ] **Reuse `kube::Client` across K8s refresh polls:** Create once, store in `AttributionCache` or static. (`attribution.rs:300`)
-- [ ] **Kafka partition metadata periodic refresh:** Re-discover partition topology every 5 minutes or on produce error. (`kafka.rs:257-258`)
-- [ ] **Remove `FINAL` from operational read queries:** Use `GROUP BY` with `max`/`sum` for summary endpoint; reserve `FINAL` for billing exports only. (`query.rs:15`)
-- [ ] **Batch `Utc::now()` per produce cycle:** Compute timestamp once per batch, not per record. (`kafka.rs:143`)
+- [x] **Gateway + agent P1 fixes** — [ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md) (`Bytes` retry body, reuse `by_partition` + batch `Utc::now`, cached `kube::Client`, Kafka metadata refresh, `argMax` summary query)
+
+### P2-SPRINT — Shipped ✅
+
+- [x] **Ingest zero-copy hot path** — [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md) (`Arc<[u8]>` node key, `FlatRowRef` serialization)
 
 ---
 
@@ -113,14 +105,14 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **`WorkloadLabels` → `Arc<WorkloadLabels>`**
 - [x] **Precompute bearer:** `expected_bearer` at startup ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [ ] ~~**Split `WorkloadStats` hot/cold**~~ (CANCELLED — struct is 32 bytes, fits in half a cache line; splitting adds pointer-chasing overhead)
-- [ ] ~~**Dead `mono_to_wall` in `on_finops_event`**~~ (CANCELLED — `saturating_add` is a single instruction; the trace log is free when compiled out)
-- [ ] ~~**Match guard → const pattern in aggregator**~~ (CANCELLED — compiler optimizes identically)
+- [x] ~~**Split `WorkloadStats` hot/cold**~~ (CANCELLED — struct is 32 bytes, fits in half a cache line; splitting adds pointer-chasing overhead)
+- [x] ~~**Dead `mono_to_wall` in `on_finops_event`**~~ (CANCELLED — `saturating_add` is a single instruction; the trace log is free when compiled out)
+- [x] ~~**Match guard → const pattern in aggregator**~~ (CANCELLED — compiler optimizes identically)
 
 ### Gateway hot path
 
 - [x] **Kafka queue `Vec<u8>`** ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
-- [ ] **Refactor ingest handler to `Arc<[u8]>` node key:** Eliminate per-row `node_vec.clone()` and `FlatRow::from_ingest` string clones. Use `Arc<[u8]>` for node key (1 alloc per batch, not per row). (`ingest.rs:61-74`)
+- [x] **Refactor ingest handler to `Arc<[u8]>` node key** — [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md)
 
 ### Memory sampler ✅
 
@@ -131,14 +123,14 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ## Phase 7 — Architecture & developer experience
 
 - [x] **`finops-wire` crate** — `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md))
-- [x] **Centralized `Config` struct** — `finops-api/src/config.rs` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md))
+- [x] **Centralized `Config` struct** — `finops-gateway/src/config.rs` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md))
 - [x] **Rename agent crate:** `finops-user` → `finops-agent` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md))
-- [ ] **Rename gateway crate:** `finops-api` → `finops-gateway`
-- [ ] **Remove deprecated `ProcessEvent`:** Dead code in `finops-common` (Phase 1 alias)
-- [ ] **`thiserror` for gateway errors**
-- [ ] **Typed errors in `attribution.rs`**
-- [ ] **Extract `finops-infra` crate:** Deduplicate `read_env_u64`/`read_env_usize` (currently in `output.rs` and `kafka.rs`), shared metrics init, clock utilities
-- [ ] **Simplify `labels_for_cgroup` read path:** Remove write-back from read lock; move K8s label merge into `refresh_k8s_pods` (L8 audit FLAW 9)
+- [x] **Rename gateway crate:** `finops-api` → `finops-gateway` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
+- [x] **Remove deprecated `ProcessEvent`:** Dead code in `finops-common` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
+- [x] **`thiserror` for gateway errors** — `GatewayError` in `finops-gateway/src/error.rs` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
+- [x] **Typed errors in `attribution.rs`** — `AttributionError`; `read_memory_current_at` in attribution module ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
+- [x] **Extract `finops-infra` crate:** `read_env_u64`/`read_env_usize`, clock utilities ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
+- [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `refresh_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 
 ---
 
@@ -182,8 +174,8 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ## Execution Summary (L8 recommended order)
 
 ```
-WEEK 1 (P0-SHIP):  Phase 5.5 P0 items (7 items, all 1-10 line changes)
-WEEK 2 (P1-WEEK):  Phase 5.5 P1 items (6 items, moderate effort)
+WEEK 1 (P0-SHIP):  Phase 5.5 P0 — shipped ([ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md))
+WEEK 2 (P1-WEEK):  Phase 5.5 P1 — shipped ([ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md))
 WEEK 3-4 (P2):     TLS, eBPF verifier CI, ingest handler refactor
 MONTH 2 (P3):      Workspace restructure, cross-AZ audit, CH tuning
 MONTH 3+ (P4):     K8s informer, arm64, advanced observability

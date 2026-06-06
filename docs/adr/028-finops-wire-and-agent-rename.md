@@ -11,9 +11,9 @@
    - `IngestBatch` — `POST /ingest` JSON envelope
    - `WorkloadRow` — per-workload rollup in a batch
    - `FlatRow` — denormalized Kafka / ClickHouse `JSONEachRow` row
-3. **Dependencies:** `finops-agent` and `finops-api` depend on `finops-wire` via path; ingest handler uses `finops_wire::{IngestBatch, FlatRow}`; agent `emit_batch` serializes `IngestBatch`.
+3. **Dependencies:** `finops-agent` and `finops-gateway` depend on `finops-wire` via path; ingest handler uses `finops_wire::{IngestBatch, FlatRow}`; agent `emit_batch` serializes `IngestBatch`.
 4. **Makefile:** `build-user` → `build-agent`; release binary `target/release/finops-agent`.
-5. **Deferred:** `finops-api` → `finops-gateway` rename (separate change).
+5. **Deferred (shipped):** `finops-api` → `finops-gateway` in [ADR 035](035-phase7-workspace-restructure.md).
 
 ## Rationale
 
@@ -30,5 +30,5 @@
 ## References
 
 - `finops-wire/src/lib.rs`
-- `finops-api/src/routes/ingest.rs`
+- `finops-gateway/src/routes/ingest.rs`
 - `finops-agent/src/output.rs`, `aggregator.rs`

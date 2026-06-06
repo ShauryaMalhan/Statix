@@ -41,7 +41,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 - Fire-and-forget `tokio::spawn` per batch POST (loses data on failure — use retry worker)
 - `reqwest::Client` without request timeout (retry worker stuck on black-hole TCP)
 - `await` Kubernetes API refresh inside the main `select!` loop (use `tokio::spawn` + `AttributionCache::clone`)
-- `fuser -k 3000` or `pkill -f` paths containing `finops-api` while Docker maps `:3000` (kills port-forward or the Make shell)
+- `fuser -k 3000` or `pkill -f` paths containing `finops-gateway` while Docker maps `:3000` (kills port-forward or the Make shell)
 - `make run-api` and `make compose-up` both binding `:3000` (use compose API + host agent only)
 
 ## Change workflow (required)

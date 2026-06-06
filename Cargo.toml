@@ -6,7 +6,8 @@
 members = [
     "finops-common",
     "finops-wire",
+    "finops-infra",
     "finops-agent",
-    "finops-api",
+    "finops-gateway",
 ]
 resolver = "2"

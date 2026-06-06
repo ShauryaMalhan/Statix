@@ -14,7 +14,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [006](006-shared-http-client-for-ingest.md) | Shared `reqwest::Client` + ingest retry worker | Accepted |
 | [007](007-clickhouse-mergetree-tuning.md) | Storage layout: partitions, sort key, TTL (see 011) | Accepted |
 | [008](008-clickhouse-kafka-engine-resilience.md) | Kafka engine: skip broken messages, `kafka_num_consumers` | Accepted |
-| [009](009-finops-api-docker-compose.md) | `finops-api` in Docker Compose (`Dockerfile.api`) | Accepted |
+| [009](009-finops-api-docker-compose.md) | `finops-gateway` in Docker Compose (`Dockerfile.gateway`) | Accepted |
 | [010](010-kafka-partition-key-by-node.md) | Kafka partition routing by `node` message key | Accepted |
 | [011](011-replacingmergetree-dedupe-identity.md) | ReplacingMergeTree; ORDER BY without `namespace`; `FINAL` reads | Accepted |
 | [012](012-finops-api-prometheus-metrics.md) | `GET /metrics`; ingest/Kafka Prometheus instrumentation | Accepted |
@@ -35,5 +35,10 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [027](027-api-read-path-clickhouse.md) | `GET /api/v1/workloads/summary` → ClickHouse | Accepted |
 | [028](028-finops-wire-and-agent-rename.md) | `finops-wire` + `finops-user` → `finops-agent` | Accepted |
 | [029](029-ready-channel-depth-gate.md) | `/ready` fails when ingest mpsc &gt; 80% full | Accepted |
-| [030](030-finops-api-config-struct.md) | `finops-api` `Config::from_env()` | Accepted |
+| [030](030-finops-api-config-struct.md) | `finops-gateway` `Config::from_env()` | Accepted |
 | [031](031-grafana-clickhouse-compose.md) | Grafana + ClickHouse plugin on `:3001` (dev) | Accepted |
+| [032](032-phase55-l8-p0-hot-path-fixes.md) | Phase 5.5 L8 P0-SHIP agent hot-path (F1–F5, F7, F8) | Accepted |
+| [033](033-phase55-l8-p1-week-gateway-fixes.md) | Phase 5.5 L8 P1-WEEK gateway + agent fixes | Accepted |
+| [034](034-phase55-l8-p2-ingest-zero-copy.md) | Phase 5.5 L8 P2 ingest `Arc<[u8]>` + `FlatRowRef` | Accepted |
+| [035](035-phase7-workspace-restructure.md) | `finops-gateway` rename + `finops-infra`; drop `ProcessEvent` | Accepted |
+| [036](036-phase7-typed-errors-labels-read-path.md) | `GatewayError` + `AttributionError`; read-only `labels_for_cgroup` | Accepted |

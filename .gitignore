@@ -3,7 +3,7 @@
 # ============================================================
 
 # ── Rust build artifacts ─────────────────────────────────────
-# The workspace target directory (finops-common, finops-user, finops-api).
+# The workspace target directory (finops-common, finops-agent, finops-gateway).
 # Includes bundled eBPF ELFs from `make build-ebpf` → target/bpf/
 /target/
 

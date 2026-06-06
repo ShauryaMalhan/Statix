@@ -5,13 +5,29 @@
 //! - Early flush at `max_keys`: never drop telemetry (FinOps correctness).
 //! - `clock_offset_ns`: maps BPF / monotonic timestamps to wall-clock for window boundaries.
 
-use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
-use rustc_hash::FxHashMap;
+use std::cell::RefCell;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use finops_common::{FinopsEvent, EVENT_KIND_WORKLOAD_IDENTITY};
+use finops_infra::clock::{calibrate_clock_offset_ns, mono_now_ns};
+use rand::rngs::SmallRng;
+use rand::{RngCore, SeedableRng};
+use rustc_hash::FxHashMap;
 
-use crate::attribution::{AttributionCache, WorkloadLabels};
+use crate::attribution::{AttributionCache, WorkloadLabels, DEFAULT_LABELS};
 use finops_wire::WorkloadRow;
+
+thread_local! {
+    static TL_RNG: RefCell<SmallRng> = RefCell::new(SmallRng::from_entropy());
+}
+
+fn fast_batch_id() -> String {
+    let mut bytes = [0u8; 16];
+    TL_RNG.with(|rng| rng.borrow_mut().fill_bytes(&mut bytes));
+    // UUID v4 variant bits (non-crypto correlation id — no getrandom on hot path).
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
+}
 
 const DEFAULT_MAX_KEYS: usize = 4096;
 
@@ -31,7 +47,7 @@ impl Default for WorkloadStats {
             sample_count: 0,
             memory_bytes_max: 0,
             memory_bytes_last: 0,
-            labels: Arc::new(WorkloadLabels::default()),
+            labels: Arc::clone(&DEFAULT_LABELS),
         }
     }
 }
@@ -192,15 +208,14 @@ impl Aggregator {
 
         self.buffers[flush_idx].clear();
 
-        let batch_id = uuid::Uuid::new_v4().to_string();
-        let agent_version = env!("CARGO_PKG_VERSION").to_string();
+        let batch_id = fast_batch_id();
 
         Some(BatchPayload {
             window_start_ns,
             window_end_ns,
             node: node.to_string(),
             batch_id,
-            agent_version,
+            agent_version: env!("CARGO_PKG_VERSION"),
             workloads,
         })
     }
@@ -223,35 +238,6 @@ pub struct BatchPayload {
     pub window_end_ns: u64,
     pub node: String,
     pub batch_id: String,
-    pub agent_version: String,
+    pub agent_version: &'static str,
     pub workloads: Vec<WorkloadRow>,
-}
-
-/// Offset between wall clock and `CLOCK_MONOTONIC` at agent start (BPF `bpf_ktime_get_ns` domain).
-fn calibrate_clock_offset_ns() -> u64 {
-    let mono_now_ns = mono_now_ns();
-    let wall_now_ns = wall_unix_ns();
-    wall_now_ns.saturating_sub(mono_now_ns)
-}
-
-fn mono_now_ns() -> u64 {
-    let mut t = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    // SAFETY: `timespec` is valid; CLOCK_MONOTONIC is always available on Linux.
-    let rc = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
-    if rc != 0 {
-        return 0;
-    }
-    (t.tv_sec as u64)
-        .saturating_mul(1_000_000_000)
-        .saturating_add(t.tv_nsec as u64)
-}
-
-fn wall_unix_ns() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
 }

@@ -9,7 +9,7 @@
 - **`clickhouse` crate** (`0.13`) on `finops-api`; `AppState.ch_client` built at startup.
 - **Env:** `CLICKHOUSE_URL` (default `http://localhost:8123`); `CLICKHOUSE_USER` (default `default`); `CLICKHOUSE_PASSWORD` (default empty — Compose uses `finops_dev`).
 - **Route:** `GET /api/v1/workloads/summary?hours=<u64>` — optional lookback hours (default **24**).
-- **Query:** Aggregated read over `finops.workload_metrics FINAL` with `window_start_ns >= {cutoff_ns:UInt64}`; top 100 by `peak_memory`; server-side `.param("cutoff_ns", …)`.
+- **Query:** Aggregated read over `finops.workload_metrics` with `window_start_ns >= {cutoff_ns:UInt64}`; top 100 by `peak_memory`; server-side `.param("cutoff_ns", …)`. Originally used `FINAL`; operational path now uses `argMax` ([ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
 - **Handler:** `finops-api/src/routes/query.rs` — `WorkloadSummaryRow` derives `clickhouse::Row` + serde.
 
 Read path is **not** on the hot ingest path; no change to `POST /ingest` `try_send` contract ([ADR 005](005-non-blocking-ingest-pipeline.md)).

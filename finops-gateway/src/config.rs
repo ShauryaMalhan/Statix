@@ -5,7 +5,7 @@ const DEFAULT_API_PORT: u16 = 3000;
 const DEFAULT_CLICKHOUSE_URL: &str = "http://localhost:8123";
 const DEFAULT_CLICKHOUSE_USER: &str = "default";
 
-/// Strongly typed `finops-api` configuration loaded once at startup.
+/// Strongly typed `finops-gateway` configuration loaded once at startup.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub kafka_brokers: String,

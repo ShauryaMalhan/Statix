@@ -44,7 +44,7 @@ export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
 ```
 
-**Note:** Dev stack may omit `FINOPS_API_TOKEN` (auth disabled). Production must set the same token on `finops-api` and the agent.
+**Note:** Dev stack may omit `FINOPS_API_TOKEN` (auth disabled). Production must set the same token on `finops-gateway` and the agent.
 
 ## References
 

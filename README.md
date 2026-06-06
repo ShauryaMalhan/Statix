@@ -16,13 +16,14 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 
 ## What’s in the repo
 
-Four crates + infra:
+Five host crates + BPF + infra:
 
 - **`finops-ebpf`** — BPF program (nightly, `bpfel-unknown-none`)
 - **`finops-common`** — shared event layout (`FinopsEvent`, kinds, sizes)
 - **`finops-wire`** — shared ingest types (`IngestBatch`, `WorkloadRow`, `FlatRow`)
+- **`finops-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/035-phase7-workspace-restructure.md))
 - **`finops-agent`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
-- **`finops-api`** — `POST /ingest` → Kafka; `GET /api/v1/workloads/summary` → ClickHouse; `GET /health`, `GET /ready`, `GET /metrics`
+- **`finops-gateway`** — `POST /ingest` → Kafka; `GET /api/v1/workloads/summary` → ClickHouse; `GET /health`, `GET /ready`, `GET /metrics`
 - **`docker-compose.yml`** — Kafka KRaft, Kafka UI, ClickHouse with Kafka engine table
 
 Phase 2 behavior in short:
@@ -59,7 +60,7 @@ Binaries:
 
 - eBPF bundle: `target/bpf/finops-ebpf-{small,large,xlarge}` (auto-selected by CPU count; override `FINOPS_EBF_PATH`)
 - Agent: `target/release/finops-agent`
-- API: `target/release/finops-api`
+- Gateway: `target/release/finops-gateway`
 
 ## Run
 
@@ -79,7 +80,7 @@ sudo -E make run   # agent only (separate terminal)
 
 Use **`make run-api`** only for host-only API dev (not with `compose-up`). Tear down: `make compose-down`.
 
-Rebuild API image: `docker compose build finops-api && docker compose up -d finops-api`
+Rebuild gateway image: `docker compose build finops-gateway && docker compose up -d finops-gateway`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -93,12 +94,12 @@ Rebuild API image: `docker compose build finops-api && docker compose up -d fino
 | `FINOPS_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
 | `FINOPS_BACKOFF_INITIAL_SECS` | `1` | Agent retry base backoff (seconds) |
 | `FINOPS_BACKOFF_MAX_SECS` | `30` | Agent retry max backoff (seconds); 30% jitter on sleep |
-| `KAFKA_BROKERS` | `localhost:9092` | API → Kafka (`finops-api/src/config.rs`) |
-| `FINOPS_API_PORT` | `3000` | API listen port (invalid value exits at startup) |
-| `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` | API ingest mpsc depth (min 1024) |
-| `FINOPS_KAFKA_BATCH_MAX` | `1024` | API Kafka micro-batch size (64–16384) |
-| `FINOPS_KAFKA_LINGER_MS` | `50` | API partial-batch linger ms (1–1000) |
-| `CLICKHOUSE_URL` | `http://localhost:8123` | API read-path HTTP endpoint |
+| `KAFKA_BROKERS` | `localhost:9092` | Gateway → Kafka (`finops-gateway/src/config.rs`) |
+| `FINOPS_API_PORT` | `3000` | Gateway listen port (invalid value exits at startup) |
+| `FINOPS_KAFKA_CHANNEL_SIZE` | `8192` | Gateway ingest mpsc depth (min 1024) |
+| `FINOPS_KAFKA_BATCH_MAX` | `1024` | Gateway Kafka micro-batch size (64–16384) |
+| `FINOPS_KAFKA_LINGER_MS` | `50` | Gateway partial-batch linger ms (1–1000) |
+| `CLICKHOUSE_URL` | `http://localhost:8123` | Gateway read-path HTTP endpoint |
 | `CLICKHOUSE_USER` | `default` | ClickHouse user |
 | `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: `finops_dev`) |
 
@@ -129,11 +130,12 @@ finops-core/
 ├── finops-ebpf/
 ├── finops-common/
 ├── finops-wire/
+├── finops-infra/
 ├── finops-agent/
-├── finops-api/      # `src/config.rs` — gateway env
+├── finops-gateway/  # `src/config.rs` — gateway env
 ├── deploy/          # docker, k8s, clickhouse (prod)
 ├── docker-compose.yml
-├── Dockerfile.api   # dev Compose API only
+├── Dockerfile.gateway   # dev Compose gateway only
 ├── docs/
 ├── Makefile
 └── README.md

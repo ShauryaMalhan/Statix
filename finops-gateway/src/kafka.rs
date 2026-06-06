@@ -10,6 +10,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use finops_infra::env::{read_env_u64, read_env_usize};
+
+use crate::error::GatewayError;
 use rskafka::client::partition::{Compression, UnknownTopicHandling};
 use rskafka::client::ClientBuilder;
 use rskafka::record::Record;
@@ -24,33 +27,7 @@ const DEFAULT_BATCH_MAX: usize = 1024;
 const DEFAULT_LINGER_MS: u64 = 50;
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
-pub type KafkaQueueItem = (Vec<u8>, Vec<u8>);
-
-fn read_env_usize(name: &str, default: usize) -> usize {
-    match std::env::var(name) {
-        Ok(s) => match s.parse::<usize>() {
-            Ok(v) if v > 0 => v,
-            _ => {
-                log::warn!("Invalid {name}={s:?}; using default {default}");
-                default
-            }
-        },
-        Err(_) => default,
-    }
-}
-
-fn read_env_u64(name: &str, default: u64) -> u64 {
-    match std::env::var(name) {
-        Ok(s) => match s.parse::<u64>() {
-            Ok(v) if v > 0 => v,
-            _ => {
-                log::warn!("Invalid {name}={s:?}; using default {default}");
-                default
-            }
-        },
-        Err(_) => default,
-    }
-}
+pub type KafkaQueueItem = (Arc<[u8]>, Vec<u8>);
 
 /// Configured ingest `mpsc` capacity (`FINOPS_KAFKA_CHANNEL_SIZE`, default [`DEFAULT_CHANNEL_SIZE`], min [`MIN_CHANNEL_SIZE`]).
 pub fn ingest_channel_capacity() -> usize {
@@ -135,18 +112,21 @@ fn partition_id_for_node(node: &[u8], partition_ids: &[i32]) -> i32 {
     partition_ids[slot]
 }
 
-fn bytes_to_record(node: Vec<u8>, payload: Vec<u8>) -> Record {
+fn bytes_to_record(node: Arc<[u8]>, payload: Vec<u8>, ts: chrono::DateTime<Utc>) -> Record {
     Record {
-        key: Some(node),
+        key: Some(node.to_vec()),
         value: Some(payload),
         headers: std::collections::BTreeMap::new(),
-        timestamp: Utc::now(),
+        timestamp: ts,
     }
 }
 
 async fn load_partition_clients(
     client: &rskafka::client::Client,
-) -> anyhow::Result<(Vec<i32>, HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>)> {
+) -> Result<
+    (Vec<i32>, HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>),
+    GatewayError,
+> {
     let topics = client.list_topics().await?;
     let mut partition_ids: Vec<i32> = topics
         .into_iter()
@@ -163,7 +143,7 @@ async fn load_partition_clients(
     partition_ids.dedup();
 
     if partition_ids.is_empty() {
-        anyhow::bail!("topic {TOPIC} has no partitions in metadata");
+        return Err(GatewayError::NoTopicPartitions { topic: TOPIC });
     }
 
     let mut clients = HashMap::with_capacity(partition_ids.len());
@@ -179,24 +159,47 @@ async fn load_partition_clients(
     Ok((partition_ids, clients))
 }
 
+async fn refresh_partition_metadata(
+    client: &rskafka::client::Client,
+    partition_ids: &mut Vec<i32>,
+    clients: &mut HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
+) {
+    match load_partition_clients(client).await {
+        Ok((new_ids, new_clients)) => {
+            if *partition_ids != new_ids {
+                log::info!(
+                    "Kafka partition metadata refreshed: {partition_ids:?} -> {new_ids:?}"
+                );
+            }
+            *partition_ids = new_ids;
+            *clients = new_clients;
+        }
+        Err(e) => {
+            log::warn!("Kafka metadata refresh failed (using stale): {e}");
+        }
+    }
+}
+
 async fn produce_grouped_batch(
-    partition_ids: &[i32],
-    clients: &HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
+    client: &rskafka::client::Client,
+    partition_ids: &mut Vec<i32>,
+    clients: &mut HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
     batch: &mut Vec<KafkaQueueItem>,
     batch_max: usize,
+    by_partition: &mut HashMap<i32, Vec<KafkaQueueItem>>,
 ) {
     if batch.is_empty() {
         return;
     }
 
-    let mut by_partition: HashMap<i32, Vec<KafkaQueueItem>> = HashMap::new();
+    by_partition.clear();
     for (node, payload) in batch.drain(..) {
-        let pid = partition_id_for_node(node.as_slice(), partition_ids);
+        let pid = partition_id_for_node(&node, partition_ids);
         by_partition.entry(pid).or_default().push((node, payload));
     }
 
-    for (pid, mut rows) in by_partition {
-        let Some(client) = clients.get(&pid) else {
+    for (pid, mut rows) in by_partition.drain() {
+        let Some(partition_client) = clients.get(&pid).cloned() else {
             log::warn!("no partition client for partition {pid}; dropping {} rows", rows.len());
             continue;
         };
@@ -204,13 +207,18 @@ async fn produce_grouped_batch(
             let chunk_len = rows.len().min(batch_max);
             let chunk: Vec<_> = rows.drain(..chunk_len).collect();
             let n = chunk.len();
+            let batch_ts = Utc::now();
             let records: Vec<Record> = chunk
                 .into_iter()
-                .map(|(node, payload)| bytes_to_record(node, payload))
+                .map(|(node, payload)| bytes_to_record(node, payload, batch_ts))
                 .collect();
             let produce_started = Instant::now();
-            if let Err(e) = client.produce(records, Compression::default()).await {
+            if let Err(e) = partition_client
+                .produce(records, Compression::default())
+                .await
+            {
                 log::warn!("Kafka produce failed (partition={pid}, {n} records): {e}");
+                refresh_partition_metadata(client, partition_ids, clients).await;
             }
             metrics::histogram!("finops_api_kafka_produce_duration_seconds")
                 .record(produce_started.elapsed().as_secs_f64());
@@ -250,12 +258,12 @@ async fn run_producer_loop(
     brokers: String,
     mut rx: mpsc::Receiver<KafkaQueueItem>,
     is_ready: Arc<AtomicBool>,
-) -> anyhow::Result<()> {
+) -> Result<(), GatewayError> {
     let batch_max = read_kafka_batch_max();
     let linger = read_kafka_linger();
 
     let client = ClientBuilder::new(vec![brokers]).build().await?;
-    let (partition_ids, clients) = load_partition_clients(&client).await?;
+    let (mut partition_ids, mut clients) = load_partition_clients(&client).await?;
 
     is_ready.store(true, Ordering::Release);
     log::info!("Kafka producer connected and ready to accept traffic");
@@ -267,33 +275,65 @@ async fn run_producer_loop(
     );
 
     let mut batch = Vec::with_capacity(batch_max);
+    let mut by_partition: HashMap<i32, Vec<KafkaQueueItem>> =
+        HashMap::with_capacity(partition_ids.len());
+    let mut metadata_interval = tokio::time::interval(Duration::from_secs(300));
+    metadata_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
-        match rx.recv().await {
-            Some(first) => {
-                on_kafka_dequeued(1);
-                fill_batch(&mut rx, &mut batch, first, batch_max, linger).await;
-                produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max).await;
+        tokio::select! {
+            _ = metadata_interval.tick() => {
+                refresh_partition_metadata(&client, &mut partition_ids, &mut clients).await;
             }
-            None => {
-                // All senders dropped (graceful shutdown): drain channel into `batch` (no scratch vec).
-                while {
-                    let room = batch_max - batch.len();
-                    let n = rx.recv_many(&mut batch, room).await;
-                    if n > 0 {
-                        on_kafka_dequeued(n);
-                    }
-                    n > 0
-                } {
-                    if batch.len() >= batch_max {
-                        produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max)
-                            .await;
-                    }
+            item = rx.recv() => match item {
+                Some(first) => {
+                    on_kafka_dequeued(1);
+                    fill_batch(&mut rx, &mut batch, first, batch_max, linger).await;
+                    produce_grouped_batch(
+                        &client,
+                        &mut partition_ids,
+                        &mut clients,
+                        &mut batch,
+                        batch_max,
+                        &mut by_partition,
+                    )
+                    .await;
                 }
-                produce_grouped_batch(&partition_ids, &clients, &mut batch, batch_max).await;
-                log::info!("Kafka producer drained channel and flushed final batch");
-                break;
-            }
+                None => {
+                    // All senders dropped (graceful shutdown): drain channel into `batch`.
+                    while {
+                        let room = batch_max - batch.len();
+                        let n = rx.recv_many(&mut batch, room).await;
+                        if n > 0 {
+                            on_kafka_dequeued(n);
+                        }
+                        n > 0
+                    } {
+                        if batch.len() >= batch_max {
+                            produce_grouped_batch(
+                                &client,
+                                &mut partition_ids,
+                                &mut clients,
+                                &mut batch,
+                                batch_max,
+                                &mut by_partition,
+                            )
+                            .await;
+                        }
+                    }
+                    produce_grouped_batch(
+                        &client,
+                        &mut partition_ids,
+                        &mut clients,
+                        &mut batch,
+                        batch_max,
+                        &mut by_partition,
+                    )
+                    .await;
+                    log::info!("Kafka producer drained channel and flushed final batch");
+                    break;
+                }
+            },
         }
     }
 

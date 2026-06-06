@@ -1,8 +1,8 @@
-# FinOps API Gateway (finops-api) — production multi-stage image.
+# FinOps gateway (finops-gateway) — production multi-stage image.
 # Build from repo root (finops-core):
 #   docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
 
-# Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86 (see Dockerfile.api).
+# Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86 (see Dockerfile.gateway).
 FROM rust:1.86-bookworm AS builder
 
 WORKDIR /usr/src/finops
@@ -13,7 +13,7 @@ RUN apt-get update \
 
 COPY . .
 
-RUN cargo build --release -p finops-api
+RUN cargo build --release -p finops-gateway
 
 FROM debian:bookworm-slim
 
@@ -27,11 +27,11 @@ RUN apt-get update \
 
 USER finops
 
-COPY --from=builder /usr/src/finops/target/release/finops-api /usr/local/bin/finops-api
+COPY --from=builder /usr/src/finops/target/release/finops-gateway /usr/local/bin/finops-gateway
 
 ENV FINOPS_API_PORT=3000
 ENV RUST_LOG=info
 
 EXPOSE 3000
 
-ENTRYPOINT ["finops-api"]
+ENTRYPOINT ["finops-gateway"]

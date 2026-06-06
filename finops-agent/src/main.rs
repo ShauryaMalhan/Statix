@@ -52,11 +52,26 @@ async fn main() -> anyhow::Result<()> {
 
     let cache_for_k8s = cache.clone();
     tokio::spawn(async move {
+        let k8s_client = if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
+            match kube::Client::try_default().await {
+                Ok(client) => Some(client),
+                Err(e) => {
+                    log::warn!("K8s client init failed; pod refresh disabled: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let mut k8s_interval = time::interval(Duration::from_secs(30));
         k8s_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
         loop {
             k8s_interval.tick().await;
-            if let Err(e) = attribution::refresh_k8s_pods(&cache_for_k8s).await {
+            let Some(ref client) = k8s_client else {
+                continue;
+            };
+            if let Err(e) = attribution::refresh_k8s_pods(&cache_for_k8s, client).await {
                 log::debug!("K8s refresh skipped or failed: {e}");
             }
         }
@@ -78,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     for batch in attribution::bootstrap_existing_cgroups(&cache, &mut agg, &node).await {
-        output::emit_batch(&batch);
+        output::emit_batch(batch);
     }
 
     loop {
@@ -86,7 +101,10 @@ async fn main() -> anyhow::Result<()> {
             guard_result = async_fd.readable_mut() => {
                 let mut guard = guard_result?;
                 let rb = guard.get_inner_mut();
-                while let Some(item) = rb.next() {
+                let mut drained = 0usize;
+                const DRAIN_BUDGET: usize = 256;
+                while drained < DRAIN_BUDGET {
+                    let Some(item) = rb.next() else { break };
                     if item.len() < size_of::<FinopsEvent>() {
                         log::warn!("Undersized event ({} bytes), skipping", item.len());
                         continue;
@@ -97,15 +115,16 @@ async fn main() -> anyhow::Result<()> {
                         output::emit_raw(event);
                     }
                     if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
-                        output::emit_batch(&batch);
+                        output::emit_batch(batch);
                     }
+                    drained += 1;
                 }
                 guard.clear_ready();
             }
 
             _ = flush_interval.tick() => {
                 if let Some(batch) = agg.flush(&node, &cache) {
-                    output::emit_batch(&batch);
+                    output::emit_batch(batch);
                 }
             }
 
@@ -113,14 +132,14 @@ async fn main() -> anyhow::Result<()> {
                 for batch in
                     memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node).await
                 {
-                    output::emit_batch(&batch);
+                    output::emit_batch(batch);
                 }
             }
 
             _ = signal::ctrl_c() => {
                 log::info!("Ctrl+C — flushing partial window");
                 if let Some(batch) = agg.flush(&node, &cache) {
-                    output::emit_batch(&batch);
+                    output::emit_batch(batch);
                 }
                 println!(r#"{{"status":"shutdown"}}"#);
                 break;

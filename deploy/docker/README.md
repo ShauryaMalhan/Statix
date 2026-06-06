@@ -2,7 +2,7 @@
 
 Build all commands from **repo root** (`finops-core`).
 
-## API gateway (`finops-api`)
+## API gateway (`finops-gateway`)
 
 `Dockerfile.gateway` — non-root runtime, `ca-certificates` for Kafka TLS.
 
@@ -29,6 +29,6 @@ docker run --rm --privileged \
 - BPF ELFs: `/app/bpf/finops-ebpf-{small,large,xlarge}` (`FINOPS_BPF_DIR=/app/bpf`).
 - Metrics: `http://<pod>:9091/metrics`.
 
-Dev Compose uses [`Dockerfile.api`](../../Dockerfile.api); agent on host: `sudo -E make run`.
+Dev Compose uses [`Dockerfile.gateway`](../../Dockerfile.gateway); agent on host: `sudo -E make run`.
 
 Kubernetes: [../k8s/README.md](../k8s/README.md).

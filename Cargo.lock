@@ -557,8 +557,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aya",
+ "bytes",
  "env_logger",
  "finops-common",
+ "finops-infra",
  "finops-wire",
  "k8s-openapi",
  "kube",
@@ -573,28 +575,10 @@ dependencies = [
  "rustc-hash 1.1.0",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
  "walkdir",
-]
-
-[[package]]
-name = "finops-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "chrono",
- "clickhouse",
- "env_logger",
- "finops-wire",
- "log",
- "metrics 0.24.6",
- "metrics-exporter-prometheus 0.17.2",
- "rskafka",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -602,6 +586,34 @@ name = "finops-common"
 version = "0.1.0"
 dependencies = [
  "aya",
+]
+
+[[package]]
+name = "finops-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "clickhouse",
+ "env_logger",
+ "finops-infra",
+ "finops-wire",
+ "log",
+ "metrics 0.24.6",
+ "metrics-exporter-prometheus 0.17.2",
+ "rskafka",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "finops-infra"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
 ]
 
 [[package]]

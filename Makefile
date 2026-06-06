@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-agent build-user build-api build run run-api stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
+.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -57,17 +57,20 @@ build-agent:
 	cd $(WORKSPACE_ROOT) && cargo build -p finops-agent --release
 	@echo "==> Agent build complete."
 
-build-api:
-	@echo "==> [3/3] Compiling finops-api (ingest)..."
-	cd $(WORKSPACE_ROOT) && cargo build -p finops-api --release
-	@echo "==> API build complete."
+build-gateway:
+	@echo "==> [3/3] Compiling finops-gateway (ingest)..."
+	cd $(WORKSPACE_ROOT) && cargo build -p finops-gateway --release
+	@echo "==> Gateway build complete."
 
-build: build-ebpf build-agent build-api
+# Back-compat alias.
+build-api: build-gateway
+
+build: build-ebpf build-agent build-gateway
 	@echo ""
 	@echo "Build complete."
 	@echo "  eBPF bytecode : $(EBPF_BIN)"
 	@echo "  Agent binary  : $(WORKSPACE_ROOT)/target/release/finops-agent"
-	@echo "  API binary    : $(WORKSPACE_ROOT)/target/release/finops-api"
+	@echo "  Gateway binary: $(WORKSPACE_ROOT)/target/release/finops-gateway"
 	@echo ""
 	@echo "Phase 2: make run  (stdout only)"
 	@echo "Phase 5 dev: make compose-up  then  FINOPS_INGEST_URL=$(FINOPS_INGEST_URL) sudo -E make run"
@@ -82,33 +85,37 @@ run: build
 	RUST_LOG=info FINOPS_BPF_DIR=$(BPF_BUNDLE_DIR) \
 		$(WORKSPACE_ROOT)/target/release/finops-agent
 
-run-api: build-api
-	@if $(COMPOSE) ps finops-api 2>/dev/null | grep -q '3000->3000'; then \
-		echo "ERROR: Docker finops-api is already on :3000."; \
-		echo "  Use the stack: make compose-up  (skip make run-api)"; \
+run-gateway: build-gateway
+	@if $(COMPOSE) ps finops-gateway 2>/dev/null | grep -q '3000->3000'; then \
+		echo "ERROR: Docker finops-gateway is already on :3000."; \
+		echo "  Use the stack: make compose-up  (skip make run-gateway)"; \
 		echo "  Or tear down first: make compose-down"; \
 		exit 1; \
 	fi
 	@if ss -tlnp 2>/dev/null | grep -q ':3000 '; then \
-		echo "ERROR: port 3000 is in use. Run: make stop-api"; \
+		echo "ERROR: port 3000 is in use. Run: make stop-gateway"; \
 		exit 1; \
 	fi
-	@echo "==> Starting finops-api on host (KAFKA_BROKERS=localhost:9092)..."
+	@echo "==> Starting finops-gateway on host (KAFKA_BROKERS=localhost:9092)..."
 	@echo "    Prefer Docker stack: make compose-up"
 	RUST_LOG=info KAFKA_BROKERS=localhost:9092 \
-		$(WORKSPACE_ROOT)/target/release/finops-api
+		$(WORKSPACE_ROOT)/target/release/finops-gateway
 
-# Kill only host finops-api binaries — never `fuser -k 3000` (that breaks Docker port-forward)
+# Back-compat aliases.
+run-api: run-gateway
+stop-gateway: stop-api
+
+# Kill only host finops-gateway binaries — never `fuser -k 3000` (that breaks Docker port-forward)
 stop-api:
 	@if curl -sf -o /dev/null http://127.0.0.1:3000/health 2>/dev/null; then \
-		echo "==> API already healthy on :3000 — leaving it running."; \
+		echo "==> Gateway already healthy on :3000 — leaving it running."; \
 		exit 0; \
 	fi
-	@echo "==> Stopping host finops-api (not Docker)..."
-	@for exe in "$(WORKSPACE_ROOT)/target/release/finops-api" \
-		"$(WORKSPACE_ROOT)/target/debug/finops-api"; do \
+	@echo "==> Stopping host finops-gateway (not Docker)..."
+	@for exe in "$(WORKSPACE_ROOT)/target/release/finops-gateway" \
+		"$(WORKSPACE_ROOT)/target/debug/finops-gateway"; do \
 		[ -x "$$exe" ] || continue; \
-		for pid in $$(pgrep -x finops-api 2>/dev/null); do \
+		for pid in $$(pgrep -x finops-gateway 2>/dev/null); do \
 			[ "$$(readlink -f /proc/$$pid/exe 2>/dev/null)" = "$$exe" ] \
 				&& kill "$$pid" 2>/dev/null || true; \
 		done; \
@@ -129,17 +136,17 @@ compose-up: stop-api
 		echo "  sudo systemctl start docker"; \
 		exit 127; \
 	)
-	@echo "==> Starting Kafka + ClickHouse + finops-api (finops-net)..."
+	@echo "==> Starting Kafka + ClickHouse + finops-gateway (finops-net)..."
 	$(COMPOSE) up -d
 	@sleep 2
 	@if ! curl -sf -o /dev/null http://127.0.0.1:3000/health 2>/dev/null; then \
-		echo "==> Recreating finops-api (:3000 not responding — e.g. after fuser on port 3000)..."; \
-		$(COMPOSE) rm -sf finops-api; \
-		$(COMPOSE) up -d finops-api; \
+		echo "==> Recreating finops-gateway (:3000 not responding — e.g. after fuser on port 3000)..."; \
+		$(COMPOSE) rm -sf finops-gateway; \
+		$(COMPOSE) up -d finops-gateway; \
 		sleep 4; \
 	fi
 	@if ! curl -sf -o /dev/null http://127.0.0.1:3000/health 2>/dev/null; then \
-		echo "ERROR: http://127.0.0.1:3000/health failed. Logs: docker compose logs finops-api"; \
+		echo "ERROR: http://127.0.0.1:3000/health failed. Logs: docker compose logs finops-gateway"; \
 		exit 1; \
 	fi
 	@echo "==> Stack ready. API: http://127.0.0.1:3000/health (OK)"
@@ -151,7 +158,8 @@ check:
 		-Z build-std=core --target $(EBPF_TARGET)
 	cd $(WORKSPACE_ROOT) && cargo check -p finops-wire
 	cd $(WORKSPACE_ROOT) && cargo check -p finops-agent
-	cd $(WORKSPACE_ROOT) && cargo check -p finops-api
+	cd $(WORKSPACE_ROOT) && cargo check -p finops-infra
+	cd $(WORKSPACE_ROOT) && cargo check -p finops-gateway
 
 verify: build-ebpf
 	@echo "==> BPF program sections:"

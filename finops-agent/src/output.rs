@@ -9,6 +9,7 @@ use serde::Serialize;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::aggregator::BatchPayload;
+use finops_infra::env::read_env_u64;
 use finops_wire::IngestBatch;
 
 pub const SCHEMA_VERSION: u32 = 2;
@@ -29,22 +30,14 @@ fn read_http_pool_idle_secs() -> u64 {
     read_env_u64("FINOPS_HTTP_POOL_IDLE_SECS", DEFAULT_HTTP_POOL_IDLE_SECS)
 }
 
-fn read_env_u64(name: &str, default: u64) -> u64 {
-    match std::env::var(name) {
-        Ok(s) => match s.parse::<u64>() {
-            Ok(v) if v > 0 => v,
-            _ => {
-                log::warn!("Invalid {name}={s:?}; using default {default}");
-                default
-            }
-        },
-        Err(_) => default,
-    }
-}
-
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-static RETRY_TX: OnceLock<mpsc::Sender<String>> = OnceLock::new();
-static RETRY_RX: OnceLock<Arc<Mutex<mpsc::Receiver<String>>>> = OnceLock::new();
+static IS_HTTP_INGEST: OnceLock<bool> = OnceLock::new();
+static RETRY_TX: OnceLock<mpsc::Sender<bytes::Bytes>> = OnceLock::new();
+static RETRY_RX: OnceLock<Arc<Mutex<mpsc::Receiver<bytes::Bytes>>>> = OnceLock::new();
+
+fn is_http_ingest() -> bool {
+    *IS_HTTP_INGEST.get_or_init(|| std::env::var("FINOPS_INGEST_URL").is_ok())
+}
 
 /// Call once at startup when `FINOPS_INGEST_URL` may be used (shared connection pool).
 pub fn init_http_client() {
@@ -117,7 +110,7 @@ pub fn init_retry_worker(url: String) {
             };
 
             loop {
-                match post_ingest(&url, &body).await {
+                match post_ingest(&url, body.clone()).await {
                     PostOutcome::Success => {
                         backoff_secs = initial_backoff;
                         break;
@@ -127,7 +120,7 @@ pub fn init_retry_worker(url: String) {
                         let sleep_secs = backoff_secs as f64 + jitter;
                         log::warn!(
                             "ingest POST retryable failure: {reason} (sleep {:.2}s, base {backoff_secs}s; \
-                             is finops-api up? make compose-up; curl http://127.0.0.1:3000/health)",
+                             is finops-gateway up? make compose-up; curl http://127.0.0.1:3000/health)",
                             sleep_secs
                         );
                         tokio::time::sleep(Duration::from_secs_f64(sleep_secs)).await;
@@ -156,16 +149,15 @@ fn is_retryable_status(status: reqwest::StatusCode) -> bool {
     status.as_u16() == 429 || status.is_server_error()
 }
 
-async fn post_ingest(url: &str, body: &str) -> PostOutcome {
-    let client = HTTP_CLIENT
-        .get()
-        .cloned()
-        .unwrap_or_else(reqwest::Client::new);
+async fn post_ingest(url: &str, body: bytes::Bytes) -> PostOutcome {
+    let Some(client) = HTTP_CLIENT.get() else {
+        return PostOutcome::Retryable("HTTP client not initialized".into());
+    };
 
     let response = match client
         .post(url)
         .header("Content-Type", "application/json")
-        .body(body.to_string())
+        .body(body)
         .send()
         .await
     {
@@ -183,7 +175,7 @@ async fn post_ingest(url: &str, body: &str) -> PostOutcome {
     }
 }
 
-fn enqueue_batch_json(json: String) {
+fn enqueue_batch_json(json: bytes::Bytes) {
     let Some(tx) = RETRY_TX.get() else {
         log::error!("ingest retry worker not initialized; dropping batch");
         return;
@@ -220,15 +212,15 @@ fn enqueue_batch_json(json: String) {
     }
 }
 
-pub fn emit_batch(payload: &BatchPayload) {
+pub fn emit_batch(payload: BatchPayload) {
     let batch = IngestBatch {
         schema_version: SCHEMA_VERSION,
         window_start_ns: payload.window_start_ns,
         window_end_ns: payload.window_end_ns,
-        node: payload.node.clone(),
-        batch_id: payload.batch_id.clone(),
-        agent_version: payload.agent_version.clone(),
-        workloads: payload.workloads.clone(),
+        node: payload.node,
+        batch_id: payload.batch_id,
+        agent_version: payload.agent_version.to_string(),
+        workloads: payload.workloads,
     };
 
     let json = match serde_json::to_string(&batch) {
@@ -239,8 +231,8 @@ pub fn emit_batch(payload: &BatchPayload) {
         }
     };
 
-    if std::env::var("FINOPS_INGEST_URL").is_ok() {
-        enqueue_batch_json(json);
+    if is_http_ingest() {
+        enqueue_batch_json(bytes::Bytes::from(json));
     } else {
         println!("{json}");
     }

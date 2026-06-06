@@ -1,9 +1,12 @@
-//! finops-api — ingest gateway: POST /ingest → mpsc → Kafka; read-path → ClickHouse.
+//! finops-gateway — ingest gateway: POST /ingest → mpsc → Kafka; read-path → ClickHouse.
 //! Phases 3–4 + 6 shipped; Target 3: GET `/api/v1/workloads/summary`.
 
 mod config;
+mod error;
 mod kafka;
 mod routes;
+
+use error::GatewayError;
 
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,7 +37,7 @@ pub struct AppState {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), GatewayError> {
     let config = config::Config::from_env();
     env_logger::init();
 
@@ -49,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
     // Global recorder for `metrics::counter!` / `histogram!` / `gauge!`; Axum serves `/metrics`.
     let prometheus_handle = PrometheusBuilder::new()
         .install_recorder()
-        .map_err(|e| anyhow::anyhow!("failed to install Prometheus metrics recorder: {e}"))?;
+        .map_err(|e| GatewayError::PrometheusInstall(e.to_string()))?;
 
     spawn_prometheus_upkeep(prometheus_handle.clone());
 
@@ -81,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     log::info!(
-        "finops-api: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={}",
+        "finops-gateway: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={}",
         config.kafka_brokers
     );
 
@@ -93,10 +96,13 @@ async fn main() -> anyhow::Result<()> {
     log::info!("HTTP server stopped; draining Kafka producer");
     match tokio::time::timeout(Duration::from_secs(10), producer.shutdown()).await {
         Ok(_) => log::info!("Kafka producer drained successfully"),
-        Err(_) => log::error!("Kafka drain timed out — abandoning in-flight messages"),
+        Err(_) => {
+            let err = GatewayError::DrainTimeout { secs: 10 };
+            log::error!("{err}");
+        }
     }
 
-    log::info!("finops-api shutdown complete");
+    log::info!("finops-gateway shutdown complete");
 
     Ok(())
 }

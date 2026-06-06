@@ -4,14 +4,14 @@
 
 - Phase 2 prerequisites ([phase2-validation.md](phase2-validation.md))
 - Docker: `docker.io` + `docker-compose-v2` (`make compose-up` checks for `docker`)
-- `make build` includes `finops-api`, `finops-agent`, and `finops-wire`
+- `make build` includes `finops-gateway`, `finops-agent`, and `finops-wire`
 
 ## Stack smoke test
 
 ```bash
 cd finops-core
 make compose-up
-docker compose ps   # kafka, kafka-ui, clickhouse, grafana, finops-api running
+docker compose ps   # kafka, kafka-ui, clickhouse, grafana, finops-gateway running
 # API in compose listens :3000 — or use `make run-api` on host (not both)
 ```
 
@@ -77,11 +77,11 @@ curl -s -u default:finops_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABL
 | Kafka (host) | 9092 |
 | Kafka UI | 8080 |
 | ClickHouse HTTP | 8123 |
-| finops-api | 3000 |
+| finops-gateway | 3000 |
 | Grafana | 3001 |
 
 ## Enterprise checks
 
 See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses retry worker + env-tuned `reqwest` — [ADR 006](adr/006-shared-http-client-for-ingest.md).
 
-Tear down: `make compose-down`. Rebuild API after code changes: `docker compose build finops-api && docker compose up -d finops-api` ([ADR 009](adr/009-finops-api-docker-compose.md)).
+Tear down: `make compose-down`. Rebuild API after code changes: `docker compose build finops-gateway && docker compose up -d finops-gateway` ([ADR 009](adr/009-finops-gateway-docker-compose.md)).

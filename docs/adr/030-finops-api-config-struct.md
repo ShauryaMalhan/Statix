@@ -6,7 +6,7 @@
 
 ## Decision
 
-- **`finops-api/src/config.rs`** — `Config::from_env()` at the top of `main()` (before `env_logger::init()`).
+- **`finops-gateway/src/config.rs`** — `Config::from_env()` at the top of `main()` (before `env_logger::init()`). Crate renamed from `finops-api` ([ADR 035](035-phase7-workspace-restructure.md)).
 - **Fields:** `kafka_brokers`, `api_port`, `api_token`, `clickhouse_url`, `clickhouse_user`, `clickhouse_password` with documented defaults.
 - **Fail fast:** invalid `FINOPS_API_PORT` (non-u16 or `0`) → `eprintln!` + `process::exit(1)` (no silent fallback).
 - **Helpers:** `expected_bearer()`, `clickhouse_client()` on `Config`.
@@ -30,4 +30,4 @@
 
 ## References
 
-- `finops-api/src/main.rs`, `config.rs`
+- `finops-gateway/src/main.rs`, `config.rs`

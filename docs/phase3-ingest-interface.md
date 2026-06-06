@@ -7,7 +7,7 @@ Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch
 ## Flow
 
 ```
-finops-agent  --POST /ingest-->  finops-api  --try_send-->  mpsc  --produce-->  Kafka
+finops-agent  --POST /ingest-->  finops-gateway  --try_send-->  mpsc  --produce-->  Kafka
                                                                                     |
 ClickHouse  finops.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  finops.workload_metrics
 ```
@@ -88,7 +88,7 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 |-------|--------|----------|
 | `/health` | GET | **Liveness:** `200` if ingest `mpsc` sender not closed; `503` if producer task exited |
 | `/ready` | GET | **Readiness:** `200` if Kafka connected + partition metadata loaded and channel open ([ADR 021](adr/021-ingest-ready-probe.md)); else `503` |
-| `/metrics` | GET | Prometheus text exposition ([ADR 012](adr/012-finops-api-prometheus-metrics.md)) |
+| `/metrics` | GET | Prometheus text exposition ([ADR 012](adr/012-finops-gateway-prometheus-metrics.md)) |
 | `/ingest` | POST | See table below |
 
 ## HTTP responses (`POST /ingest`)
@@ -124,9 +124,9 @@ Wire types: `finops_wire::IngestBatch` ([ADR 028](adr/028-finops-wire-and-agent-
 | `FINOPS_CGROUP_ROOT` | `/sys/fs/cgroup` | cgroup v2 mount |
 | `FINOPS_RAW_EVENTS` | off | Per-event debug JSON |
 
-### API (`finops-api`)
+### API (`finops-gateway`)
 
-Loaded by `config::Config::from_env()` in `finops-api/src/config.rs` ([ADR 030](adr/030-finops-api-config-struct.md)).
+Loaded by `config::Config::from_env()` in `finops-gateway/src/config.rs` ([ADR 030](adr/030-finops-gateway-config-struct.md)).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -164,13 +164,13 @@ curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
 ## Local stack
 
 ```bash
-make compose-up   # starts finops-api container (KAFKA_BROKERS=kafka:29092) + Kafka + ClickHouse
+make compose-up   # starts finops-gateway container (KAFKA_BROKERS=kafka:29092) + Kafka + ClickHouse
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/health   # 200
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run   # agent on host → API in Docker on :3000
 ```
 
-Optional host API instead of container: `make run-api` ([ADR 009](adr/009-finops-api-docker-compose.md) — never both on `:3000`).
+Optional host API instead of container: `make run-api` ([ADR 009](adr/009-finops-gateway-docker-compose.md) — never both on `:3000`).
 
 **ClickHouse HTTP (docker-compose):** user `default`, password `finops_dev` (see `docker-compose.yml`). Example:
 

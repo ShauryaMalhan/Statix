@@ -121,7 +121,7 @@ limits   = requests × 1.25;
 
 **Agent:** `OnceLock<reqwest::Client>`; `FINOPS_API_TOKEN` → `default_headers` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `PrometheusBuilder` → `:9091/metrics` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `init_retry_worker` — `mpsc(60)`; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
+**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-finops-gateway-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
 
 **Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `FINOPS_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
@@ -139,8 +139,8 @@ curl -s -u default:finops_dev 'http://localhost:8123/?query=SELECT%20count()%20F
 make compose-down
 ```
 
-- **Do not** `make run-api` while compose `finops-api` is on `:3000`.
-- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
+- **Do not** `make run-api` while compose `finops-gateway` is on `:3000`.
+- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-gateway-docker-compose.md)).
 
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
 
@@ -151,7 +151,7 @@ docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
 docker build -f deploy/docker/Dockerfile.agent -t finops-agent:latest .
 ```
 
-Gateway: non-root `finops` user ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)). Agent: root/privileged, `FINOPS_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
+Gateway: non-root `finops` user ([ADR 009](../../../docs/adr/009-finops-gateway-docker-compose.md)). Agent: root/privileged, `FINOPS_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
 
 ```bash
 kubectl apply -f deploy/k8s/gateway.yaml
@@ -172,7 +172,7 @@ clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 
 ## Pattern 15 — Gateway `Config` (Phase 7)
 
-All `finops-api` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
+All `finops-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-gateway-config-struct.md)).
 
 | Env | `Config` field | Default |
 |-----|----------------|---------|
@@ -193,4 +193,4 @@ curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
 
 - Env: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)).
 - SQL uses `finops.workload_metrics FINAL`; default lookback 24h.
-- Rebuild API after changes: `docker compose build finops-api && docker compose up -d finops-api`.
+- Rebuild API after changes: `docker compose build finops-gateway && docker compose up -d finops-gateway`.

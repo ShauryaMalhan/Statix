@@ -1,4 +1,4 @@
-//! Shared HTTP ingest and Kafka JSONEachRow types for finops-agent ↔ finops-api.
+//! Shared HTTP ingest and Kafka JSONEachRow types for finops-agent ↔ finops-gateway.
 
 use serde::{Deserialize, Serialize};
 

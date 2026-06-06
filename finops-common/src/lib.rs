@@ -34,21 +34,5 @@ pub struct FinopsEvent {
     pub comm: [u8; 16],
 }
 
-/// Phase 1 alias — same layout as identity events without `kind` set in old builds.
-/// Deprecated: use [`FinopsEvent`] with `EVENT_KIND_WORKLOAD_IDENTITY`.
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct ProcessEvent {
-    pub pid: u32,
-    pub tgid: u32,
-    pub cpu_id: u32,
-    pub _pad: u32,
-    pub timestamp: u64,
-    pub comm: [u8; 16],
-}
-
 #[cfg(feature = "user")]
 unsafe impl aya::Pod for FinopsEvent {}
-
-#[cfg(feature = "user")]
-unsafe impl aya::Pod for ProcessEvent {}

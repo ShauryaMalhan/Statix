@@ -10,12 +10,12 @@
 |----------------|--------|---------|
 | 1–3 | **Done** | eBPF agent, batched telemetry, HTTP → Kafka → ClickHouse E2E |
 | 4 | **Done** | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| 5 | **Active** | TLS; `/ready` channel gate; prod `kafka_num_consumers` / retention / CH alerting |
+| 5 / 5.5 | **Done** | L8 audit complete ([ADR 032](032-phase55-l8-p0-hot-path-fixes.md)–[034](034-phase55-l8-p2-ingest-zero-copy.md)); TLS; prod CH/Kafka ops remain in Phase 5 |
 | 6 | **Done** | L8 hot path + P0 fixes ([ADR 023](023-phase5-hot-path-fixes.md)); micro-opts remain in TODO |
 | **Target 1** | **Done** | `deploy/docker/*`, `deploy/k8s/*` ([ADR 024](024-agent-production-container.md), [025](025-kubernetes-gateway-and-agent.md)) |
 | **Target 2** | **Done** | `deploy/clickhouse/01_init.sql` → `finops.workload_metrics` ([ADR 026](026-clickhouse-finops-database-init.md)) |
 | **Target 3** | **Done** | `GET /api/v1/workloads/summary` → ClickHouse ([ADR 027](027-api-read-path-clickhouse.md)) |
-| 7 | **Partial** | `finops-wire`, `finops-agent`, `Config` shipped ([ADR 028](028-finops-wire-and-agent-rename.md), [030](030-finops-api-config-struct.md)); gateway rename open |
+| 7 | **Done** | Workspace restructure + typed errors + read-only labels ([ADR 028](028-finops-wire-and-agent-rename.md)–[036](036-phase7-typed-errors-labels-read-path.md)) |
 | 8–10 | **Planned** | K8s hardening, portability, extended observability |
 
 Engineering gate: [phase5-production-readiness.md](../phase5-production-readiness.md).  
