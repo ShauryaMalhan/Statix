@@ -36,6 +36,8 @@
 
 Default CI ring tier: `FINOPS_RING_BUF_BYTES=524288` (512 KiB — matches agent small ELF).
 
+**Kernel 5.10 memlock:** Pre-5.11 kernels charge BPF maps against `RLIMIT_MEMLOCK` (default 64 KiB). `finops_agent::bpf_memlock::bump_memlock_rlimit()` runs before `Ebpf::load()` in both `loader.rs` and `finops-ebpf-verify` (512 KiB ringbuf otherwise fails with `failed to create map EVENTS`).
+
 ## Rationale
 
 - **Real verifier:** virtme-ng + Aya exercises the same `bpf()` load path as production; BTFHub + `bpftool` only validates libbpf object layout, not Aya objects.

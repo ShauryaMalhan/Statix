@@ -80,6 +80,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 - Always `submit(0)` or `discard(0)`
 - `cgroup_id` from `bpf_get_current_cgroup_id()` on identity events
 - **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** (mainline LTS tips, not `.0`) — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); `.github/workflows/ebpf-ci.yml`; `scripts/verify-ebpf-kernel.sh` + `finops-ebpf-verify`
+- **5.10 memlock:** `bpf_memlock::bump_memlock_rlimit()` before `Ebpf::load()` — pre-5.11 kernels default 64 KiB `RLIMIT_MEMLOCK`; 512 KiB ringbuf needs infinity bump
 
 ## User-space (Phase 2)
 

@@ -6,6 +6,7 @@
 use std::{fs, process};
 
 use aya::Ebpf;
+use finops_agent::bpf_memlock::bump_memlock_rlimit;
 
 fn main() {
     if let Err(e) = run() {
@@ -16,6 +17,7 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1).ok_or("usage: finops-ebpf-verify <elf-path>")?;
+    bump_memlock_rlimit()?;
     let bytes = fs::read(&path)?;
     let _bpf = Ebpf::load(&bytes)?;
     println!("kernel verifier accepted {path}");

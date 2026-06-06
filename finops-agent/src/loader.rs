@@ -9,6 +9,8 @@ use aya::{programs::TracePoint, Ebpf};
 
 pub fn load_and_attach(ebpf_path: &str) -> anyhow::Result<Ebpf> {
     log::info!("Loading eBPF program from: {ebpf_path}");
+    finops_agent::bpf_memlock::bump_memlock_rlimit()
+        .map_err(|e| anyhow::anyhow!("failed to raise RLIMIT_MEMLOCK for BPF maps: {e}"))?;
     let bytes = fs::read(ebpf_path)?;
 
     let mut bpf = Ebpf::load(&bytes)?;
