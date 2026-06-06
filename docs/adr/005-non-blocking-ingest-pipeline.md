@@ -23,8 +23,8 @@ Infrastructure: Kafka KRaft → ClickHouse `Kafka` engine table → materialized
 ## Consequences
 
 - **Positive:** Sub-millisecond handler path; predictable agent CPU; agent retries + CH dedupe reduce double-billing.
-- **Negative:** Under sustained overload, API returns `503`; partial enqueue before `503` possible until `batch_id` on wire ([TODO](../../../.cursor/skills/finops-ebpf-agent/TODO.md) 4.6).
-- **Ops:** `make compose-up` — [ADR 009](009-finops-api-docker-compose.md). Agent: `FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest`.
+- **Negative:** Under sustained overload, API returns `503`; partial enqueue before `503` possible until `batch_id` on wire ([TODO](../../../.cursor/skills/statix-ebpf-agent/TODO.md) 4.6).
+- **Ops:** `make compose-up` — [ADR 009](009-finops-api-docker-compose.md). Agent: `STATIX_INGEST_URL=http://127.0.0.1:3000/ingest`.
 - **Graceful shutdown:** `with_graceful_shutdown` → drop ingest `tx` → Kafka task drains mpsc → flush; `producer.shutdown()` capped at **10s**.
 - **Health:** `GET /health` → `200` if `kafka_tx` open; `503` if producer task died.
 - **Deferred:** TLS, ingest auth — see `TODO.md`.

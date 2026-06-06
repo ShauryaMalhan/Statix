@@ -6,10 +6,10 @@
 
 ## Decision
 
-1. **Gateway (`finops-api`):** `FINOPS_API_TOKEN` → `AppState.expected_bearer: Option<String>` at startup (`format!("Bearer {token}")` once — [ADR 023](023-phase5-hot-path-fixes.md)).
+1. **Gateway (`finops-api`):** `STATIX_API_TOKEN` → `AppState.expected_bearer: Option<String>` at startup (`format!("Bearer {token}")` once — [ADR 023](023-phase5-hot-path-fixes.md)).
    - If set: `POST /ingest` requires exact `Authorization` header match; else `401 Unauthorized`.
    - If unset: auth disabled (local dev only); startup logs **ENABLED** / **DISABLED**.
-2. **Agent (`finops-user`):** When `FINOPS_API_TOKEN` is set at `init_http_client()`, `reqwest::Client` uses `default_headers` with `Authorization: Bearer <token>` on every ingest `POST`.
+2. **Agent (`finops-user`):** When `STATIX_API_TOKEN` is set at `init_http_client()`, `reqwest::Client` uses `default_headers` with `Authorization: Bearer <token>` on every ingest `POST`.
 
 TLS termination remains out of scope (load balancer or sidecar).
 

@@ -1,0 +1,22 @@
+[package]
+name = "statix-gateway"
+version = "0.1.0"
+edition = "2021"
+# Ingest gateway: POST /ingest → Kafka; GET read-path → ClickHouse
+
+[dependencies]
+axum = "0.7"
+clickhouse = "0.13"
+statix-wire = { path = "../statix-wire" }
+statix-infra = { path = "../statix-infra" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rskafka = "0.5"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+log = "0.4"
+thiserror = "2"
+env_logger = "0.11"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.17"
+rustc-hash = "1.1"

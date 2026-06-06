@@ -1,9 +1,0 @@
-[package]
-name = "finops-infra"
-version = "0.1.0"
-edition = "2021"
-description = "Shared env parsing and clock utilities for finops-agent and finops-gateway"
-
-[dependencies]
-libc = "0.2"
-log = "0.4"

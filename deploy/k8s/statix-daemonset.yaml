@@ -1,0 +1,96 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: statix-sa
+  namespace: statix-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: statix
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: statix
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: statix
+subjects:
+  - kind: ServiceAccount
+    name: statix-sa
+    namespace: statix-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: statix
+  namespace: statix-system
+  labels:
+    app: statix
+spec:
+  selector:
+    matchLabels:
+      app: statix
+  template:
+    metadata:
+      labels:
+        app: statix
+    spec:
+      terminationGracePeriodSeconds: 30
+      hostPID: true
+      serviceAccountName: statix-sa
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: statix
+          image: statix@sha256:f1e2d3c4b5a6978012345678901234567890fedcba1234567890fedcba123456
+          imagePullPolicy: Always
+          securityContext:
+            privileged: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
+          env:
+            - name: STATIX_INGEST_URL
+              value: http://statix-gateway-svc.statix-system.svc.cluster.local:3000/ingest
+            - name: STATIX_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: statix-secrets
+                  key: api-token
+            - name: STATIX_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: STATIX_BPF_DIR
+              value: /app/bpf
+            - name: RUST_LOG
+              value: info
+          volumeMounts:
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+              readOnly: true
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+          ports:
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+      volumes:
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+            type: Directory
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory

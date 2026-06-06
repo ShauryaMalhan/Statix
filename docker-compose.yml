@@ -1,12 +1,12 @@
 # Phase 3 ingest stack: Kafka (KRaft) → ClickHouse Kafka engine → MergeTree
-# Network: finops-net
+# Network: statix-net
 
 services:
   kafka:
     image: apache/kafka:3.7.0
     hostname: kafka
     networks:
-      - finops-net
+      - statix-net
     ports:
       - "9092:9092"
     environment:
@@ -39,11 +39,11 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     networks:
-      - finops-net
+      - statix-net
     ports:
       - "8080:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: finops
+      KAFKA_CLUSTERS_0_NAME: statix
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       - kafka
@@ -51,13 +51,13 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
     networks:
-      - finops-net
+      - statix-net
     ports:
       - "8123:8123"
       - "9000:9000"
     environment:
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: finops_dev
+      CLICKHOUSE_PASSWORD: statix_dev
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./deploy/clickhouse/01_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -66,9 +66,9 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: finops-grafana
+    container_name: statix-grafana
     networks:
-      - finops-net
+      - statix-net
     ports:
       - "3001:3000"
     environment:
@@ -78,31 +78,31 @@ services:
     depends_on:
       - clickhouse
 
-  finops-gateway:
+  statix-gateway:
     build:
       context: .
       dockerfile: Dockerfile.gateway
     networks:
-      - finops-net
+      - statix-net
     ports:
       - "3000:3000"
     environment:
       KAFKA_BROKERS: kafka:29092
-      FINOPS_API_PORT: "3000"
-      FINOPS_KAFKA_CHANNEL_SIZE: "8192"
-      FINOPS_KAFKA_BATCH_MAX: "1024"
-      FINOPS_KAFKA_LINGER_MS: "50"
+      STATIX_API_PORT: "3000"
+      STATIX_KAFKA_CHANNEL_SIZE: "8192"
+      STATIX_KAFKA_BATCH_MAX: "1024"
+      STATIX_KAFKA_LINGER_MS: "50"
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: finops_dev
-      # FINOPS_API_TOKEN: "dev-secret"   # uncomment for auth; set same value on agent
+      CLICKHOUSE_PASSWORD: statix_dev
+      # STATIX_API_TOKEN: "dev-secret"   # uncomment for auth; set same value on agent
       RUST_LOG: info
     depends_on:
       kafka:
         condition: service_healthy
 
 networks:
-  finops-net:
+  statix-net:
     driver: bridge
 
 volumes:

@@ -2,14 +2,14 @@
 # Run the kernel BPF verifier for a target kernel version using virtme-ng.
 #
 # Usage: verify-ebpf-kernel.sh <kernel-version> <elf-path> <verify-binary>
-# Example: verify-ebpf-kernel.sh 5.15 finops-ebpf/target/.../finops-ebpf target/release/finops-ebpf-verify
+# Example: verify-ebpf-kernel.sh 5.15 statix-ebpf/target/.../statix-ebpf target/release/statix-ebpf-verify
 #
 # Support matrix (BTF-era cloud kernels): 5.10, 5.15, 6.1, 6.8
 set -euo pipefail
 
 KERNEL_VERSION="${1:?kernel version required (e.g. 5.15)}"
 ELF_PATH="${2:?eBPF ELF path required}"
-VERIFY_BIN="${3:?finops-ebpf-verify binary path required}"
+VERIFY_BIN="${3:?statix-ebpf-verify binary path required}"
 
 if [[ ! -f "${ELF_PATH}" ]]; then
   echo "error: eBPF ELF not found: ${ELF_PATH}" >&2

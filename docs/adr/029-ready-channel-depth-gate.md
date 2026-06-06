@@ -6,7 +6,7 @@
 
 ## Decision
 
-- **`AppState.kafka_channel_capacity`** — configured capacity from `FINOPS_KAFKA_CHANNEL_SIZE` (same as `mpsc::channel` in `kafka::spawn_producer`; default **8192**, min **1024** — [ADR 014](014-kafka-producer-env-tuning.md)).
+- **`AppState.kafka_channel_capacity`** — configured capacity from `STATIX_KAFKA_CHANNEL_SIZE` (same as `mpsc::channel` in `kafka::spawn_producer`; default **8192**, min **1024** — [ADR 014](014-kafka-producer-env-tuning.md)).
 - **`GET /ready`** — after Kafka `kafka_ready` and `!kafka_tx.is_closed()`:
   - `remaining = kafka_tx.capacity()` (tokio mpsc free slots)
   - If more than **80%** full (`remaining * 100 < total * 20`) → `503` + `warn` log with used/remaining counts
@@ -21,9 +21,9 @@
 ## Consequences
 
 - **Positive:** K8s/ALB removes pods from rotation before sustained `503` on `/ingest`.
-- **Negative:** Bursty ingest may flap `/ready` during spikes (expected; scale gateway or raise `FINOPS_KAFKA_CHANNEL_SIZE`).
+- **Negative:** Bursty ingest may flap `/ready` during spikes (expected; scale gateway or raise `STATIX_KAFKA_CHANNEL_SIZE`).
 - **Code:** `finops-api/src/main.rs`, `kafka.rs` (`ingest_channel_capacity`, `KafkaProducer.channel_capacity`).
 
 ## References
 
-- [ADR 012](012-finops-api-prometheus-metrics.md) — `finops_api_kafka_channel_depth` gauge (orthogonal to probe)
+- [ADR 012](012-finops-api-prometheus-metrics.md) — `statix_api_kafka_channel_depth` gauge (orthogonal to probe)

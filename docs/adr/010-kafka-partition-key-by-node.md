@@ -7,10 +7,10 @@
 ## Decision
 
 1. **Channel:** `mpsc::Sender<(Vec<u8>, Vec<u8>)>` — Kafka key + JSONEachRow payload. Ingest builds `node` key **once** per HTTP batch (`as_bytes().to_vec()`); per-row `node_vec.clone()`; producer moves `Vec` into `Record` with no `Bytes::to_vec()` memcpy (amended 2026-06-01).
-2. **Broker metadata:** On producer startup, `Client::list_topics()` resolves partition IDs for `finops-telemetry` (fallback `[0]` if topic not yet auto-created).
+2. **Broker metadata:** On producer startup, `Client::list_topics()` resolves partition IDs for `statix-telemetry` (fallback `[0]` if topic not yet auto-created).
 3. **Partition clients:** One `PartitionClient` per partition ID (no hardcoded `partition_client(..., 0)` only).
 4. **Routing:** `FxHasher` over `node` UTF-8 bytes (`&[u8]`) `% num_partitions` → partition slot (amended V2-12 / [ADR 039](039-phase55-v2-wave2-l8-fixes.md); was `DefaultHasher`). Record **key** / **value** own the queued buffers at produce time; key allocated once per partition chunk (V2-13).
-5. **Micro-batch:** `FINOPS_KAFKA_BATCH_MAX` / `FINOPS_KAFKA_LINGER_MS` ([ADR 014](014-kafka-producer-env-tuning.md)); after each channel batch, **group by partition** and `produce()` per partition sub-batch.
+5. **Micro-batch:** `STATIX_KAFKA_BATCH_MAX` / `STATIX_KAFKA_LINGER_MS` ([ADR 014](014-kafka-producer-env-tuning.md)); after each channel batch, **group by partition** and `produce()` per partition sub-batch.
 
 ## Consequences
 

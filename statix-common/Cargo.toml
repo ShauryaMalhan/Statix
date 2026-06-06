@@ -1,0 +1,20 @@
+[package]
+name    = "statix-common"
+version = "0.1.0"
+edition = "2021"
+
+# This crate must compile in two very different environments:
+#   1. Kernel space  (statix-ebpf): no operating system, no heap, no std library
+#   2. User space    (statix): full std, tokio, serde, etc.
+#
+# The `user` feature gates any dependency that only makes sense in user-space
+# (like aya's Pod trait). When statix-ebpf depends on this crate, it uses
+# default features (none). When statix depends on it, it enables `user`.
+[features]
+default = []
+user    = ["aya"]
+
+[dependencies]
+# aya is only needed for the Pod marker trait implementation.
+# Pod tells Aya: "it is safe to read this struct directly from raw kernel bytes."
+aya = { version = "0.13", optional = true }

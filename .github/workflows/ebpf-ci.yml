@@ -11,8 +11,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Default agent ring tier (512 KiB) — compile-time map size in finops-ebpf/build.rs
-  FINOPS_RING_BUF_BYTES: "524288"
+  # Default agent ring tier (512 KiB) — compile-time map size in statix-ebpf/build.rs
+  STATIX_RING_BUF_BYTES: "524288"
 
 jobs:
   build-and-test-userspace:
@@ -40,7 +40,7 @@ jobs:
         run: cargo check --workspace
 
       - name: cargo test (gateway, agent, wire)
-        run: cargo test -p finops-gateway -p finops-agent -p finops-wire
+        run: cargo test -p statix-gateway -p statix -p statix-wire
 
   ebpf-verifier-matrix:
     name: eBPF verifier (kernel ${{ matrix.kernel }})
@@ -78,7 +78,7 @@ jobs:
       - name: Install Rust stable (verify binary)
         uses: dtolnay/rust-toolchain@stable
 
-      # bpfel-unknown-none is tier-3: no rustup rust-std blob. build-std=core + rust-src only (see finops-ebpf/.cargo/config.toml).
+      # bpfel-unknown-none is tier-3: no rustup rust-std blob. build-std=core + rust-src only (see statix-ebpf/.cargo/config.toml).
       - name: Install Rust nightly (eBPF build)
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -92,7 +92,7 @@ jobs:
             ~/.cargo/git
             ~/.cargo/bin
             target
-            finops-ebpf/target
+            statix-ebpf/target
           key: ${{ runner.os }}-cargo-ebpf-${{ matrix.kernel }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-ebpf-${{ matrix.kernel }}-
@@ -106,19 +106,19 @@ jobs:
           fi
 
       - name: Build eBPF ELF
-        working-directory: finops-ebpf
+        working-directory: statix-ebpf
         run: |
           cargo +nightly build --release \
             -Z build-std=core \
             --target bpfel-unknown-none
 
-      - name: Build finops-ebpf-verify
-        run: cargo build --release -p finops-agent --bin finops-ebpf-verify
+      - name: Build statix-ebpf-verify
+        run: cargo build --release -p statix --bin statix-ebpf-verify
 
       - name: Run kernel verifier (virtme-ng + Aya load)
         run: |
           chmod +x scripts/verify-ebpf-kernel.sh
           scripts/verify-ebpf-kernel.sh \
             "${{ matrix.kernel }}" \
-            finops-ebpf/target/bpfel-unknown-none/release/finops-ebpf \
-            target/release/finops-ebpf-verify
+            statix-ebpf/target/bpfel-unknown-none/release/statix-ebpf \
+            target/release/statix-ebpf-verify

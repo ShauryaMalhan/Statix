@@ -7,18 +7,18 @@
 ## Decision
 
 1. **`deploy/k8s/gateway.yaml`**
-   - `Namespace` `finops-system`
-   - `Deployment` `finops-gateway` (2 replicas): image `finops-gateway:latest`, `FINOPS_API_TOKEN` from `finops-secrets`, `KAFKA_BROKERS` cluster DNS
+   - `Namespace` `statix-system`
+   - `Deployment` `statix-gateway` (2 replicas): image `statix-gateway:latest`, `STATIX_API_TOKEN` from `statix-secrets`, `KAFKA_BROKERS` cluster DNS
    - Liveness `/health`, readiness `/ready` on port 3000 (`initialDelaySeconds: 2`)
-   - `Service` `finops-gateway-svc` ClusterIP :3000
+   - `Service` `statix-gateway-svc` ClusterIP :3000
 
-2. **`deploy/k8s/agent-daemonset.yaml`**
-   - `ServiceAccount` `finops-agent-sa` + `ClusterRole`/`Binding` (list/watch `pods` for K8s label refresh)
-   - `DaemonSet` `finops-agent`: `hostPID: true`, `privileged: true`, toleration `operator: Exists`
-   - Env: `FINOPS_INGEST_URL` → gateway Service DNS, shared bearer secret, `FINOPS_NODE_NAME` downward API
+2. **`deploy/k8s/statix-daemonset.yaml`**
+   - `ServiceAccount` `statix-sa` + `ClusterRole`/`Binding` (list/watch `pods` for K8s label refresh)
+   - `DaemonSet` `statix`: `hostPID: true`, `privileged: true`, toleration `operator: Exists`
+   - Env: `STATIX_INGEST_URL` → gateway Service DNS, shared bearer secret, `STATIX_NODE_NAME` downward API
    - `hostPath` volumes: `/sys/fs/cgroup`, `/proc` (read-only mounts)
 
-3. **Secret:** `finops-secrets` / `api-token` created out-of-band (not committed).
+3. **Secret:** `statix-secrets` / `api-token` created out-of-band (not committed).
 
 ## Consequences
 

@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-06  
-**Context:** L8 audit — seven P0-SHIP bottlenecks on the agent ingest hot path before production. Original fix IDs F1–F5, F7, F8; removed from [L8-AUDIT-FIXES.md](../../.cursor/skills/finops-ebpf-agent/L8-AUDIT-FIXES.md) after ship (playbook retains only open work, renumbered F1–F7).
+**Context:** L8 audit — seven P0-SHIP bottlenecks on the agent ingest hot path before production. Original fix IDs F1–F5, F7, F8; removed from [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md) after ship (playbook retains only open work, renumbered F1–F7).
 
 ## Decision
 
@@ -16,7 +16,7 @@
 | F7 | `memory_sampler.rs` | One `spawn_blocking` per tick for all cgroup reads |
 | F8 | `main.rs` | `DRAIN_BUDGET = 256` on ring-buffer drain — yield to `select!` |
 
-**Dependency:** `rand` feature `small_rng` in `finops-agent/Cargo.toml`.
+**Dependency:** `rand` feature `small_rng` in `statix/Cargo.toml`.
 
 ## Rationale
 
@@ -31,5 +31,5 @@
 
 ## References
 
-- [L8-AUDIT-FIXES.md](../../.cursor/skills/finops-ebpf-agent/L8-AUDIT-FIXES.md)
+- [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
 - [ADR 023](023-phase5-hot-path-fixes.md)

@@ -12,7 +12,7 @@
 ```bash
 cd finops-core
 make build
-sudo RUST_LOG=info FINOPS_WINDOW_SECS=5 FINOPS_SAMPLE_INTERVAL_SECS=5 make run
+sudo RUST_LOG=info STATIX_WINDOW_SECS=5 STATIX_SAMPLE_INTERVAL_SECS=5 make run
 ```
 
 In another terminal, trigger exec events:
@@ -26,7 +26,7 @@ Expect batched JSON lines with `"schema_version":2` every 5 seconds after worklo
 ## Debug: raw per-event stream
 
 ```bash
-FINOPS_RAW_EVENTS=1 sudo make run
+STATIX_RAW_EVENTS=1 sudo make run
 ```
 
 ## cgroup-only mode (no Kubernetes)
@@ -37,8 +37,8 @@ Run on a bare VM without `KUBERNETES_SERVICE_HOST`. Batches should include `cgro
 
 1. Load agent image or bind-mount binary + eBPF ELF into a privileged DaemonSet.
 2. Set env:
-   - `FINOPS_EBF_PATH=/path/to/finops-ebpf`
-   - `FINOPS_NODE_NAME` from downward API `spec.nodeName`
+   - `STATIX_EBF_PATH=/path/to/statix-ebpf`
+   - `STATIX_NODE_NAME` from downward API `spec.nodeName`
    - ServiceAccount with `get`, `list`, `watch` on `pods`
 3. Mount host `/sys/fs/cgroup` read-only at `/sys/fs/cgroup`.
 4. Deploy a known pod; exec into it; confirm batch row shows correct `namespace`, `pod`, `container`, `k8s_resolved:true`.

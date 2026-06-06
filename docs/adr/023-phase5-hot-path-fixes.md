@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-04  
-**Context:** L8 audit regressions — write lock held across procfs I/O, unbounded `Arc` allocs on label miss, ring-drop counter with no Prometheus recorder, per-request `format!` on ingest auth ([TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md) Phase 5 P0).
+**Context:** L8 audit regressions — write lock held across procfs I/O, unbounded `Arc` allocs on label miss, ring-drop counter with no Prometheus recorder, per-request `format!` on ingest auth ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) Phase 5 P0).
 
 ## Decision
 
@@ -16,11 +16,11 @@
 
 - Dependency: `metrics-exporter-prometheus = "0.12"`.
 - At startup (after `env_logger::init`): `PrometheusBuilder::new().with_http_listener(([0, 0, 0, 0], 9091)).install()` (warn on failure, do not abort agent).
-- Scrape: `http://<node>:9091/metrics` — includes `finops_agent_ring_drops_total` from [ADR 022](022-bpf-ring-buffer-drop-counter.md).
+- Scrape: `http://<node>:9091/metrics` — includes `statix_ring_drops_total` from [ADR 022](022-bpf-ring-buffer-drop-counter.md).
 
 ### 3. Gateway bearer compare (`finops-api`)
 
-- `AppState.expected_bearer: Option<String>` — `FINOPS_API_TOKEN` mapped once at startup to full header value `Bearer {token}`.
+- `AppState.expected_bearer: Option<String>` — `STATIX_API_TOKEN` mapped once at startup to full header value `Bearer {token}`.
 - `ingest` handler compares `Authorization` to `expected_bearer.as_str()` with no per-request allocation.
 
 ## Consequences

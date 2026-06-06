@@ -2,16 +2,16 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-30  
-**Context:** `finops.kafka_telemetry_queue` in `deploy/clickhouse/01_init.sql` consumes `JSONEachRow` from topic `finops-telemetry`. Cloud networks can drop packets (black-hole routes); bad rows can poison the consumer.
+**Context:** `statix.kafka_telemetry_queue` in `deploy/clickhouse/01_init.sql` consumes `JSONEachRow` from topic `statix-telemetry`. Cloud networks can drop packets (black-hole routes); bad rows can poison the consumer.
 
 ## Decision
 
-Kafka engine `SETTINGS` on `finops.kafka_telemetry_queue`:
+Kafka engine `SETTINGS` on `statix.kafka_telemetry_queue`:
 
 - **`kafka_skip_broken_messages = 1000`** — skip malformed JSON per block instead of halting the consumer on the first bad row.
 - **`kafka_num_consumers = 1`** — local Docker (single partition). **Production:** set to match Kafka topic partition count (e.g. `8`) so ClickHouse consumes partitions in parallel.
 
-Storage target (`finops.workload_metrics`) — `ReplacingMergeTree` + sort key — [ADR 007](007-clickhouse-mergetree-tuning.md), [ADR 011](011-replacingmergetree-dedupe-identity.md).
+Storage target (`statix.workload_metrics`) — `ReplacingMergeTree` + sort key — [ADR 007](007-clickhouse-mergetree-tuning.md), [ADR 011](011-replacingmergetree-dedupe-identity.md).
 
 ## Rationale
 

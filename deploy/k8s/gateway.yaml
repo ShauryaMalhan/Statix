@@ -2,24 +2,24 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: finops-system
+  name: statix-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: finops-gateway
-  namespace: finops-system
+  name: statix-gateway
+  namespace: statix-system
   labels:
-    app: finops-gateway
+    app: statix-gateway
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: finops-gateway
+      app: statix-gateway
   template:
     metadata:
       labels:
-        app: finops-gateway
+        app: statix-gateway
     spec:
       terminationGracePeriodSeconds: 30
       topologySpreadConstraints:
@@ -28,10 +28,10 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              app: finops-gateway
+              app: statix-gateway
       containers:
-        - name: finops-gateway
-          image: finops-gateway@sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
+        - name: statix-gateway
+          image: statix-gateway@sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
           imagePullPolicy: Always
           lifecycle:
             preStop:
@@ -41,23 +41,23 @@ spec:
             - name: http
               containerPort: 3000
           env:
-            - name: FINOPS_API_TOKEN
+            - name: STATIX_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: finops-secrets
+                  name: statix-secrets
                   key: api-token
             - name: KAFKA_BROKERS
               value: kafka-broker.default.svc.cluster.local:9092
             - name: CLICKHOUSE_URL
-              value: http://clickhouse.finops-system.svc.cluster.local:8123
+              value: http://clickhouse.statix-system.svc.cluster.local:8123
             - name: CLICKHOUSE_USER
               value: default
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: finops-secrets
+                  name: statix-secrets
                   key: clickhouse-password
-            - name: FINOPS_API_PORT
+            - name: STATIX_API_PORT
               value: "3000"
             - name: RUST_LOG
               value: info
@@ -82,14 +82,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: finops-gateway-svc
-  namespace: finops-system
+  name: statix-gateway-svc
+  namespace: statix-system
   labels:
-    app: finops-gateway
+    app: statix-gateway
 spec:
   type: ClusterIP
   selector:
-    app: finops-gateway
+    app: statix-gateway
   ports:
     - name: http
       port: 3000
@@ -99,10 +99,10 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: finops-gateway-pdb
-  namespace: finops-system
+  name: statix-gateway-pdb
+  namespace: statix-system
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: finops-gateway
+      app: statix-gateway

@@ -3,13 +3,13 @@
 # ============================================================
 
 # ── Rust build artifacts ─────────────────────────────────────
-# The workspace target directory (finops-common, finops-agent, finops-gateway).
+# The workspace target directory (statix-common, statix, statix-gateway).
 # Includes bundled eBPF ELFs from `make build-ebpf` → target/bpf/
 /target/
 
-# finops-ebpf has its own target directory because it is excluded
+# statix-ebpf has its own target directory because it is excluded
 # from the workspace (different compilation target: bpfel-unknown-none)
-/finops-ebpf/target/
+/statix-ebpf/target/
 
 # NOTE: Cargo.lock files ARE committed.
 # For binary crates (finops-user) this guarantees reproducible builds.

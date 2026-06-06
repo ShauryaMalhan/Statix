@@ -10,17 +10,17 @@
 
 1. **`build-and-test-userspace`** — `ubuntu-latest`, stable Rust + cache:
    - `cargo check --workspace`
-   - `cargo test -p finops-gateway -p finops-agent -p finops-wire`
+   - `cargo test -p statix-gateway -p statix -p statix-wire`
 
 2. **`ebpf-verifier-matrix`** — depends on (1); `fail-fast: false`; kernels **5.10, 5.15, 6.1, 6.8**:
-   - Build eBPF ELF: `cargo +nightly build --release -Z build-std=core --target bpfel-unknown-none` in `finops-ebpf/`
-   - Build `finops-ebpf-verify` (agent bin)
+   - Build eBPF ELF: `cargo +nightly build --release -Z build-std=core --target bpfel-unknown-none` in `statix-ebpf/`
+   - Build `statix-ebpf-verify` (agent bin)
    - Per matrix cell: `scripts/verify-ebpf-kernel.sh` boots kernel via **virtme-ng** and loads ELF through **Aya**
 
 ### Verifier harness (not `bpftool prog load`)
 
-- **`finops-agent/src/bin/verify_ebpf.rs`** — `Ebpf::load(&bytes)` runs the **in-kernel BPF verifier** without attaching probes.
-- **`scripts/verify-ebpf-kernel.sh`** — `vng -r <mainline> --rw -- finops-ebpf-verify <elf>`. **`5.10` → `v5.10.258`** (bare `v5.10` is `5.10.0`, which fails `EVENTS` ringbuf create + PSI/udev on noble); `5.15` / `6.1` / `6.8` use mainline LTS dirs (`v5.15`, `v6.1`, `v6.8`).
+- **`statix/src/bin/verify_ebpf.rs`** — `Ebpf::load(&bytes)` runs the **in-kernel BPF verifier** without attaching probes.
+- **`scripts/verify-ebpf-kernel.sh`** — `vng -r <mainline> --rw -- statix-ebpf-verify <elf>`. **`5.10` → `v5.10.258`** (bare `v5.10` is `5.10.0`, which fails `EVENTS` ringbuf create + PSI/udev on noble); `5.15` / `6.1` / `6.8` use mainline LTS dirs (`v5.15`, `v6.1`, `v6.8`).
 
 **Rejected approach:** `bpftool prog load` — libbpf v1.0+ rejects Aya ELFs with legacy `maps` section definitions.
 
@@ -34,9 +34,9 @@
 | 6.8 | yes | yes (ubuntu-latest class) |
 | &lt; 5.8 / no BTF | **no** | **unsupported** |
 
-Default CI ring tier: `FINOPS_RING_BUF_BYTES=524288` (512 KiB — matches agent small ELF).
+Default CI ring tier: `STATIX_RING_BUF_BYTES=524288` (512 KiB — matches agent small ELF).
 
-**Kernel 5.10 memlock:** Pre-5.11 kernels charge BPF maps against `RLIMIT_MEMLOCK` (default 64 KiB). `finops_agent::bpf_memlock::bump_memlock_rlimit()` runs before `Ebpf::load()` in both `loader.rs` and `finops-ebpf-verify` (512 KiB ringbuf otherwise fails with `failed to create map EVENTS`).
+**Kernel 5.10 memlock:** Pre-5.11 kernels charge BPF maps against `RLIMIT_MEMLOCK` (default 64 KiB). `statix::bpf_memlock::bump_memlock_rlimit()` runs before `Ebpf::load()` in both `loader.rs` and `statix-ebpf-verify` (512 KiB ringbuf otherwise fails with `failed to create map EVENTS`).
 
 ## Rationale
 
@@ -52,6 +52,6 @@ Default CI ring tier: `FINOPS_RING_BUF_BYTES=524288` (512 KiB — matches agent 
 
 ## References
 
-- [TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md) — Phase 9
+- [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) — Phase 9
 - [ADR 013](013-configurable-ring-buffer-size.md) — ring tiers
 - [ADR 024](024-agent-production-container.md) — agent BPF bundle in prod image

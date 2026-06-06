@@ -2,10 +2,10 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: finops-gateway-ingress
-  namespace: finops-system
+  name: statix-gateway-ingress
+  namespace: statix-system
   labels:
-    app: finops-gateway
+    app: statix-gateway
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -20,6 +20,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: finops-gateway-svc
+                name: statix-gateway-svc
                 port:
                   number: 3000

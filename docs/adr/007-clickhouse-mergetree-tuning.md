@@ -6,7 +6,7 @@
 
 ## Decision
 
-`deploy/clickhouse/01_init.sql` for `finops.workload_metrics`:
+`deploy/clickhouse/01_init.sql` for `statix.workload_metrics`:
 
 - **Engine:** `ReplacingMergeTree()` — dedupe on merge; billing queries use `FINAL` ([ADR 011](011-replacingmergetree-dedupe-identity.md)).
 - **Partition:** `toYYYYMMDD(...)` on `window_start_ns` (daily parts, not monthly).

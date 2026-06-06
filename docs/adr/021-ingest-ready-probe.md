@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-01  
-**Context:** ALB/K8s must not route ingest traffic until Kafka is reachable and partition clients exist ([Phase 5 TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md)). `/health` only checked `kafka_tx.is_closed()` — true while the producer was still connecting (“load balancer trap”).
+**Context:** ALB/K8s must not route ingest traffic until Kafka is reachable and partition clients exist ([Phase 5 TODO](../../.cursor/skills/statix-ebpf-agent/TODO.md)). `/health` only checked `kafka_tx.is_closed()` — true while the producer was still connecting (“load balancer trap”).
 
 ## Decision
 

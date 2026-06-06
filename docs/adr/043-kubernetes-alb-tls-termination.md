@@ -11,7 +11,7 @@ Terminate TLS on an **AWS Application Load Balancer** via the AWS Load Balancer 
 - Manifest: `deploy/k8s/gateway-ingress.yaml`
 - `ingressClassName: alb`, `scheme: internet-facing`, listen **HTTPS 443**
 - ACM certificate ARN annotation (placeholder; replace per account/region)
-- Host `ingest.your-startup.com`, path `/ingest` → `finops-gateway-svc:3000` (HTTP backend)
+- Host `ingest.your-startup.com`, path `/ingest` → `statix-gateway-svc:3000` (HTTP backend)
 
 The gateway container continues to serve plain HTTP on port 3000 inside the cluster.
 
@@ -19,12 +19,12 @@ The gateway container continues to serve plain HTTP on port 3000 inside the clus
 
 - Keeps the Rust hot path free of TLS handshake and certificate rotation logic.
 - ALB + ACM is the standard EKS pattern for internet-facing ingest endpoints.
-- In-cluster agents can keep `http://finops-gateway-svc.../ingest`; external callers use `https://ingest.your-startup.com/ingest`.
+- In-cluster agents can keep `http://statix-gateway-svc.../ingest`; external callers use `https://ingest.your-startup.com/ingest`.
 
 ## Consequences
 
 - **Prerequisite:** AWS Load Balancer Controller installed; ACM cert in the same region as the ALB.
-- **Agent config:** External agents set `FINOPS_INGEST_URL=https://ingest.your-startup.com/ingest`.
+- **Agent config:** External agents set `STATIX_INGEST_URL=https://ingest.your-startup.com/ingest`.
 - **Security:** Bearer token ([ADR 019](019-ingest-bearer-token-auth.md)) still required; TLS protects token on the wire.
 
 ## References

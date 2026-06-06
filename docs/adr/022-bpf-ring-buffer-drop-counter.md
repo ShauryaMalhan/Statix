@@ -6,8 +6,8 @@
 
 ## Decision
 
-1. **Kernel (`finops-ebpf`):** `RING_DROPS` — `BPF_MAP_TYPE_PERCPU_ARRAY`, key `u32`, value `u64`, `max_entries: 1`. On `EVENTS.reserve` failure, increment key `0` on the current CPU via `get_ptr_mut(0)`.
-2. **Agent (`finops-user`):** `take_map("RING_DROPS")` after load; `tokio` task every 10s sums per-CPU values. If total &gt; 0: `log::error!(...)` and `metrics::counter!("finops_agent_ring_drops_total").absolute(total)`.
+1. **Kernel (`statix-ebpf`):** `RING_DROPS` — `BPF_MAP_TYPE_PERCPU_ARRAY`, key `u32`, value `u64`, `max_entries: 1`. On `EVENTS.reserve` failure, increment key `0` on the current CPU via `get_ptr_mut(0)`.
+2. **Agent (`finops-user`):** `take_map("RING_DROPS")` after load; `tokio` task every 10s sums per-CPU values. If total &gt; 0: `log::error!(...)` and `metrics::counter!("statix_ring_drops_total").absolute(total)`.
 3. **Prometheus export:** `metrics-exporter-prometheus` HTTP listener on `0.0.0.0:9091` ([ADR 023](023-phase5-hot-path-fixes.md)).
 
 ## Consequences
@@ -18,6 +18,6 @@
 
 ## References
 
-- [TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md) Phase 5 P0
+- [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) Phase 5 P0
 - [ADR 023](023-phase5-hot-path-fixes.md)
-- `finops-ebpf/src/main.rs`, `finops-user/src/loader.rs`, `finops-user/src/main.rs`
+- `statix-ebpf/src/main.rs`, `finops-user/src/loader.rs`, `finops-user/src/main.rs`

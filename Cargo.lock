@@ -660,80 +660,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
-name = "finops-agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aya",
- "bytes",
- "env_logger",
- "finops-common",
- "finops-infra",
- "finops-wire",
- "futures",
- "k8s-openapi",
- "kube",
- "libc",
- "log",
- "metrics 0.24.6",
- "metrics-exporter-prometheus 0.12.2",
- "num_cpus",
- "parking_lot",
- "rand 0.8.6",
- "reqwest",
- "rustc-hash 1.1.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
- "walkdir",
-]
-
-[[package]]
-name = "finops-common"
-version = "0.1.0"
-dependencies = [
- "aya",
-]
-
-[[package]]
-name = "finops-gateway"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "clickhouse",
- "env_logger",
- "finops-infra",
- "finops-wire",
- "log",
- "metrics 0.24.6",
- "metrics-exporter-prometheus 0.17.2",
- "rskafka",
- "rustc-hash 1.1.0",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
-name = "finops-infra"
-version = "0.1.0"
-dependencies = [
- "libc",
- "log",
-]
-
-[[package]]
-name = "finops-wire"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2763,6 +2689,80 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "statix"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aya",
+ "bytes",
+ "env_logger",
+ "futures",
+ "k8s-openapi",
+ "kube",
+ "libc",
+ "log",
+ "metrics 0.24.6",
+ "metrics-exporter-prometheus 0.12.2",
+ "num_cpus",
+ "parking_lot",
+ "rand 0.8.6",
+ "reqwest",
+ "rustc-hash 1.1.0",
+ "serde",
+ "serde_json",
+ "statix-common",
+ "statix-infra",
+ "statix-wire",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
+name = "statix-common"
+version = "0.1.0"
+dependencies = [
+ "aya",
+]
+
+[[package]]
+name = "statix-gateway"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "clickhouse",
+ "env_logger",
+ "log",
+ "metrics 0.24.6",
+ "metrics-exporter-prometheus 0.17.2",
+ "rskafka",
+ "rustc-hash 1.1.0",
+ "serde",
+ "serde_json",
+ "statix-infra",
+ "statix-wire",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "statix-infra"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "statix-wire"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "subtle"

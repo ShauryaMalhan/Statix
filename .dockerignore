@@ -1,5 +1,5 @@
 target/
-finops-ebpf/target/
+statix-ebpf/target/
 .git/
 .cursor/
 **/*.md

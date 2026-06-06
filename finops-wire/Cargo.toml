@@ -1,8 +1,0 @@
-[package]
-name = "finops-wire"
-version = "0.1.0"
-edition = "2021"
-description = "Shared ingest wire types (batch envelope, workload rows, Kafka/ClickHouse flat rows)"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }

@@ -1,13 +1,13 @@
 [workspace]
 # Only the host-target crates live in the workspace.
-# finops-ebpf is excluded because it compiles to bpfel-unknown-none (BPF bytecode),
+# statix-ebpf is excluded because it compiles to bpfel-unknown-none (BPF bytecode),
 # a completely different target than the host machine. Including it here would cause
 # cargo to try building it for x86_64, which would fail.
 members = [
-    "finops-common",
-    "finops-wire",
-    "finops-infra",
-    "finops-agent",
-    "finops-gateway",
+    "statix-common",
+    "statix-wire",
+    "statix-infra",
+    "statix",
+    "statix-gateway",
 ]
 resolver = "2"

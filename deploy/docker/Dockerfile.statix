@@ -1,0 +1,51 @@
+# Statix eBPF node agent — production multi-stage image.
+# Requires privileged/root at runtime (CAP_BPF, cgroup reads).
+# Build from repo root (statix-core):
+#   docker build -f deploy/docker/Dockerfile.statix -t statix:latest .
+
+FROM rust:1.86-bookworm AS builder
+
+WORKDIR /usr/src/statix
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        clang llvm libelf-dev zlib1g-dev pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# eBPF: nightly + bpf-linker + bpfel-unknown-none (statix-ebpf is outside the workspace)
+RUN rustup toolchain install nightly --profile minimal \
+    && rustup component add rust-src --toolchain nightly \
+    && cargo install bpf-linker
+
+COPY . .
+
+# Three ring-buffer tiers → target/bpf/ (same as `make build-ebpf`)
+RUN set -eux; \
+    mkdir -p target/bpf; \
+    cd statix-ebpf; \
+    for pair in statix-ebpf-small:524288 statix-ebpf-large:4194304 statix-ebpf-xlarge:8388608; do \
+        name="${pair%%:*}"; bytes="${pair##*:}"; \
+        echo "Building $name ($bytes bytes)"; \
+        STATIX_RING_BUF_BYTES="$bytes" cargo +nightly build --release \
+            -Z build-std=core --target bpfel-unknown-none; \
+        cp target/bpfel-unknown-none/release/statix-ebpf "../target/bpf/${name}"; \
+    done; \
+    cd ..; \
+    cargo build --release -p statix
+
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Agent must run as root (or CAP_BPF + CAP_PERFMON + CAP_SYS_ADMIN) to load BPF.
+COPY --from=builder /usr/src/statix/target/release/statix /usr/local/bin/statix
+COPY --from=builder /usr/src/statix/target/bpf /app/bpf
+
+ENV RUST_LOG=info
+ENV STATIX_BPF_DIR=/app/bpf
+
+ENTRYPOINT ["statix"]

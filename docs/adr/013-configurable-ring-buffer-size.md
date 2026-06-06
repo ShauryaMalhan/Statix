@@ -6,13 +6,13 @@
 
 ## Decision
 
-1. **`finops-ebpf/build.rs`** — reads `FINOPS_RING_BUF_BYTES` at compile time; emits `RING_BUF_BYTES` in `OUT_DIR/ring_config.rs`; `cargo:rerun-if-env-changed`.
-2. **`finops-ebpf/src/main.rs`** — `include!(…/ring_config.rs)`; `RingBuf::with_byte_size(RING_BUF_BYTES, 0)`.
+1. **`statix-ebpf/build.rs`** — reads `STATIX_RING_BUF_BYTES` at compile time; emits `RING_BUF_BYTES` in `OUT_DIR/ring_config.rs`; `cargo:rerun-if-env-changed`.
+2. **`statix-ebpf/src/main.rs`** — `include!(…/ring_config.rs)`; `RingBuf::with_byte_size(RING_BUF_BYTES, 0)`.
 3. **`make build-ebpf`** — builds three release ELFs into `target/bpf/`:
-   - `finops-ebpf-small` — 524288 (512KB), ≤8 cores
-   - `finops-ebpf-large` — 4194304 (4MB), 9–64 cores
-   - `finops-ebpf-xlarge` — 8388608 (8MB), 65+ cores
-4. **`finops-user/src/ebpf_select.rs`** — `num_cpus::get()` picks variant; `FINOPS_EBF_PATH` overrides; `FINOPS_BPF_DIR` defaults to `target/bpf` (compile-time path from crate root).
+   - `statix-ebpf-small` — 524288 (512KB), ≤8 cores
+   - `statix-ebpf-large` — 4194304 (4MB), 9–64 cores
+   - `statix-ebpf-xlarge` — 8388608 (8MB), 65+ cores
+4. **`finops-user/src/ebpf_select.rs`** — `num_cpus::get()` picks variant; `STATIX_EBF_PATH` overrides; `STATIX_BPF_DIR` defaults to `target/bpf` (compile-time path from crate root).
 
 ## Rationale
 
@@ -28,4 +28,4 @@
 
 ## References
 
-- `finops-ebpf/build.rs`, `Makefile`, `finops-user/src/ebpf_select.rs`
+- `statix-ebpf/build.rs`, `Makefile`, `finops-user/src/ebpf_select.rs`

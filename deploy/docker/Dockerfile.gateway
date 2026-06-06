@@ -1,11 +1,11 @@
-# FinOps gateway (finops-gateway) — production multi-stage image.
-# Build from repo root (finops-core):
-#   docker build -f deploy/docker/Dockerfile.gateway -t finops-gateway:latest .
+# Statix gateway — production multi-stage image.
+# Build from repo root (statix-core):
+#   docker build -f deploy/docker/Dockerfile.gateway -t statix-gateway:latest .
 
 # Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86 (see Dockerfile.gateway).
 FROM rust:1.86-bookworm AS builder
 
-WORKDIR /usr/src/finops
+WORKDIR /usr/src/statix
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config libssl-dev \
@@ -13,7 +13,7 @@ RUN apt-get update \
 
 COPY . .
 
-RUN cargo build --release -p finops-gateway
+RUN cargo build --release -p statix-gateway
 
 FROM debian:bookworm-slim
 
@@ -22,16 +22,16 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -ms /bin/bash finops \
-    && chown -R finops:finops /app
+    && useradd -ms /bin/bash statix \
+    && chown -R statix:statix /app
 
-USER finops
+USER statix
 
-COPY --from=builder /usr/src/finops/target/release/finops-gateway /usr/local/bin/finops-gateway
+COPY --from=builder /usr/src/statix/target/release/statix-gateway /usr/local/bin/statix-gateway
 
-ENV FINOPS_API_PORT=3000
+ENV STATIX_API_PORT=3000
 ENV RUST_LOG=info
 
 EXPOSE 3000
 
-ENTRYPOINT ["finops-gateway"]
+ENTRYPOINT ["statix-gateway"]

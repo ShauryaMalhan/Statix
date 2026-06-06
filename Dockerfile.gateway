@@ -1,4 +1,4 @@
-# finops-gateway — multi-stage image for docker-compose (KAFKA_BROKERS=kafka:29092 on finops-net)
+# statix-gateway — multi-stage image for docker-compose (KAFKA_BROKERS=kafka:29092 on statix-net)
 
 # Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86
 FROM rust:1.86-slim AS builder
@@ -6,17 +6,17 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY . .
-RUN cargo build --release -p finops-gateway
+RUN cargo build --release -p statix-gateway
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/target/release/finops-gateway /usr/local/bin/finops-gateway
+COPY --from=builder /app/target/release/statix-gateway /usr/local/bin/statix-gateway
 
-ENV FINOPS_API_PORT=3000
+ENV STATIX_API_PORT=3000
 ENV KAFKA_BROKERS=kafka:29092
 ENV RUST_LOG=info
 
 EXPOSE 3000
-CMD ["finops-gateway"]
+CMD ["statix-gateway"]

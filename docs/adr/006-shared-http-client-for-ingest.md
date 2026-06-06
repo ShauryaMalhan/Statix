@@ -10,12 +10,12 @@
 2. **`output::init_retry_worker(url)`** — single background task; bounded `mpsc(60)` (~10 min of 10s windows).
 3. **`emit_batch`** — serialize JSON, `try_send` to retry queue (no per-batch `tokio::spawn` POST). On queue full: synchronous `try_lock` + drop-oldest + re-`try_send` (no spawned tasks on the hot path).
 4. **Retry policy** — exponential backoff on transport errors, **5xx**, and **429**; reset after **2xx**. Non-retryable **4xx** logged and dropped.
-5. **Backoff + jitter (thundering herd)** — env `FINOPS_BACKOFF_INITIAL_SECS` (default **1**), `FINOPS_BACKOFF_MAX_SECS` (default **30**). Sleep = `backoff + rand * (backoff * 0.3)` before doubling (AWS-style spread after gateway outages).
+5. **Backoff + jitter (thundering herd)** — env `STATIX_BACKOFF_INITIAL_SECS` (default **1**), `STATIX_BACKOFF_MAX_SECS` (default **30**). Sleep = `backoff + rand * (backoff * 0.3)` before doubling (AWS-style spread after gateway outages).
 
 Builder settings (process-wide, env-configurable):
 
-- **`FINOPS_HTTP_TIMEOUT_SECS`** (default **5**) — entire request timeout (connect + send + response). Cross-region VPCs need &gt;3s; still bounds black-hole TCP on the retry worker.
-- **`FINOPS_HTTP_POOL_IDLE_SECS`** (default **55**) — idle connection reuse; default stays under typical **AWS ALB 60s** idle drop so the pool refreshes before the LB silently kills sockets.
+- **`STATIX_HTTP_TIMEOUT_SECS`** (default **5**) — entire request timeout (connect + send + response). Cross-region VPCs need &gt;3s; still bounds black-hole TCP on the retry worker.
+- **`STATIX_HTTP_POOL_IDLE_SECS`** (default **55**) — idle connection reuse; default stays under typical **AWS ALB 60s** idle drop so the pool refreshes before the LB silently kills sockets.
 
 ## Rationale
 
@@ -27,4 +27,4 @@ Builder settings (process-wide, env-configurable):
 
 - **Positive:** Stable latency for repeated `POST` to `finops-api`; retries pair with ClickHouse dedupe sort key.
 - **Negative:** Slow API may log retry warnings under sustained 503 — agent keeps sampling.
-- **Code:** `finops-user/src/output.rs`, `init_*` from `main.rs` when `FINOPS_INGEST_URL` is set.
+- **Code:** `finops-user/src/output.rs`, `init_*` from `main.rs` when `STATIX_INGEST_URL` is set.

@@ -1,15 +1,15 @@
 -- FinOps telemetry: Kafka engine → ReplacingMergeTree (single source of truth)
--- Wire: JSONEachRow on topic `finops-telemetry` (finops_wire::FlatRow)
+-- Wire: JSONEachRow on topic `statix-telemetry` (statix_wire::FlatRow)
 --
--- Billing: SELECT * FROM finops.workload_metrics FINAL WHERE node = '...';
+-- Billing: SELECT * FROM statix.workload_metrics FINAL WHERE node = '...';
 --
 -- Schema change on existing volume: docker compose down -v && make compose-up
 --
--- Broker overrides: Compose finops-net = kafka:29092; K8s = kafka-broker.default.svc.cluster.local:9092
+-- Broker overrides: Compose statix-net = kafka:29092; K8s = kafka-broker.default.svc.cluster.local:9092
 
-CREATE DATABASE IF NOT EXISTS finops;
+CREATE DATABASE IF NOT EXISTS statix;
 
-CREATE TABLE IF NOT EXISTS finops.workload_metrics
+CREATE TABLE IF NOT EXISTS statix.workload_metrics
 (
     window_start_ns UInt64,
     window_end_ns UInt64,
@@ -32,7 +32,7 @@ PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000)))
 ORDER BY (node, window_start_ns, cgroup_id)
 TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS finops.kafka_telemetry_queue
+CREATE TABLE IF NOT EXISTS statix.kafka_telemetry_queue
 (
     window_start_ns UInt64,
     window_end_ns UInt64,
@@ -52,12 +52,12 @@ CREATE TABLE IF NOT EXISTS finops.kafka_telemetry_queue
 ENGINE = Kafka
 SETTINGS
     kafka_broker_list = 'kafka:29092',
-    kafka_topic_list = 'finops-telemetry',
+    kafka_topic_list = 'statix-telemetry',
     kafka_group_name = 'clickhouse-ingest-group',
     kafka_format = 'JSONEachRow',
     kafka_skip_broken_messages = 1000,
     kafka_num_consumers = 1;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS finops.telemetry_mv
-TO finops.workload_metrics AS
-SELECT * FROM finops.kafka_telemetry_queue;
+CREATE MATERIALIZED VIEW IF NOT EXISTS statix.telemetry_mv
+TO statix.workload_metrics AS
+SELECT * FROM statix.kafka_telemetry_queue;

@@ -2,20 +2,20 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-28  
-**Context:** Phase 5.5 P1-WEEK ([TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md)) — eliminate moderate-effort allocations and connection overhead on agent retry path, K8s refresh, Kafka producer, and operational ClickHouse reads. P0-SHIP already landed in [ADR 032](032-phase55-l8-p0-hot-path-fixes.md).
+**Context:** Phase 5.5 P1-WEEK ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)) — eliminate moderate-effort allocations and connection overhead on agent retry path, K8s refresh, Kafka producer, and operational ClickHouse reads. P0-SHIP already landed in [ADR 032](032-phase55-l8-p0-hot-path-fixes.md).
 
 ## Decision
 
 | Fix | File | Change |
 |-----|------|--------|
-| F1 | `finops-agent/src/output.rs` | Retry channel holds `bytes::Bytes`; `post_ingest` uses `body.clone()` (O(1) refcount) on retries |
+| F1 | `statix/src/output.rs` | Retry channel holds `bytes::Bytes`; `post_ingest` uses `body.clone()` (O(1) refcount) on retries |
 | F2 | `finops-api/src/kafka.rs` | Hoist `by_partition` `HashMap` into `run_producer_loop`; `.clear()` between batches |
 | F3 | `finops-api/src/kafka.rs` | One `Utc::now()` per produce chunk passed to `bytes_to_record` |
-| F4 | `finops-agent/src/main.rs` + `attribution.rs` | `kube::Client::try_default()` once before K8s interval; `refresh_k8s_pods(cache, &client)` |
+| F4 | `statix/src/main.rs` + `attribution.rs` | `kube::Client::try_default()` once before K8s interval; `refresh_k8s_pods(cache, &client)` |
 | F5 | `finops-api/src/kafka.rs` | `tokio::time::interval(300s)` metadata refresh + refresh on `produce` error |
 | F7 | `finops-api/src/routes/query.rs` | Remove `FINAL`; `argMax(memory_bytes_max, window_start_ns)` + `sum(exec_count)` for summary |
 
-**Dependencies:** `bytes = "1"` in `finops-agent/Cargo.toml`.
+**Dependencies:** `bytes = "1"` in `statix/Cargo.toml`.
 
 ## Rationale
 
@@ -33,5 +33,5 @@
 
 ## References
 
-- [L8-AUDIT-FIXES.md](../../.cursor/skills/finops-ebpf-agent/L8-AUDIT-FIXES.md)
+- [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
 - [ADR 032](032-phase55-l8-p0-hot-path-fixes.md)

@@ -14,11 +14,11 @@
 
 | Metric | Type | Where |
 |--------|------|--------|
-| `finops_api_ingest_requests_total{status}` | counter | `ingest.rs` — per HTTP status (`200`, `400`, `503`, …) |
-| `finops_api_ingest_duration_seconds` | histogram | `ingest.rs` — handler wall time |
-| `finops_api_kafka_channel_full_total` | counter | `ingest.rs` — `try_send` full |
-| `finops_api_kafka_channel_depth` | gauge | `ingest.rs` +1 on enqueue; `kafka.rs` −N on `recv` / `recv_many` |
-| `finops_api_kafka_produce_duration_seconds` | histogram | `kafka.rs` — around `PartitionClient::produce` |
+| `statix_api_ingest_requests_total{status}` | counter | `ingest.rs` — per HTTP status (`200`, `400`, `503`, …) |
+| `statix_api_ingest_duration_seconds` | histogram | `ingest.rs` — handler wall time |
+| `statix_api_kafka_channel_full_total` | counter | `ingest.rs` — `try_send` full |
+| `statix_api_kafka_channel_depth` | gauge | `ingest.rs` +1 on enqueue; `kafka.rs` −N on `recv` / `recv_many` |
+| `statix_api_kafka_produce_duration_seconds` | histogram | `kafka.rs` — around `PartitionClient::produce` |
 
 Instrumentation is explicit in handlers/loops — no Axum metrics middleware.
 

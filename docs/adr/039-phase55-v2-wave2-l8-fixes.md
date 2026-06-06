@@ -10,8 +10,8 @@
 |----|------|-----|
 | V2-10 | `attribution/mod.rs` | `on_identity_event` read-lock fast path — skip `cgroup_path_from_pid` when `cgroup_id` known; double-check after procfs |
 | V2-14 | `attribution/mod.rs` | `merge_cgroup_labels_from_k8s` — read-lock snapshot → compute labels outside lock → short write-lock batch insert |
-| V2-12 | `finops-gateway/src/kafka.rs` | `FxHasher` replaces `DefaultHasher` for deterministic cross-version partition routing |
-| V2-13 | `finops-gateway/src/kafka.rs` | Hoist `node.to_vec()` once per partition chunk in `produce_grouped_batch`; remove `bytes_to_record` |
+| V2-12 | `statix-gateway/src/kafka.rs` | `FxHasher` replaces `DefaultHasher` for deterministic cross-version partition routing |
+| V2-13 | `statix-gateway/src/kafka.rs` | Hoist `node.to_vec()` once per partition chunk in `produce_grouped_batch`; remove `bytes_to_record` |
 
 ## Rationale
 

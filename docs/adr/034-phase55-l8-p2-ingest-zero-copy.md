@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-28  
-**Context:** Final L8 playbook item F1 — eliminate per-row heap allocations on the gateway `POST /ingest` thread ([L8-AUDIT-FIXES.md](../../.cursor/skills/finops-ebpf-agent/L8-AUDIT-FIXES.md), [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
+**Context:** Final L8 playbook item F1 — eliminate per-row heap allocations on the gateway `POST /ingest` thread ([L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md), [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
 
 ## Decision
 
@@ -16,16 +16,16 @@
 ## Rationale
 
 - Prior path: N× `node_vec.clone()` + 3 string clones per row via `FlatRow::from_ingest` on the Tokio HTTP worker.
-- `FlatRowRef` preserves schema v2 JSON field names and `skip_serializing_if` semantics identical to `finops_wire::FlatRow`.
+- `FlatRowRef` preserves schema v2 JSON field names and `skip_serializing_if` semantics identical to `statix_wire::FlatRow`.
 - `node.to_vec()` for rskafka remains on the background producer task — off the ingest hot path ([ADR 005](005-non-blocking-ingest-pipeline.md)).
 
 ## Consequences
 
 - **Positive:** HTTP ingest thread allocation count scales with JSON encode buffer only, not envelope string clones.
-- **Negative:** `FlatRow::from_ingest` unused on ingest path; `finops-wire::FlatRow` retained for tests and `into_flat_rows`.
+- **Negative:** `FlatRow::from_ingest` unused on ingest path; `statix-wire::FlatRow` retained for tests and `into_flat_rows`.
 - **L8 playbook:** All audit fixes shipped (ADR 032, 033, 034).
 
 ## References
 
 - [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)
-- [finops-wire `FlatRow`](../../finops-wire/src/lib.rs)
+- [statix-wire `FlatRow`](../../statix-wire/src/lib.rs)

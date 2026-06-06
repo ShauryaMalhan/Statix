@@ -6,7 +6,7 @@
 
 ## Decision
 
-`finops.workload_metrics` in `deploy/clickhouse/01_init.sql`:
+`statix.workload_metrics` in `deploy/clickhouse/01_init.sql`:
 
 - **Engine:** `ReplacingMergeTree(window_end_ns)` — version column keeps latest window on merge ([ADR 038](038-phase55-v2-wave1-l8-fixes.md) V2-2).
 - **ORDER BY:** `(node, window_start_ns, cgroup_id)` — stable workload identity per aggregation window.
@@ -18,7 +18,7 @@
 ReplacingMergeTree deduplicates **asynchronously** during background merges. For billing aggregates and dashboards, queries **must** use `FINAL`:
 
 ```sql
-SELECT sum(memory_bytes_max) FROM finops.workload_metrics FINAL WHERE node = 'node-1';
+SELECT sum(memory_bytes_max) FROM statix.workload_metrics FINAL WHERE node = 'node-1';
 ```
 
 Without `FINAL`, duplicate rows may appear until merges complete.
@@ -34,7 +34,7 @@ Without `FINAL`, duplicate rows may appear until merges complete.
 - **Positive:** Idempotent storage for retried windows without `batch_id` on wire (yet).
 - **Negative:** `FINAL` adds read cost — acceptable for billing batch jobs; avoid on hot exploratory scans without need for exact counts.
 - **Negative:** `CREATE TABLE IF NOT EXISTS` does not migrate existing volumes — `docker compose down -v && make compose-up` after schema change.
-- **Deferred:** Explicit version column (e.g. `window_end_ns`) if merge tie-break must be deterministic; `batch_id` on wire for audit ([TODO 4.6](../../.cursor/skills/finops-ebpf-agent/TODO.md)).
+- **Deferred:** Explicit version column (e.g. `window_end_ns`) if merge tie-break must be deterministic; `batch_id` on wire for audit ([TODO 4.6](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 
 ## References
 

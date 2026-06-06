@@ -9,8 +9,8 @@
 **Single canonical script:** `deploy/clickhouse/01_init.sql` (merged former infra + deploy definitions).
 
 1. `CREATE DATABASE finops`
-2. **`finops.workload_metrics`** — `ReplacingMergeTree()`, `PARTITION BY` day, 30d `TTL`, `ORDER BY (node, window_start_ns, cgroup_id)`, columns aligned with `FlatRow` in `ingest.rs` (`k8s_resolved Bool` for JSONEachRow).
-3. **`finops.kafka_telemetry_queue`** — Kafka engine; `kafka_skip_broken_messages = 1000`; `kafka_num_consumers = 1` (raise in prod).
+2. **`statix.workload_metrics`** — `ReplacingMergeTree()`, `PARTITION BY` day, 30d `TTL`, `ORDER BY (node, window_start_ns, cgroup_id)`, columns aligned with `FlatRow` in `ingest.rs` (`k8s_resolved Bool` for JSONEachRow).
+3. **`statix.kafka_telemetry_queue`** — Kafka engine; `kafka_skip_broken_messages = 1000`; `kafka_num_consumers = 1` (raise in prod).
 4. **`finops.telemetry_mv`** — `SELECT *` into `workload_metrics`.
 
 - **docker-compose** mounts this file (not `infra/clickhouse/init.sql`).
@@ -23,7 +23,7 @@
 
 ## Consequences
 
-- **Positive:** Billing `SELECT … FROM finops.workload_metrics FINAL` everywhere.
+- **Positive:** Billing `SELECT … FROM statix.workload_metrics FINAL` everywhere.
 - **Negative:** Existing volumes with old `default.finops_telemetry` tables need `docker compose down -v` or manual migration.
 
 ## References

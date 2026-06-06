@@ -2,16 +2,16 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-01  
-**Context:** eBPF identity events only fire on `sched_process_exec`. Long-running pods/DBs started before the agent never appear in the aggregator or memory sampler until something new execs ([TODO 1.7](../../.cursor/skills/finops-ebpf-agent/TODO.md)).
+**Context:** eBPF identity events only fire on `sched_process_exec`. Long-running pods/DBs started before the agent never appear in the aggregator or memory sampler until something new execs ([TODO 1.7](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 
 ## Decision
 
 On startup, before the main `select!` loop, `attribution::bootstrap_existing_cgroups`:
 
-1. Recursively walks `FINOPS_CGROUP_ROOT` (default `/sys/fs/cgroup`) via `walkdir`.
+1. Recursively walks `STATIX_CGROUP_ROOT` (default `/sys/fs/cgroup`) via `walkdir`.
 2. For each **directory** (skip root), uses `metadata().ino()` as **`cgroup_id`** (cgroup v2 unified hierarchy).
 3. Registers `memory.current` paths via `AttributionCache::register_cgroup_directory` (relative path `/slice/...`).
-4. Injects synthetic `FinopsEvent` (`EVENT_KIND_WORKLOAD_IDENTITY`, `timestamp: 0`, empty `comm`) into `Aggregator::on_finops_event`.
+4. Injects synthetic `StatixEvent` (`EVENT_KIND_WORKLOAD_IDENTITY`, `timestamp: 0`, empty `comm`) into `Aggregator::on_finops_event`.
 5. Emits any early-flush batch from `max_keys` during bootstrap.
 
 ## Rationale

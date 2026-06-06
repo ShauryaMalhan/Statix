@@ -8,19 +8,19 @@
 
 | ID | Area | Fix |
 |----|------|-----|
-| V2-15 | `finops-agent/src/output.rs` | After successful retry when `backoff_secs > initial_backoff`, sleep `rand(0..5)` seconds before dequeuing next batch |
-| V2-18 | `finops-gateway/src/routes/ingest.rs` | Capture `batch_window_end_ns`; on `200 OK` record `finops_api_ingest_lag_seconds` histogram |
+| V2-15 | `statix/src/output.rs` | After successful retry when `backoff_secs > initial_backoff`, sleep `rand(0..5)` seconds before dequeuing next batch |
+| V2-18 | `statix-gateway/src/routes/ingest.rs` | Capture `batch_window_end_ns`; on `200 OK` record `statix_api_ingest_lag_seconds` histogram |
 | V2-16 | `deploy/grafana/clickhouse_monitoring.sql` | Grafana/alert SQL for `system.parts` active count + `system.merges` queue depth |
 
 ## Rationale
 
 - **V2-15:** Gateway recovery must not trigger 5000-agent simultaneous retry flush (thundering herd).
 - **V2-18:** Agent window-close → gateway accept lag is the first hop in end-to-end pipeline SLO diagnosis.
-- **V2-16:** Merge backlog visibility prevents silent `TOO_MANY_PARTS` degradation on `finops.workload_metrics`.
+- **V2-16:** Merge backlog visibility prevents silent `TOO_MANY_PARTS` degradation on `statix.workload_metrics`.
 
 ## Consequences
 
-- **Metric:** `finops_api_ingest_lag_seconds` on successful ingest only (not 4xx/5xx/503).
+- **Metric:** `statix_api_ingest_lag_seconds` on successful ingest only (not 4xx/5xx/503).
 - **Alerting:** Wire `clickhouse_monitoring.sql` queries into Grafana; P1 at 300 parts, P0 at 1000.
 
 ## References

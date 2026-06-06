@@ -8,8 +8,8 @@
 
 | ID | Area | Fix |
 |----|------|-----|
-| V2-11 | `finops-gateway/src/kafka.rs` | `failed_batches: VecDeque<(i32, Vec<Record>)>` — on produce `Err`, queue records; drain before each `produce_grouped_batch` + metadata tick; cap **100** batches then drop + metric |
-| V2-5 | `deploy/k8s/agent-daemonset.yaml` | `terminationGracePeriodSeconds: 30`; `preStop` `sleep 5` before SIGTERM flush |
+| V2-11 | `statix-gateway/src/kafka.rs` | `failed_batches: VecDeque<(i32, Vec<Record>)>` — on produce `Err`, queue records; drain before each `produce_grouped_batch` + metadata tick; cap **100** batches then drop + metric |
+| V2-5 | `deploy/k8s/statix-daemonset.yaml` | `terminationGracePeriodSeconds: 30`; `preStop` `sleep 5` before SIGTERM flush |
 | V2-6 | `deploy/k8s/gateway.yaml` | `PodDisruptionBudget` `minAvailable: 1`; gateway `terminationGracePeriodSeconds: 30` + `preStop` sleep |
 
 ## Rationale
@@ -20,7 +20,7 @@
 
 ## Consequences
 
-- **Metrics:** `finops_api_kafka_produce_errors_total`, `finops_api_kafka_produce_dropped_total` on retry overflow.
+- **Metrics:** `statix_api_kafka_produce_errors_total`, `statix_api_kafka_produce_dropped_total` on retry overflow.
 - **Memory:** Up to 100 failed record batches retained in gateway process during prolonged broker outage.
 
 ## References

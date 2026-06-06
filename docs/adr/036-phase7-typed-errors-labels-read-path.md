@@ -2,18 +2,18 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-28  
-**Context:** Phase 7 code tasks ([TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md)) — `thiserror` on gateway and agent attribution; L8 FLAW 9 (write lock on label read path).
+**Context:** Phase 7 code tasks ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)) — `thiserror` on gateway and agent attribution; L8 FLAW 9 (write lock on label read path).
 
 ## Decision
 
-### Gateway (`finops-gateway`)
+### Gateway (`statix-gateway`)
 
 - **`thiserror`** dependency; `src/error.rs` — `GatewayError` enum.
 - **`main`:** `Result<(), GatewayError>` — Prometheus install, bind, serve, drain timeout.
 - **`kafka.rs`:** `load_partition_clients`, `run_producer_loop` return `GatewayError` (`Kafka`, `NoTopicPartitions`).
 - **`routes/query.rs`:** ClickHouse failures → `GatewayError::ClickHouse` → HTTP 500 via `status_code()`.
 
-### Agent (`finops-agent`)
+### Agent (`statix`)
 
 - **`attribution/error.rs`** — `AttributionError` for cgroup path and `memory.current` I/O.
 - **`cgroup_path_from_pid`**, **`read_memory_current_at`** (moved to attribution module, called from `memory_sampler`) use typed errors.

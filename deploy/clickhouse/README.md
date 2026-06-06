@@ -6,14 +6,14 @@ Creates:
 
 | Object | Purpose |
 |--------|---------|
-| `finops.workload_metrics` | `ReplacingMergeTree` storage (dedupe key: `node`, `window_start_ns`, `cgroup_id`) |
-| `finops.kafka_telemetry_queue` | Kafka engine consumer |
-| `finops.telemetry_mv` | MV into `workload_metrics` |
+| `statix.workload_metrics` | `ReplacingMergeTree` storage (dedupe key: `node`, `window_start_ns`, `cgroup_id`) |
+| `statix.kafka_telemetry_queue` | Kafka engine consumer |
+| `statix.telemetry_mv` | MV into `workload_metrics` |
 
 ## Apply
 
 ```bash
-clickhouse-client --user default --password finops_dev --multiquery < deploy/clickhouse/01_init.sql
+clickhouse-client --user default --password statix_dev --multiquery < deploy/clickhouse/01_init.sql
 ```
 
 Compose applies automatically on **first** ClickHouse volume init (`make compose-up`).
@@ -24,15 +24,15 @@ After schema changes: `docker compose down -v && make compose-up`.
 
 | Environment | `kafka_broker_list` in script |
 |-------------|-------------------------------|
-| docker-compose (`finops-net`) | `kafka:29092` |
+| docker-compose (`statix-net`) | `kafka:29092` |
 | Host ClickHouse → host Kafka | `localhost:9092` (ALTER TABLE … MODIFY SETTING) |
 | K8s | `kafka-broker.default.svc.cluster.local:9092` |
 
 ## Verify
 
 ```bash
-curl -s -u default:finops_dev \
-  'http://localhost:8123/?query=SELECT%20count()%20FROM%20finops.workload_metrics%20FINAL'
+curl -s -u default:statix_dev \
+  'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
 ```
 
 ## Production

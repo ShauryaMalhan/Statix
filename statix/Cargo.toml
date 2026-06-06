@@ -1,0 +1,53 @@
+[package]
+name = "statix"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "statix-ebpf-verify"
+path = "src/bin/verify_ebpf.rs"
+
+[dependencies]
+# aya is the user-space half of the Aya eBPF framework.
+# It handles: loading BPF ELF files, creating/pinning maps,
+# attaching programs to kernel hooks, and reading from ring buffers.
+aya = { version = "0.13", features = ["async_tokio"] }
+
+# aya-log / aya-log-ebpf omitted (dev-only BPF diagnostics). See
+# .cursor/skills/statix-ebpf-agent/TODO.md if re-adding.
+
+# Tokio is the async runtime. Our ring buffer consumer uses async I/O:
+# instead of blocking a thread waiting for kernel data, we register the
+# ring buffer file descriptor with the OS epoll, and Tokio wakes our
+# task only when events arrive. Zero CPU usage while waiting.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+statix-wire = { path = "../statix-wire" }
+statix-infra = { path = "../statix-infra" }
+
+anyhow = "1"
+thiserror = "2"
+
+log = "0.4"
+env_logger = "0.11"
+metrics  = "0.24"
+metrics-exporter-prometheus = "0.12"
+libc       = "0.2"
+num_cpus   = "1"
+walkdir    = "2"
+uuid       = { version = "1.8", features = ["v4"] }
+
+parking_lot = "0.12"
+rustc-hash = "1.1"
+
+statix-common = { path = "../statix-common", features = ["user"] }
+
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+bytes   = "1"
+rand    = { version = "0.8", features = ["small_rng"] }
+
+kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls", "runtime"] }
+k8s-openapi = { version = "0.24", features = ["v1_30"] }
+futures = "0.3"

@@ -2,15 +2,15 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-05  
-**Context:** Phase 7 DX — scattered `std::env::var` in `main.rs` made defaults and validation inconsistent ([TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md)).
+**Context:** Phase 7 DX — scattered `std::env::var` in `main.rs` made defaults and validation inconsistent ([TODO](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 
 ## Decision
 
-- **`finops-gateway/src/config.rs`** — `Config::from_env()` at the top of `main()` (before `env_logger::init()`). Crate renamed from `finops-api` ([ADR 035](035-phase7-workspace-restructure.md)).
+- **`statix-gateway/src/config.rs`** — `Config::from_env()` at the top of `main()` (before `env_logger::init()`). Crate renamed from `finops-api` ([ADR 035](035-phase7-workspace-restructure.md)).
 - **Fields:** `kafka_brokers`, `api_port`, `api_token`, `clickhouse_url`, `clickhouse_user`, `clickhouse_password` with documented defaults.
-- **Fail fast:** invalid `FINOPS_API_PORT` (non-u16 or `0`) → `eprintln!` + `process::exit(1)` (no silent fallback).
+- **Fail fast:** invalid `STATIX_API_PORT` (non-u16 or `0`) → `eprintln!` + `process::exit(1)` (no silent fallback).
 - **Helpers:** `expected_bearer()`, `clickhouse_client()` on `Config`.
-- **Deferred:** Kafka tuning env (`FINOPS_KAFKA_CHANNEL_SIZE`, etc.) remain in `kafka.rs` ([ADR 014](014-kafka-producer-env-tuning.md)).
+- **Deferred:** Kafka tuning env (`STATIX_KAFKA_CHANNEL_SIZE`, etc.) remain in `kafka.rs` ([ADR 014](014-kafka-producer-env-tuning.md)).
 
 ## Consequences
 
@@ -22,12 +22,12 @@
 | Environment variable | Field | Default | Validation |
 |---------------------|-------|---------|------------|
 | `KAFKA_BROKERS` | `kafka_brokers` | `localhost:9092` | empty → default + warn |
-| `FINOPS_API_PORT` | `api_port` | `3000` | invalid / `0` → **exit 1** |
-| `FINOPS_API_TOKEN` | `api_token` | `None` | empty string → `None` |
+| `STATIX_API_PORT` | `api_port` | `3000` | invalid / `0` → **exit 1** |
+| `STATIX_API_TOKEN` | `api_token` | `None` | empty string → `None` |
 | `CLICKHOUSE_URL` | `clickhouse_url` | `http://localhost:8123` | empty → default + warn |
 | `CLICKHOUSE_USER` | `clickhouse_user` | `default` | empty → default + warn |
 | `CLICKHOUSE_PASSWORD` | `clickhouse_password` | `""` | always allowed |
 
 ## References
 
-- `finops-gateway/src/main.rs`, `config.rs`
+- `statix-gateway/src/main.rs`, `config.rs`

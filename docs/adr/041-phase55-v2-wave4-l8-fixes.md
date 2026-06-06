@@ -8,7 +8,7 @@
 
 | ID | Area | Fix |
 |----|------|-----|
-| V2-4 | `finops-agent/src/attribution/mod.rs` | Replace 30s `pods.list()` poll with `kube::runtime::watcher` (`watch_k8s_pods`); node field selector; `merge_cgroup_labels_from_k8s` on Apply + InitDone |
+| V2-4 | `statix/src/attribution/mod.rs` | Replace 30s `pods.list()` poll with `kube::runtime::watcher` (`watch_k8s_pods`); node field selector; `merge_cgroup_labels_from_k8s` on Apply + InitDone |
 | V2-7 | `deploy/k8s/*.yaml` | Pin `image:` to `@sha256:<64-hex>` digests (placeholder production builds) |
 | V2-8 | `deploy/k8s/gateway.yaml` | `topologySpreadConstraints` on `topology.kubernetes.io/zone`, `maxSkew: 1`, `ScheduleAnyway` |
 
@@ -21,7 +21,7 @@
 ## Consequences
 
 - **RBAC:** Existing `watch` verb on `pods` ClusterRole is required (already present).
-- **Deps:** `kube` `runtime` feature + `futures` in `finops-agent`.
+- **Deps:** `kube` `runtime` feature + `futures` in `statix`.
 - **CI/CD:** Replace placeholder digests with pipeline-templated values (Kustomize/Helm overlay).
 - **Fallback:** `refresh_k8s_pods` retained for one-shot list refresh / tests.
 

@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-01  
-**Context:** Identity events stamp `timestamp` with `bpf_ktime_get_ns()` (monotonic/boot-time domain). The aggregator used `SystemTime` for `window_start_ns` / `window_end_ns`, so event times and billing windows lived in different domains ([TODO 4.1](../../.cursor/skills/finops-ebpf-agent/TODO.md)).
+**Context:** Identity events stamp `timestamp` with `bpf_ktime_get_ns()` (monotonic/boot-time domain). The aggregator used `SystemTime` for `window_start_ns` / `window_end_ns`, so event times and billing windows lived in different domains ([TODO 4.1](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 
 ## Decision
 
@@ -32,4 +32,4 @@ User-space memory samples already pass wall time from `memory_sampler`; they do 
 
 ## References
 
-- `finops-user/src/aggregator.rs`, `finops-ebpf/src/main.rs`
+- `finops-user/src/aggregator.rs`, `statix-ebpf/src/main.rs`

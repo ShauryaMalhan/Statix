@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-01  
-**Context:** Hard reject `schema_version != 2` breaks rolling K8s upgrades when gateway and agents briefly disagree on version ([Phase 5 TODO](../../.cursor/skills/finops-ebpf-agent/TODO.md)).
+**Context:** Hard reject `schema_version != 2` breaks rolling K8s upgrades when gateway and agents briefly disagree on version ([Phase 5 TODO](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 
 ## Decision
 
