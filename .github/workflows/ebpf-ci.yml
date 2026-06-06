@@ -63,10 +63,10 @@ jobs:
             clang llvm libelf-dev zlib1g-dev pkg-config \
             qemu-system-x86 qemu-kvm udev iproute2 busybox-static \
             coreutils python3-pip python3-requests python3-argcomplete \
-            libvirt-clients kbd kmod file rsync zstd virtiofsd bpftool
+            libvirt-clients kbd kmod file rsync zstd virtiofsd
 
       - name: Install virtme-ng
-        run: pip install virtme-ng
+        run: pip install --break-system-packages virtme-ng
 
       - name: Enable KVM
         run: |
