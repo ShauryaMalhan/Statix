@@ -39,9 +39,20 @@ Phase 3 adds HTTP ingest, keyed Kafka by `node`, ClickHouse Kafka engine → `fi
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
 Contributing: read `.cursor/skills/finops-ebpf-agent/SKILL.md` first; update ADR + docs + skills with every architectural change.
 
+## CI
+
+[![eBPF Verifier CI](https://github.com/ShauryaMalhan/finops-core/actions/workflows/ebpf-ci.yml/badge.svg)](https://github.com/ShauryaMalhan/finops-core/actions/workflows/ebpf-ci.yml)
+
+On every push/PR to `main`, [`.github/workflows/ebpf-ci.yml`](.github/workflows/ebpf-ci.yml) runs:
+
+1. **Userspace** — `cargo check --workspace` + tests for `finops-gateway`, `finops-agent`, `finops-wire`
+2. **eBPF verifier matrix** — kernels **5.10, 5.15, 6.1, 6.8** via virtme-ng + `finops-ebpf-verify` ([ADR 037](docs/adr/037-phase9-ebpf-verifier-ci.md))
+
+Pre-BTF / legacy kernels are **not** supported.
+
 ## Prerequisites
 
-- Linux 5.8+ with BTF (`/sys/kernel/btf/vmlinux`)
+- Linux 5.10+ (CI matrix: 5.10, 5.15, 6.1, 6.8) with BTF (`/sys/kernel/btf/vmlinux`)
 - cgroup v2 unified hierarchy
 - **Rust:** stable (user agent) + nightly (eBPF)
 - **Tools:** `clang`, `bpf-linker`, `bpftool` (optional, for `make verify-btf`)
@@ -108,6 +119,7 @@ Rebuild gateway image: `docker compose build finops-gateway && docker compose up
 ```bash
 make check
 make verify-btf
+# Optional local verifier (KVM + virtme-ng): see scripts/verify-ebpf-kernel.sh
 ```
 
 - Phase 2: [docs/phase2-validation.md](docs/phase2-validation.md)
@@ -136,6 +148,8 @@ finops-core/
 ├── deploy/          # docker, k8s, clickhouse (prod)
 ├── docker-compose.yml
 ├── Dockerfile.gateway   # dev Compose gateway only
+├── .github/workflows/ebpf-ci.yml
+├── scripts/verify-ebpf-kernel.sh
 ├── docs/
 ├── Makefile
 └── README.md

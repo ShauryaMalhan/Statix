@@ -79,6 +79,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 - No `bpf_trace_printk`
 - Always `submit(0)` or `discard(0)`
 - `cgroup_id` from `bpf_get_current_cgroup_id()` on identity events
+- **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); workflow `.github/workflows/ebpf-ci.yml`; local harness `scripts/verify-ebpf-kernel.sh` + `finops-ebpf-verify`
 
 ## User-space (Phase 2)
 
@@ -139,6 +140,7 @@ make deps          # first time
 make build         # ebpf + finops-agent + finops-gateway
 make check
 make verify-btf    # when BPF / kernel portability touched
+# CI parity (needs KVM + virtme-ng): scripts/verify-ebpf-kernel.sh 5.15 finops-ebpf/target/.../finops-ebpf target/release/finops-ebpf-verify
 make compose-up    # Dev stack (API in Docker on :3000); Phase 5: add FINOPS_API_TOKEN in prod
 export FINOPS_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run   # agent on host (root)

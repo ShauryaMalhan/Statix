@@ -16,7 +16,8 @@
 | **Target 2** | **Done** | `deploy/clickhouse/01_init.sql` → `finops.workload_metrics` ([ADR 026](026-clickhouse-finops-database-init.md)) |
 | **Target 3** | **Done** | `GET /api/v1/workloads/summary` → ClickHouse ([ADR 027](027-api-read-path-clickhouse.md)) |
 | 7 | **Done** | Workspace restructure + typed errors + read-only labels ([ADR 028](028-finops-wire-and-agent-rename.md)–[036](036-phase7-typed-errors-labels-read-path.md)) |
-| 8–10 | **Planned** | K8s hardening, portability, extended observability |
+| 9 | **Partial** | eBPF verifier CI matrix shipped ([ADR 037](037-phase9-ebpf-verifier-ci.md)); arm64 / cgroup v1 open |
+| 8, 10 | **Planned** | K8s hardening, extended observability |
 
 Engineering gate: [phase5-production-readiness.md](../phase5-production-readiness.md).  
 Canonical task list: [.cursor/skills/finops-ebpf-agent/TODO.md](../../.cursor/skills/finops-ebpf-agent/TODO.md).

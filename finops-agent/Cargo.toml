@@ -3,6 +3,10 @@ name = "finops-agent"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "finops-ebpf-verify"
+path = "src/bin/verify_ebpf.rs"
+
 [dependencies]
 # aya is the user-space half of the Aya eBPF framework.
 # It handles: loading BPF ELF files, creating/pinning maps,

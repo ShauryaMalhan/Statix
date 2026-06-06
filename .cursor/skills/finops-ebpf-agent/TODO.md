@@ -152,7 +152,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 > The eBPF verifier compatibility gap is the single biggest existential threat to this architecture.
 > A customer on kernel 5.10 silently failing to load the BPF program = total data loss + churn.
 
-- [ ] **eBPF verifier regression CI** — CRITICAL: Test `bpf_prog_load` on kernels 5.10, 5.15, 6.1, 6.8 (use qemu-system or Firecracker in CI). This is P0 before any customer deployment.
+- [x] **eBPF verifier regression CI** — GitHub Actions matrix 5.10 / 5.15 / 6.1 / 6.8 via virtme-ng + `finops-ebpf-verify` ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md), `.github/workflows/ebpf-ci.yml`)
 - [ ] **arm64 eBPF CI** — Required for Graviton (AWS) and Apple Silicon dev environments
 - [ ] **cgroup v1-only host detection** — Graceful error + clear log instead of silent failure
 - [ ] ~~**`FINOPS_REDACT_COMM`**~~ (CANCELLED — `comm` is not in the aggregation or wire path; only in `FINOPS_RAW_EVENTS` debug output)
@@ -176,7 +176,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ```
 WEEK 1 (P0-SHIP):  Phase 5.5 P0 — shipped ([ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md))
 WEEK 2 (P1-WEEK):  Phase 5.5 P1 — shipped ([ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md))
-WEEK 3-4 (P2):     TLS, eBPF verifier CI, ingest handler refactor
+WEEK 3-4 (P2):     TLS; eBPF verifier CI shipped ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
 MONTH 2 (P3):      Workspace restructure, cross-AZ audit, CH tuning
 MONTH 3+ (P4):     K8s informer, arm64, advanced observability
 ```

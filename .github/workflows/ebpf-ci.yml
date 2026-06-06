@@ -1,0 +1,124 @@
+name: eBPF Verifier CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Default agent ring tier (512 KiB) — compile-time map size in finops-ebpf/build.rs
+  FINOPS_RING_BUF_BYTES: "524288"
+
+jobs:
+  build-and-test-userspace:
+    name: Userspace build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-userspace-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-userspace-
+
+      - name: cargo check --workspace
+        run: cargo check --workspace
+
+      - name: cargo test (gateway, agent, wire)
+        run: cargo test -p finops-gateway -p finops-agent -p finops-wire
+
+  ebpf-verifier-matrix:
+    name: eBPF verifier (kernel ${{ matrix.kernel }})
+    needs: build-and-test-userspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ["5.10", "5.15", "6.1", "6.8"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            clang llvm libelf-dev zlib1g-dev pkg-config \
+            qemu-system-x86 qemu-kvm udev iproute2 busybox-static \
+            coreutils python3-pip python3-requests python3-argcomplete \
+            libvirt-clients kbd kmod file rsync zstd virtiofsd bpftool
+
+      - name: Install virtme-ng
+        run: pip install virtme-ng
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Rust stable (verify binary)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust nightly (eBPF target)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: bpfel-unknown-none
+          components: rust-src
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+            finops-ebpf/target
+          key: ${{ runner.os }}-cargo-ebpf-${{ matrix.kernel }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ebpf-${{ matrix.kernel }}-
+            ${{ runner.os }}-cargo-ebpf-
+            ${{ runner.os }}-cargo-userspace-
+
+      - name: Install bpf-linker
+        run: |
+          if ! command -v bpf-linker &>/dev/null; then
+            cargo install bpf-linker --locked
+          fi
+
+      - name: Build eBPF ELF
+        working-directory: finops-ebpf
+        run: |
+          cargo +nightly build --release \
+            -Z build-std=core \
+            --target bpfel-unknown-none
+
+      - name: Build finops-ebpf-verify
+        run: cargo build --release -p finops-agent --bin finops-ebpf-verify
+
+      - name: Run kernel verifier (virtme-ng + Aya load)
+        run: |
+          chmod +x scripts/verify-ebpf-kernel.sh
+          scripts/verify-ebpf-kernel.sh \
+            "${{ matrix.kernel }}" \
+            finops-ebpf/target/bpfel-unknown-none/release/finops-ebpf \
+            target/release/finops-ebpf-verify

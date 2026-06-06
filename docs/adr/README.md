@@ -42,3 +42,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [034](034-phase55-l8-p2-ingest-zero-copy.md) | Phase 5.5 L8 P2 ingest `Arc<[u8]>` + `FlatRowRef` | Accepted |
 | [035](035-phase7-workspace-restructure.md) | `finops-gateway` rename + `finops-infra`; drop `ProcessEvent` | Accepted |
 | [036](036-phase7-typed-errors-labels-read-path.md) | `GatewayError` + `AttributionError`; read-only `labels_for_cgroup` | Accepted |
+| [037](037-phase9-ebpf-verifier-ci.md) | eBPF verifier CI — kernel matrix 5.10–6.8 (virtme-ng + Aya) | Accepted |

@@ -29,6 +29,8 @@ finops-core/
 ├── deploy/clickhouse/01_init.sql
 ├── infra/clickhouse/README.md
 ├── finops-ebpf/, finops-common/, finops-wire/, finops-infra/, finops-agent/, finops-gateway/ (`src/config.rs`)
+├── .github/workflows/ebpf-ci.yml   # userspace + kernel verifier matrix ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
+├── scripts/verify-ebpf-kernel.sh   # virtme-ng + finops-ebpf-verify per kernel
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
 └── .cursor/skills/finops-ebpf-agent/
 ```
@@ -52,7 +54,8 @@ ring buffer → aggregator → emit_batch
 | T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
 | 8 | Partial — base manifests shipped; informer/drain/registry pins open |
 | 7 | **Done** — wire, agent, gateway, infra, `Config`, typed errors, read-only labels ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)–[036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
-| 9–10 | Portability, extended observability |
+| 9 | Partial — eBPF verifier CI shipped ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md)); arm64 / cgroup v1 detection open |
+| 10 | Extended observability |
 
 ## Operational notes
 
