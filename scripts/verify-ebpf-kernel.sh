@@ -38,10 +38,8 @@ echo "    loader: ${VERIFY_ABS}"
 # Pin LTS tips that match cloud kernels (EKS/AKS/GKE), not .0 releases.
 resolve_vng_kernel() {
   case "${1}" in
-    5.10) echo "v5.10.258" ;;
-    5.15) echo "v5.15.209" ;;
-    6.1)  echo "v6.1.175" ;;
-    6.8)  echo "v6.8.12" ;;
+    5.10) echo "v5.10.258" ;; # bare v5.10 == 5.10.0; breaks ringbuf + noble udev
+    5.15|6.1|6.8) echo "v${1}" ;; # mainline LTS dirs; verified in CI
     *)    echo "v${1}" ;;
   esac
 }
