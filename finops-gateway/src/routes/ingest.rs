@@ -82,6 +82,20 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             .into_response();
     }
 
+    let required_slots = batch.workloads.len();
+    let available_slots = state.kafka_tx.capacity();
+    if available_slots < required_slots {
+        metrics::counter!("finops_api_kafka_channel_full_total").increment(1);
+        log::warn!(
+            "Kafka channel has insufficient capacity ({available_slots}/{required_slots} needed); rejecting entire batch"
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Ingest channel capacity insufficient for batch. Retry later.",
+        )
+            .into_response();
+    }
+
     let node_key: Arc<[u8]> = Arc::from(batch.node.as_bytes());
 
     for row in &batch.workloads {

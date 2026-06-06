@@ -53,8 +53,18 @@ impl AttributionCache {
     }
 
     pub fn on_identity_event(&self, event: &FinopsEvent) {
+        {
+            let state = self.state.read();
+            if state.cgroup_paths.contains_key(&event.cgroup_id) {
+                return;
+            }
+        }
+
         let rel_path = cgroup_path_from_pid(event.pid).ok();
         let mut state = self.state.write();
+        if state.cgroup_paths.contains_key(&event.cgroup_id) {
+            return;
+        }
         if let Some(rel_path) = rel_path {
             let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
             state.cgroup_paths.insert(event.cgroup_id, rel_path);
@@ -74,7 +84,7 @@ impl AttributionCache {
         }
     }
 
-    /// Read-only label lookup — K8s merge runs in `refresh_k8s_pods`, not on the hot path.
+    /// Read-only label lookup — K8s merge runs in `watch_k8s_pods`, not on the hot path.
     pub fn labels_for_cgroup(&self, cgroup_id: u64) -> Arc<WorkloadLabels> {
         let state = self.state.read();
         state
@@ -310,18 +320,26 @@ fn extract_container_from_path(path: &Path) -> Option<String> {
     None
 }
 
-/// Merge pod API labels into `cgroup_labels` for every tracked cgroup (write lock — background only).
+/// Merge pod API labels into `cgroup_labels` for every tracked cgroup (background only).
 fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
-    let mut state = cache.state.write();
-    let cgroup_ids: Vec<u64> = state.cgroup_paths.keys().copied().collect();
-    let pod_by_uid = state.pod_by_uid.clone();
-    for cgroup_id in cgroup_ids {
-        let Some(path) = state.cgroup_paths.get(&cgroup_id) else {
-            continue;
-        };
+    let (cgroup_snap, pod_snap) = {
+        let state = cache.state.read();
+        let cgroups: Vec<(u64, PathBuf)> = state
+            .cgroup_paths
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        let pods = state.pod_by_uid.clone();
+        (cgroups, pods)
+    };
+
+    let mut new_labels: Vec<(u64, Arc<WorkloadLabels>)> =
+        Vec::with_capacity(cgroup_snap.len());
+
+    for (cgroup_id, path) in &cgroup_snap {
         let mut labels = labels_from_cgroup_path(Some(path));
         if let Some(uid) = extract_pod_uid_from_path(path) {
-            if let Some(pod_labels) = pod_by_uid.get(&uid) {
+            if let Some(pod_labels) = pod_snap.get(&uid) {
                 labels.namespace = pod_labels.namespace.clone();
                 labels.pod = pod_labels.pod.clone();
                 labels.k8s_resolved = true;
@@ -330,11 +348,83 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
                 }
             }
         }
-        state.cgroup_labels.insert(cgroup_id, Arc::new(labels));
+        new_labels.push((*cgroup_id, Arc::new(labels)));
+    }
+
+    let mut state = cache.state.write();
+    for (cgroup_id, labels) in new_labels {
+        state.cgroup_labels.insert(cgroup_id, labels);
     }
 }
 
-/// In-cluster Kubernetes API refresh (best-effort).
+/// Stream pod label updates via the Kubernetes watch API (node-scoped field selector).
+/// Reconnects on stream end; runs `refresh_k8s_pods` list fallback between retries.
+pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
+    use futures::TryStreamExt;
+    use std::pin::pin;
+    use std::time::Duration;
+    use kube::runtime::watcher;
+    use kube::runtime::watcher::Event;
+    use kube::runtime::WatchStreamExt;
+
+    loop {
+        let node_name = std::env::var("FINOPS_NODE_NAME")
+            .or_else(|_| std::env::var("NODE_NAME"))
+            .unwrap_or_else(|_| hostname());
+
+        let pods: kube::Api<k8s_openapi::api::core::v1::Pod> = kube::Api::all(client.clone());
+        let wc = watcher::Config::default().fields(&format!("spec.nodeName={node_name}"));
+
+        let mut stream = pin!(watcher(pods, wc).default_backoff());
+
+        while let Ok(Some(event)) = stream.try_next().await {
+            match event {
+                Event::Apply(pod) | Event::InitApply(pod) => {
+                    let meta = &pod.metadata;
+                    let uid = meta.uid.clone().unwrap_or_default();
+                    if uid.is_empty() {
+                        continue;
+                    }
+                    let namespace = meta
+                        .namespace
+                        .clone()
+                        .unwrap_or_else(|| "default".into());
+                    let pod_name = meta.name.clone().unwrap_or_default();
+                    let mut container = None;
+                    if let Some(spec) = &pod.spec {
+                        if let Some(first) = spec.containers.first() {
+                            container = Some(first.name.clone());
+                        }
+                    }
+                    cache.upsert_pod_labels(
+                        uid,
+                        WorkloadLabels {
+                            namespace: Some(namespace),
+                            pod: Some(pod_name),
+                            container,
+                            pod_uid: None,
+                            k8s_resolved: true,
+                        },
+                    );
+                    merge_cgroup_labels_from_k8s(&cache);
+                }
+                Event::Delete(_pod) => {}
+                Event::Init | Event::InitDone => {
+                    merge_cgroup_labels_from_k8s(&cache);
+                    log::info!("K8s watcher initial sync complete for node {node_name}");
+                }
+            }
+        }
+
+        log::warn!("K8s pod watcher stream ended; running list fallback before reconnect");
+        if let Err(e) = refresh_k8s_pods(&cache, &client).await {
+            log::warn!("K8s list fallback failed: {e}");
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+/// One-shot list refresh (watcher reconnect fallback).
 pub async fn refresh_k8s_pods(
     cache: &AttributionCache,
     client: &kube::Client,

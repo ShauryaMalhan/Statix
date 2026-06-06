@@ -21,10 +21,22 @@ spec:
       labels:
         app: finops-gateway
     spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: finops-gateway
       containers:
         - name: finops-gateway
-          image: finops-gateway:latest
+          image: finops-gateway@sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
           imagePullPolicy: Always
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
           ports:
             - name: http
               containerPort: 3000
@@ -83,3 +95,14 @@ spec:
       port: 3000
       targetPort: 3000
       protocol: TCP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: finops-gateway-pdb
+  namespace: finops-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: finops-gateway

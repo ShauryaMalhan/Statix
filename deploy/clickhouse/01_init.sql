@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS finops.workload_metrics
     exec_count UInt32,
     sample_count UInt32
 )
-ENGINE = ReplacingMergeTree()
+ENGINE = ReplacingMergeTree(window_end_ns)
 PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000)))
 ORDER BY (node, window_start_ns, cgroup_id)
 TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;

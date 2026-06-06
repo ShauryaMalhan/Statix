@@ -8,7 +8,7 @@
 
 `finops.workload_metrics` in `deploy/clickhouse/01_init.sql`:
 
-- **Engine:** `ReplacingMergeTree()` (default row selection on merge — later insert typically wins).
+- **Engine:** `ReplacingMergeTree(window_end_ns)` — version column keeps latest window on merge ([ADR 038](038-phase55-v2-wave1-l8-fixes.md) V2-2).
 - **ORDER BY:** `(node, window_start_ns, cgroup_id)` — stable workload identity per aggregation window.
 - **Removed:** `namespace` from sort key; `SETTINGS allow_nullable_key = 1` (no nullable keys in ORDER BY).
 - **Unchanged:** Kafka engine table, materialized view, daily partition, 30d TTL, LowCardinality on `node`/`namespace` only ([ADR 007](007-clickhouse-mergetree-tuning.md) LC rules).

@@ -48,5 +48,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 bytes   = "1"
 rand    = { version = "0.8", features = ["small_rng"] }
 
-kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls"] }
+kube = { version = "0.98", default-features = false, features = ["client", "rustls-tls", "runtime"] }
 k8s-openapi = { version = "0.24", features = ["v1_30"] }
+futures = "0.3"

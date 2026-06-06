@@ -43,16 +43,21 @@ spec:
       labels:
         app: finops-agent
     spec:
+      terminationGracePeriodSeconds: 30
       hostPID: true
       serviceAccountName: finops-agent-sa
       tolerations:
         - operator: Exists
       containers:
         - name: finops-agent
-          image: finops-agent:latest
+          image: finops-agent@sha256:f1e2d3c4b5a6978012345678901234567890fedcba1234567890fedcba123456
           imagePullPolicy: Always
           securityContext:
             privileged: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
           env:
             - name: FINOPS_INGEST_URL
               value: http://finops-gateway-svc.finops-system.svc.cluster.local:3000/ingest

@@ -99,29 +99,29 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P0-BLOCKS-GA — Data Integrity & Availability
 
-- [ ] **V2-1: Agent SIGTERM handler** — Add `tokio::signal::unix::SignalKind::terminate()` to main select loop; flush partial window on SIGTERM (`finops-agent/src/main.rs`)
-- [ ] **V2-2: `ReplacingMergeTree(window_end_ns)` version column** — Without version column, ClickHouse keeps arbitrary row during merge; billing data integrity risk (`deploy/clickhouse/01_init.sql`)
-- [ ] **V2-3: Fix partial batch delivery in ingest handler** — Pre-check `kafka_tx.capacity()` vs `batch.workloads.len()` before sending any rows; prevent split-brain duplicates (`finops-gateway/src/routes/ingest.rs`)
-- [ ] **V2-4: K8s Watch/Informer instead of List polling** — 5000 agents × 30s list = 167 req/s to API server; replace with `kube::runtime::watcher` (`finops-agent/src/attribution/mod.rs`)
-- [ ] **V2-5: DaemonSet `preStop` hook + `terminationGracePeriodSeconds`** — Agent needs time to flush on eviction (`deploy/k8s/agent-daemonset.yaml`)
-- [ ] **V2-6: Gateway `PodDisruptionBudget`** — Prevent both replicas from simultaneous eviction (`deploy/k8s/gateway.yaml`)
-- [ ] **V2-7: Pin images to registry digests** — Replace `:latest` with `@sha256:...` (`deploy/k8s/*.yaml`)
-- [ ] **V2-8: Cross-AZ placement constraints** — Moved from Phase 10; add `topologySpreadConstraints` to gateway deployment
+- [x] **V2-1: Agent SIGTERM handler** — SIGTERM + SIGINT flush partial window in main `select!` (`finops-agent/src/main.rs`)
+- [x] **V2-2: `ReplacingMergeTree(window_end_ns)` version column** — Deterministic merge winner on retry (`deploy/clickhouse/01_init.sql`)
+- [x] **V2-3: Fix partial batch delivery in ingest handler** — Pre-check `kafka_tx.capacity()` vs `batch.workloads.len()`; atomic batch accept/reject (`finops-gateway/src/routes/ingest.rs`)
+- [x] **V2-4: K8s Watch/Informer instead of List polling** — `watch_k8s_pods` via `kube::runtime::watcher` + node field selector ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **V2-5: DaemonSet `preStop` hook + `terminationGracePeriodSeconds`** — `sleep 5` preStop + 30s grace for eviction flush ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-6: Gateway `PodDisruptionBudget`** — `minAvailable: 1`; gateway preStop + grace ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-7: Pin images to registry digests** — `@sha256:<64-hex>` in gateway + agent manifests ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **V2-8: Cross-AZ placement constraints** — `topologySpreadConstraints` on `topology.kubernetes.io/zone` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 
 ### P1-WEEK — Hot-Path & Scale Fixes
 
-- [ ] **V2-9: BPF ring buffer wakeup suppression** — Use `BPF_RB_NO_WAKEUP` for most events; adaptive threshold in kernel (`finops-ebpf/src/main.rs`)
-- [ ] **V2-10: Deduplicate procfs reads in `on_identity_event`** — Skip `/proc/{pid}/cgroup` if `cgroup_id` already cached; eliminates 200k blocking syscalls/sec (`finops-agent/src/attribution/mod.rs`)
-- [ ] **V2-11: Kafka produce retry buffer** — Buffer failed produce records in `VecDeque` with bounded cap; drain on next successful produce (`finops-gateway/src/kafka.rs`)
-- [ ] **V2-12: Stable partition hash** — Replace `DefaultHasher` with `FxHasher` for cross-version determinism (`finops-gateway/src/kafka.rs`)
-- [ ] **V2-13: Hoist node key allocation in `bytes_to_record`** — One `to_vec()` per partition group, not per record (`finops-gateway/src/kafka.rs`)
-- [ ] **V2-14: Fix `merge_cgroup_labels_from_k8s` lock duration** — Clone `pod_by_uid` under read lock, compute labels outside lock, batch-insert under short write lock (`finops-agent/src/attribution/mod.rs`)
+- [x] **V2-9: BPF ring buffer wakeup suppression** — `WAKEUP_COUNTER` + `BPF_RB_NO_WAKEUP` every 63/64 events; 1ms poll drain fallback (`finops-ebpf/src/main.rs`, `finops-agent/src/main.rs`)
+- [x] **V2-10: Deduplicate procfs reads in `on_identity_event`** — Read-lock fast path + double-check before procfs ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-11: Kafka produce retry buffer** — `failed_batches` `VecDeque` cap 100; drain before produce + metadata tick ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-12: Stable partition hash** — `FxHasher` in `hash_node_to_slot` ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-13: Hoist node key allocation** — One `node.to_vec()` per partition chunk; `bytes_to_record` removed ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-14: Fix `merge_cgroup_labels_from_k8s` lock duration** — Snapshot under read lock, compute outside, batch insert ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
 
 ### P2-SPRINT — Thundering Herd & Observability
 
 - [ ] **V2-15: Agent-side jittered backoff recovery** — Add `rand(0, window_secs)` delay between retry flushes after outage recovery (`finops-agent/src/output.rs`)
 - [ ] **V2-16: ClickHouse merge pressure monitoring** — `system.merges`, `system.parts` per partition, background merge queue depth
-- [ ] **V2-17: Kafka produce error rate metric** — `finops_api_kafka_produce_errors_total` counter in `produce_grouped_batch` (`finops-gateway/src/kafka.rs`)
+- [x] **V2-17: Kafka produce error rate metric** — `finops_api_kafka_produce_errors_total` + `finops_api_kafka_produce_dropped_total` (shipped with V2-11, [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
 - [ ] **V2-18: End-to-end latency histogram** — Agent→Gateway→Kafka→ClickHouse pipeline latency via `batch_id` correlation
 
 ---
@@ -163,7 +163,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **`thiserror` for gateway errors** — `GatewayError` in `finops-gateway/src/error.rs` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 - [x] **Typed errors in `attribution.rs`** — `AttributionError`; `read_memory_current_at` in attribution module ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 - [x] **Extract `finops-infra` crate:** `read_env_u64`/`read_env_usize`, clock utilities ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
-- [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `refresh_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
+- [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `watch_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 
 ---
 
@@ -172,11 +172,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **Production gateway image:** `deploy/docker/Dockerfile.gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md))
 - [x] **Production agent image:** `deploy/docker/Dockerfile.agent` ([ADR 024](../../../docs/adr/024-agent-production-container.md))
 - [x] **K8s manifests:** `deploy/k8s/gateway.yaml`, `agent-daemonset.yaml` ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md))
-- [ ] **Pin images to registry digests** (→ moved to V2-7)
-- [ ] **Reuse `kube::Client` across K8s refresh polls** (shipped in Phase 5.5 P1)
-- [ ] **K8s informer** (→ moved to V2-4, priority elevated)
+- [x] **Pin images to registry digests** — V2-7 ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **Reuse `kube::Client` across K8s refresh polls** (shipped in Phase 5.5 P1)
+- [x] **K8s informer** — V2-4 `watch_k8s_pods` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 - [ ] **Stronger cgroup → pod mapping**
-- [ ] **Graceful rolling update drain** (→ moved to V2-1 + V2-5)
+- [x] **Graceful rolling update drain** — V2-1 SIGTERM flush + V2-5 preStop ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md), [040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
 
 ---
 
@@ -196,7 +196,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **Grafana in Compose:** `:3001` + `grafana-clickhouse-datasource` ([ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md))
 - [x] **Agent `/metrics` baseline:** `:9091` + ring drops ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
 - [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (→ V2-17/V2-18)
-- [ ] **Cross-AZ data transfer audit** (→ moved to V2-8, P0)
+- [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 - [ ] **ClickHouse merge pressure monitoring** (→ moved to V2-16)
 - [ ] **ClickHouse skip index / granularity tuning:** Add `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` for cgroup-filtered queries
 - [ ] **ClickHouse Kafka engine lag monitoring:** Alert on `system.kafka_consumers` lag exceeding threshold
@@ -206,12 +206,8 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ## Execution Summary (L8 V2 recommended order)
 
 ```
-WEEK 1 (P0-BLOCKS-GA):  V2-1 (SIGTERM), V2-2 (CH version col), V2-3 (atomic ingest),
-                         V2-5 (preStop), V2-6 (PDB), V2-7 (pin images), TLS
-WEEK 2 (P1-WEEK):       V2-4 (K8s watch), V2-9 (BPF wakeup), V2-10 (procfs dedup),
-                         V2-11 (produce retry), V2-12 (stable hash), V2-13 (key alloc),
-                         V2-14 (lock duration)
-WEEK 3-4 (P2-SPRINT):   V2-8 (cross-AZ), V2-15 (jittered recovery), V2-16 (CH merge mon),
-                         V2-17 (produce metrics), V2-18 (e2e latency)
+P0-BLOCKS-GA (GA):      V2-1…8 shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)); open: TLS
+P2-SPRINT:              V2-15 (jittered recovery), V2-16 (CH merge mon), V2-18 (e2e latency)
+                         — V2-17 shipped with V2-11 ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
 MONTH 2 (P3):            arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
 ```

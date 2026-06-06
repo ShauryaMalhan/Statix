@@ -43,3 +43,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [035](035-phase7-workspace-restructure.md) | `finops-gateway` rename + `finops-infra`; drop `ProcessEvent` | Accepted |
 | [036](036-phase7-typed-errors-labels-read-path.md) | `GatewayError` + `AttributionError`; read-only `labels_for_cgroup` | Accepted |
 | [037](037-phase9-ebpf-verifier-ci.md) | eBPF verifier CI — kernel matrix 5.10–6.8 (virtme-ng + Aya) | Accepted |
+| [038](038-phase55-v2-wave1-l8-fixes.md) | Phase 5.5 V2 Wave 1 — SIGTERM, CH version col, atomic ingest, BPF wakeup | Accepted |
+| [039](039-phase55-v2-wave2-l8-fixes.md) | Phase 5.5 V2 Wave 2 — procfs dedup, FxHasher, key hoist, K8s merge lock | Accepted |
+| [040](040-phase55-v2-wave3-l8-fixes.md) | Phase 5.5 V2 Wave 3 — Kafka produce retry, agent preStop, gateway PDB | Accepted |
+| [041](041-phase55-v2-wave4-l8-fixes.md) | Phase 5.5 V2 Wave 4 — K8s watch, digest pins, cross-AZ spread | Accepted |

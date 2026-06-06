@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **T1–3 done** (deploy/CH/read API — [ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **5 active** (TLS + prod ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **8 partial** (base K8s shipped; informer/drain open — [TODO](TODO.md))
+Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **T1–3 done** (deploy/CH/read API — [ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **5 active** (TLS + prod ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **8 partial** (K8s GA hardening shipped [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md) — [TODO](TODO.md))
 
 ## Mandatory workflow (every change)
 
@@ -77,16 +77,22 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 
 - No `?` after `EVENTS.reserve`
 - No `bpf_trace_printk`
-- Always `submit(0)` or `discard(0)`
+- `submit(wakeup_flag)` — `BPF_RB_NO_WAKEUP` (flag `1`) on 63/64 events; 1ms poll drain in agent (V2-9)
 - `cgroup_id` from `bpf_get_current_cgroup_id()` on identity events
 - **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** (mainline LTS tips, not `.0`) — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); `.github/workflows/ebpf-ci.yml`; `scripts/verify-ebpf-kernel.sh` + `finops-ebpf-verify`
 - **5.10 memlock:** `bpf_memlock::bump_memlock_rlimit()` before `Ebpf::load()` — pre-5.11 kernels default 64 KiB `RLIMIT_MEMLOCK`; 512 KiB ringbuf needs infinity bump
+- **Attribution hot path (V2):** `on_identity_event` procfs skip when cgroup known; K8s label merge outside write lock ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- **Kafka routing (V2):** `FxHasher` partition slot; one key `Vec` per produce chunk ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- **Kafka durability (V2):** `failed_batches` `VecDeque` (cap 100) on produce `Err`; drain before each batch + metadata tick ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- **K8s eviction (V2):** agent + gateway `preStop sleep 5` + `terminationGracePeriodSeconds: 30`; gateway PDB `minAvailable: 1` ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- **K8s labels (V2):** `watch_k8s_pods` — `kube::runtime::watcher` with node field selector; no 30s list poll ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- **K8s deploy (V2):** digest-pinned images; gateway cross-AZ `topologySpreadConstraints` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 
 ## User-space (Phase 2)
 
 - Batched JSON `schema_version: 2`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
 - `FINOPS_RAW_EVENTS=1` debug only
-- K8s: `tokio::spawn` + 30s interval — never `await` API in main `select!`
+- K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`
 - Env: `FINOPS_WINDOW_SECS`, `FINOPS_SAMPLE_INTERVAL_SECS`, `FINOPS_NODE_NAME`, `FINOPS_CGROUP_ROOT`
@@ -128,7 +134,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `finops-gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
 | CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
-| CH storage | `finops.workload_metrics`; `ReplacingMergeTree`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md)) |
+| CH storage | `finops.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md), V2-2) |
 | Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
 
 Spec: [docs/phase3-ingest-interface.md](../../../docs/phase3-ingest-interface.md)  
@@ -167,6 +173,8 @@ Deferred: [TODO.md](TODO.md)
 **P2-SPRINT shipped:** [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md) — `Arc<[u8]>` node key + `FlatRowRef` on ingest.
 
 **L8 playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — all fixes shipped (ADR index).
+
+**L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — Waves 1–4 / P0 GA shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)); open: V2-15–18 (P2).
 
 ## OOM-safe remediation (Phases 4–5)
 

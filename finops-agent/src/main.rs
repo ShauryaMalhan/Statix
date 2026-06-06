@@ -52,27 +52,16 @@ async fn main() -> anyhow::Result<()> {
 
     let cache_for_k8s = cache.clone();
     tokio::spawn(async move {
-        let k8s_client = if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
-            match kube::Client::try_default().await {
-                Ok(client) => Some(client),
-                Err(e) => {
-                    log::warn!("K8s client init failed; pod refresh disabled: {e}");
-                    None
-                }
+        if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
+            log::info!("Not in K8s — pod watch disabled");
+            return;
+        }
+        match kube::Client::try_default().await {
+            Ok(client) => {
+                attribution::watch_k8s_pods(cache_for_k8s, client).await;
             }
-        } else {
-            None
-        };
-
-        let mut k8s_interval = time::interval(Duration::from_secs(30));
-        k8s_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
-        loop {
-            k8s_interval.tick().await;
-            let Some(ref client) = k8s_client else {
-                continue;
-            };
-            if let Err(e) = attribution::refresh_k8s_pods(&cache_for_k8s, client).await {
-                log::debug!("K8s refresh skipped or failed: {e}");
+            Err(e) => {
+                log::warn!("K8s client init failed; pod resolution disabled: {e}");
             }
         }
     });
@@ -96,13 +85,20 @@ async fn main() -> anyhow::Result<()> {
         output::emit_batch(batch);
     }
 
+    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+        .expect("failed to install SIGTERM handler");
+
+    let mut poll_interval = time::interval(Duration::from_millis(1));
+    poll_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+
+    const DRAIN_BUDGET: usize = 256;
+
     loop {
         tokio::select! {
             guard_result = async_fd.readable_mut() => {
                 let mut guard = guard_result?;
                 let rb = guard.get_inner_mut();
                 let mut drained = 0usize;
-                const DRAIN_BUDGET: usize = 256;
                 while drained < DRAIN_BUDGET {
                     let Some(item) = rb.next() else { break };
                     if item.len() < size_of::<FinopsEvent>() {
@@ -136,12 +132,41 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
+            _ = poll_interval.tick() => {
+                let rb = async_fd.get_mut();
+                let mut drained = 0usize;
+                while drained < DRAIN_BUDGET {
+                    let Some(item) = rb.next() else { break };
+                    if item.len() < size_of::<FinopsEvent>() {
+                        continue;
+                    }
+                    let event: &FinopsEvent =
+                        unsafe { &*(item.as_ptr() as *const FinopsEvent) };
+                    if raw_events {
+                        output::emit_raw(event);
+                    }
+                    if let Some(batch) = agg.on_finops_event(event, &cache, &node) {
+                        output::emit_batch(batch);
+                    }
+                    drained += 1;
+                }
+            }
+
             _ = signal::ctrl_c() => {
-                log::info!("Ctrl+C — flushing partial window");
+                log::info!("SIGINT received — flushing partial window");
                 if let Some(batch) = agg.flush(&node, &cache) {
                     output::emit_batch(batch);
                 }
-                println!(r#"{{"status":"shutdown"}}"#);
+                println!(r#"{{"status":"shutdown","signal":"SIGINT"}}"#);
+                break;
+            }
+
+            _ = sigterm.recv() => {
+                log::info!("SIGTERM received — flushing partial window for graceful shutdown");
+                if let Some(batch) = agg.flush(&node, &cache) {
+                    output::emit_batch(batch);
+                }
+                println!(r#"{{"status":"shutdown","signal":"SIGTERM"}}"#);
                 break;
             }
         }

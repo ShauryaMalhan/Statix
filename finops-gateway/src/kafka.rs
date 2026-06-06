@@ -3,9 +3,11 @@
 //! Micro-batches rows: one `produce()` per partition batch (count or linger), not per message.
 //! Records are routed by hashing the `node` key across topic partitions from broker metadata.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use rustc_hash::FxHasher;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,6 +27,7 @@ const DEFAULT_CHANNEL_SIZE: usize = 8192;
 const MIN_CHANNEL_SIZE: usize = 1024;
 const DEFAULT_BATCH_MAX: usize = 1024;
 const DEFAULT_LINGER_MS: u64 = 50;
+const MAX_FAILED_BATCHES: usize = 100;
 
 /// Ingest queue item: Kafka message key (`node`) + JSONEachRow payload.
 pub type KafkaQueueItem = (Arc<[u8]>, Vec<u8>);
@@ -102,7 +105,7 @@ pub fn spawn_producer(brokers: String) -> KafkaProducer {
 }
 
 fn hash_node_to_slot(node: &[u8], num_partitions: usize) -> usize {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = FxHasher::default();
     node.hash(&mut hasher);
     (hasher.finish() as usize) % num_partitions
 }
@@ -110,15 +113,6 @@ fn hash_node_to_slot(node: &[u8], num_partitions: usize) -> usize {
 fn partition_id_for_node(node: &[u8], partition_ids: &[i32]) -> i32 {
     let slot = hash_node_to_slot(node, partition_ids.len());
     partition_ids[slot]
-}
-
-fn bytes_to_record(node: Arc<[u8]>, payload: Vec<u8>, ts: chrono::DateTime<Utc>) -> Record {
-    Record {
-        key: Some(node.to_vec()),
-        value: Some(payload),
-        headers: std::collections::BTreeMap::new(),
-        timestamp: ts,
-    }
 }
 
 async fn load_partition_clients(
@@ -180,6 +174,24 @@ async fn refresh_partition_metadata(
     }
 }
 
+async fn drain_failed_batches(
+    clients: &HashMap<i32, Arc<rskafka::client::partition::PartitionClient>>,
+    failed_batches: &mut VecDeque<(i32, Vec<Record>)>,
+) {
+    while let Some((pid, records)) = failed_batches.front().cloned() {
+        let Some(pc) = clients.get(&pid).cloned() else {
+            failed_batches.pop_front();
+            continue;
+        };
+        match pc.produce(records, Compression::default()).await {
+            Ok(_) => {
+                failed_batches.pop_front();
+            }
+            Err(_) => break,
+        }
+    }
+}
+
 async fn produce_grouped_batch(
     client: &rskafka::client::Client,
     partition_ids: &mut Vec<i32>,
@@ -187,7 +199,10 @@ async fn produce_grouped_batch(
     batch: &mut Vec<KafkaQueueItem>,
     batch_max: usize,
     by_partition: &mut HashMap<i32, Vec<KafkaQueueItem>>,
+    failed_batches: &mut VecDeque<(i32, Vec<Record>)>,
 ) {
+    drain_failed_batches(clients, failed_batches).await;
+
     if batch.is_empty() {
         return;
     }
@@ -208,16 +223,37 @@ async fn produce_grouped_batch(
             let chunk: Vec<_> = rows.drain(..chunk_len).collect();
             let n = chunk.len();
             let batch_ts = Utc::now();
+            let key_bytes: Vec<u8> = chunk
+                .first()
+                .map(|(node, _)| node.to_vec())
+                .unwrap_or_default();
             let records: Vec<Record> = chunk
                 .into_iter()
-                .map(|(node, payload)| bytes_to_record(node, payload, batch_ts))
+                .map(|(_node, payload)| Record {
+                    key: Some(key_bytes.clone()),
+                    value: Some(payload),
+                    headers: Default::default(),
+                    timestamp: batch_ts,
+                })
                 .collect();
             let produce_started = Instant::now();
             if let Err(e) = partition_client
-                .produce(records, Compression::default())
+                .produce(records.clone(), Compression::default())
                 .await
             {
-                log::warn!("Kafka produce failed (partition={pid}, {n} records): {e}");
+                log::warn!(
+                    "Kafka produce failed (partition={pid}, {n} records): {e}; queuing for retry"
+                );
+                metrics::counter!("finops_api_kafka_produce_errors_total").increment(1);
+                if failed_batches.len() < MAX_FAILED_BATCHES {
+                    failed_batches.push_back((pid, records));
+                } else {
+                    log::error!(
+                        "Kafka failed-batch queue full ({MAX_FAILED_BATCHES}); dropping {n} records"
+                    );
+                    metrics::counter!("finops_api_kafka_produce_dropped_total")
+                        .increment(n as u64);
+                }
                 refresh_partition_metadata(client, partition_ids, clients).await;
             }
             metrics::histogram!("finops_api_kafka_produce_duration_seconds")
@@ -277,6 +313,7 @@ async fn run_producer_loop(
     let mut batch = Vec::with_capacity(batch_max);
     let mut by_partition: HashMap<i32, Vec<KafkaQueueItem>> =
         HashMap::with_capacity(partition_ids.len());
+    let mut failed_batches: VecDeque<(i32, Vec<Record>)> = VecDeque::new();
     let mut metadata_interval = tokio::time::interval(Duration::from_secs(300));
     metadata_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -284,6 +321,7 @@ async fn run_producer_loop(
         tokio::select! {
             _ = metadata_interval.tick() => {
                 refresh_partition_metadata(&client, &mut partition_ids, &mut clients).await;
+                drain_failed_batches(&clients, &mut failed_batches).await;
             }
             item = rx.recv() => match item {
                 Some(first) => {
@@ -296,6 +334,7 @@ async fn run_producer_loop(
                         &mut batch,
                         batch_max,
                         &mut by_partition,
+                        &mut failed_batches,
                     )
                     .await;
                 }
@@ -317,6 +356,7 @@ async fn run_producer_loop(
                                 &mut batch,
                                 batch_max,
                                 &mut by_partition,
+                                &mut failed_batches,
                             )
                             .await;
                         }
@@ -328,6 +368,7 @@ async fn run_producer_loop(
                         &mut batch,
                         batch_max,
                         &mut by_partition,
+                        &mut failed_batches,
                     )
                     .await;
                     log::info!("Kafka producer drained channel and flushed final batch");
