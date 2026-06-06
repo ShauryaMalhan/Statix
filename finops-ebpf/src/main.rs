@@ -21,6 +21,9 @@ static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 #[map]
 static RING_DROPS: PerCpuArray<u64> = PerCpuArray::with_max_entries(1, 0);
 
+#[map]
+static WAKEUP_COUNTER: PerCpuArray<u32> = PerCpuArray::with_max_entries(1, 0);
+
 #[tracepoint(name = "sched_process_exec", category = "sched")]
 pub fn finops_sched_process_exec(ctx: TracePointContext) -> u32 {
     capture_identity(&ctx);
@@ -67,7 +70,15 @@ fn capture_identity(_ctx: &TracePointContext) {
         };
     }
 
-    entry.submit(0);
+    let wakeup_flag = match WAKEUP_COUNTER.get_ptr_mut(0) {
+        Some(ptr) => unsafe {
+            let count = (*ptr).wrapping_add(1);
+            *ptr = count;
+            if count & 63 == 0 { 0 } else { 1 } // 1 = BPF_RB_NO_WAKEUP
+        },
+        None => 0, // fallback: always wake
+    };
+    entry.submit(wakeup_flag);
 }
 
 #[panic_handler]
