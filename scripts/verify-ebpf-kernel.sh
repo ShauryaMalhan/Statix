@@ -33,8 +33,20 @@ echo "==> BPF verifier matrix: kernel ${KERNEL_VERSION}"
 echo "    ELF:    ${ELF_ABS}"
 echo "    loader: ${VERIFY_ABS}"
 
-# virtme-ng downloads Ubuntu mainline builds when -r is prefixed with "v" (e.g. v5.15).
-VNG_KERNEL="v${KERNEL_VERSION}"
+# virtme-ng downloads Ubuntu mainline builds when -r is prefixed with "v".
+# Bare v5.10 resolves to 5.10.0 (2020) — ringbuf map create fails + PSI/udev panic on noble host.
+# Pin LTS tips that match cloud kernels (EKS/AKS/GKE), not .0 releases.
+resolve_vng_kernel() {
+  case "${1}" in
+    5.10) echo "v5.10.258" ;;
+    5.15) echo "v5.15.209" ;;
+    6.1)  echo "v6.1.175" ;;
+    6.8)  echo "v6.8.12" ;;
+    *)    echo "v${1}" ;;
+  esac
+}
+VNG_KERNEL="$(resolve_vng_kernel "${KERNEL_VERSION}")"
+echo "    vng:    ${VNG_KERNEL} (Ubuntu mainline)"
 
 # Boot the requested kernel in a CoW VM and load the ELF through Aya (kernel verifier).
 vng -v -r "${VNG_KERNEL}" --rw -- "${VERIFY_ABS}" "${ELF_ABS}"

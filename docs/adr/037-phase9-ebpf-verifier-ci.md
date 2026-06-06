@@ -20,7 +20,7 @@
 ### Verifier harness (not `bpftool prog load`)
 
 - **`finops-agent/src/bin/verify_ebpf.rs`** — `Ebpf::load(&bytes)` runs the **in-kernel BPF verifier** without attaching probes.
-- **`scripts/verify-ebpf-kernel.sh`** — `vng -r v<version> --rw -- finops-ebpf-verify <elf>` (virtme-ng fetches Ubuntu mainline `v5.10` / `v5.15` / `v6.1` / `v6.8`).
+- **`scripts/verify-ebpf-kernel.sh`** — `vng -r <LTS-tip> --rw -- finops-ebpf-verify <elf>`. Matrix labels (`5.10` … `6.8`) map to Ubuntu mainline **point releases** (e.g. `5.10` → `v5.10.258`), not `.0` trees — bare `v5.10` is `5.10.0`, which fails ringbuf load and panics on noble userspace.
 
 **Rejected approach:** `bpftool prog load` — libbpf v1.0+ rejects Aya ELFs with legacy `maps` section definitions.
 
