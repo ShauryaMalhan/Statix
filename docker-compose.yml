@@ -57,7 +57,7 @@ services:
       - "9000:9000"
     environment:
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: statix_dev
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./deploy/clickhouse/01_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -94,8 +94,8 @@ services:
       STATIX_KAFKA_LINGER_MS: "50"
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: statix_dev
-      # STATIX_API_TOKEN: "dev-secret"   # uncomment for auth; set same value on agent
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      # STATIX_API_TOKEN: ${STATIX_API_TOKEN}   # set in .env when testing auth
       RUST_LOG: info
     depends_on:
       kafka:

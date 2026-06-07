@@ -138,7 +138,7 @@ Loaded by `config::Config::from_env()` in `statix-gateway/src/config.rs` ([ADR 0
 | `STATIX_KAFKA_LINGER_MS` | `50` (1–1000) | Partial batch linger before flush |
 | `CLICKHOUSE_URL` | `http://localhost:8123` | Read-path HTTP endpoint ([ADR 027](adr/027-api-read-path-clickhouse.md)) |
 | `CLICKHOUSE_USER` | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | (empty) | Password (Compose: `statix_dev`) |
+| `CLICKHOUSE_PASSWORD` | (empty) | Password (Compose: from `.env`, see `.env.example`) |
 
 See [ADR 014](adr/014-kafka-producer-env-tuning.md).
 
@@ -172,10 +172,11 @@ sudo -E make run   # agent on host → API in Docker on :3000
 
 Optional host API instead of container: `make run-api` ([ADR 009](adr/009-statix-gateway-docker-compose.md) — never both on `:3000`).
 
-**ClickHouse HTTP (docker-compose):** user `default`, password `statix_dev` (see `docker-compose.yml`). Example:
+**ClickHouse HTTP (docker-compose):** user `default`, password from `.env` (`CLICKHOUSE_PASSWORD`). Example:
 
 ```bash
-curl -s -u default:statix_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
+set -a && source .env && set +a
+curl -s -u "default:${CLICKHOUSE_PASSWORD}" 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
 ```
 
 ## Deferred

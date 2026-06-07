@@ -18,7 +18,7 @@ Add **`grafana`** service to `docker-compose.yml`:
 | Auth (dev only) | Anonymous admin (`GF_AUTH_ANONYMOUS_*`) — **not for production** |
 | `depends_on` | `clickhouse` |
 
-**ClickHouse datasource (manual in UI):** server `clickhouse`, port `8123`, user `default`, password `statix_dev`, database `finops`.
+**ClickHouse datasource (manual in UI):** server `clickhouse`, port `8123`, user `default`, password from `.env` (`CLICKHOUSE_PASSWORD`), database `statix`.
 
 ## Consequences
 

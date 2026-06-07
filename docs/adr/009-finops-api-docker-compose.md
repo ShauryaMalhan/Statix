@@ -24,6 +24,6 @@
 - **Negative:** Image rebuild after gateway changes: `docker compose build statix-gateway && docker compose up -d statix-gateway` (stale images lack routes such as `/metrics` → 404).
 - **Negative:** Dev agent remains host-only (`sudo make run`). Production agent image: [ADR 024](024-agent-production-container.md) (`deploy/docker/Dockerfile.statix`).
 - **ClickHouse init:** `deploy/clickhouse/01_init.sql` mounted in `docker-compose.yml` ([ADR 026](026-clickhouse-finops-database-init.md)).
-- **Read-path env on `statix-gateway`:** `CLICKHOUSE_URL=http://clickhouse:8123`, `CLICKHOUSE_PASSWORD=statix_dev` ([ADR 027](027-api-read-path-clickhouse.md)).
+- **Read-path env on `statix-gateway`:** `CLICKHOUSE_URL=http://clickhouse:8123`, `CLICKHOUSE_PASSWORD` from `.env` ([ADR 027](027-api-read-path-clickhouse.md), [046](046-secrets-env-file.md)).
 - **Grafana (dev):** `statix-grafana` on host `:3001`, ClickHouse plugin — [ADR 031](031-grafana-clickhouse-compose.md).
 - **Code:** `Dockerfile.gateway`, `deploy/docker/Dockerfile.gateway`, `docker-compose.yml`, `Makefile`, `.dockerignore`

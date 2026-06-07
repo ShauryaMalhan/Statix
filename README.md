@@ -84,6 +84,7 @@ sudo RUST_LOG=info make run
 **Ingest pipeline (dev):**
 
 ```bash
+cp .env.example .env   # set CLICKHOUSE_PASSWORD locally (never commit .env)
 make compose-up    # one command — frees :3000, starts stack, recreates API if needed
 export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run   # agent only (separate terminal)
@@ -112,7 +113,7 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_KAFKA_LINGER_MS` | `50` | Gateway partial-batch linger ms (1–1000) |
 | `CLICKHOUSE_URL` | `http://localhost:8123` | Gateway read-path HTTP endpoint |
 | `CLICKHOUSE_USER` | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: `statix_dev`) |
+| `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: set in `.env` — copy from `.env.example`) |
 
 ## Validate
 

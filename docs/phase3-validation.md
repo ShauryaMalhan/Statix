@@ -9,7 +9,9 @@
 ## Stack smoke test
 
 ```bash
-cd finops-core
+cd statix-core
+cp .env.example .env   # local secrets; load before curl -u examples below
+set -a && source .env && set +a
 make compose-up
 docker compose ps   # kafka, kafka-ui, clickhouse, grafana, statix-gateway running
 # API in compose listens :3000 — or use `make run-api` on host (not both)
@@ -38,7 +40,7 @@ Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
 | API ingest | `curl ... -X POST http://127.0.0.1:3000/ingest` (no auth when `STATIX_API_TOKEN` unset) → `200` |
 | Ingest auth | With `STATIX_API_TOKEN` set on API: missing header → `401`; `curl -H 'Authorization: Bearer <token>' ...` → `200` ([ADR 019](adr/019-ingest-bearer-token-auth.md)) |
 | Kafka topic | Kafka UI `:8080` shows topic `statix-telemetry` with messages |
-| ClickHouse rows | `curl -s -u default:statix_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'` → count &gt; 0 after traffic |
+| ClickHouse rows | `curl -s -u default:${CLICKHOUSE_PASSWORD} 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'` → count &gt; 0 after traffic |
 | Read API | `curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24'` → `200` + JSON array (empty `[]` OK before traffic; `500` = check `CLICKHOUSE_*` / rebuild API) ([ADR 027](adr/027-api-read-path-clickhouse.md)) |
 | Agent non-blocking | Ring buffer loop responsive under load; ingest retries log `warn` on backoff |
 | Backpressure signal | Saturate channel (load test) → `POST /ingest` returns `503` with plain-text body (not `200`) |
@@ -48,7 +50,7 @@ Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
 ## ClickHouse schema check
 
 ```bash
-curl -s -u default:statix_dev 'http://localhost:8123/?query=SHOW%20TABLES'
+curl -s -u default:${CLICKHOUSE_PASSWORD} 'http://localhost:8123/?query=SHOW%20TABLES'
 # statix.kafka_telemetry_queue, statix.workload_metrics, statix.telemetry_mv
 ```
 
@@ -61,12 +63,12 @@ docker compose down -v && make compose-up
 See [ADR 007](adr/007-clickhouse-mergetree-tuning.md), [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md), [ADR 011](adr/011-replacingmergetree-dedupe-identity.md).
 
 ```bash
-curl -s -u default:statix_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.workload_metrics" | grep -E 'ReplacingMergeTree|ORDER BY'
+curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.workload_metrics" | grep -E 'ReplacingMergeTree|ORDER BY'
 # Expect ReplacingMergeTree and ORDER BY (node, window_start_ns, cgroup_id)
 ```
 
 ```bash
-curl -s -u default:statix_dev "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.kafka_telemetry_queue" | grep -E 'skip_broken|num_consumers'
+curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.kafka_telemetry_queue" | grep -E 'skip_broken|num_consumers'
 # Expect kafka_skip_broken_messages = 1000 and kafka_num_consumers = 1 (local)
 ```
 

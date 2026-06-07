@@ -51,3 +51,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [043](043-kubernetes-alb-tls-termination.md) | AWS ALB Ingress TLS termination for `/ingest` | Accepted |
 | [044](044-statix-agent-rename.md) | `finops-agent` → `statix` company rename | Accepted |
 | [045](045-statix-platform-rename.md) | FinOps → Statix platform rename (shared crates, CH, K8s, env) | Accepted |
+| [046](046-secrets-env-file.md) | ClickHouse password in `.env`; scrub git history | Accepted |

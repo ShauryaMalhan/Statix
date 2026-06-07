@@ -61,7 +61,7 @@ ring buffer → aggregator → emit_batch
 
 - Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)); CH schema change → `docker compose down -v` then `make compose-up` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md))
 - Prod: `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`
-- Kafka UI `:8080`; ClickHouse `:8123` (`default` / `statix_dev`); API `:3000` (`/health`, `/ready`, `/metrics`); Grafana `:3001` (anonymous admin, ClickHouse plugin — [ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md)); agent `:9091/metrics`
+- Kafka UI `:8080`; ClickHouse `:8123` (`default` + `CLICKHOUSE_PASSWORD` from `.env`); API `:3000` (`/health`, `/ready`, `/metrics`); Grafana `:3001` (anonymous admin, ClickHouse plugin — [ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md)); agent `:9091/metrics`
 - **Gateway env:** `config::Config::from_env()` in `statix-gateway/src/config.rs` — `KAFKA_BROKERS`, `STATIX_API_PORT` (invalid → exit 1), `STATIX_API_TOKEN`, `CLICKHOUSE_*` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); Kafka tuning in `kafka.rs` via `statix_infra::env` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)

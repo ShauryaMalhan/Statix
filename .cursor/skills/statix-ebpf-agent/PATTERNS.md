@@ -135,7 +135,8 @@ limits   = requests × 1.25;
 make compose-up    # stop-api (host binary only) + stack + health check; Grafana :3001
 export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
-curl -s -u default:statix_dev 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
+# set -a && source .env && set +a
+curl -s -u "default:${CLICKHOUSE_PASSWORD}" 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
 make compose-down
 ```
 

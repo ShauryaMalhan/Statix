@@ -7,7 +7,7 @@
 ## Decision
 
 - **`clickhouse` crate** (`0.13`) on `finops-api`; `AppState.ch_client` built at startup.
-- **Env:** `CLICKHOUSE_URL` (default `http://localhost:8123`); `CLICKHOUSE_USER` (default `default`); `CLICKHOUSE_PASSWORD` (default empty — Compose uses `statix_dev`).
+- **Env:** `CLICKHOUSE_URL` (default `http://localhost:8123`); `CLICKHOUSE_USER` (default `default`); `CLICKHOUSE_PASSWORD` (default empty — Compose reads from `.env`, [ADR 046](046-secrets-env-file.md)).
 - **Route:** `GET /api/v1/workloads/summary?hours=<u64>` — optional lookback hours (default **24**).
 - **Query:** Aggregated read over `statix.workload_metrics` with `window_start_ns >= {cutoff_ns:UInt64}`; top 100 by `peak_memory`; server-side `.param("cutoff_ns", …)`. Originally used `FINAL`; operational path now uses `argMax` ([ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
 - **Handler:** `finops-api/src/routes/query.rs` — `WorkloadSummaryRow` derives `clickhouse::Row` + serde.

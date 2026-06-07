@@ -13,7 +13,8 @@ Creates:
 ## Apply
 
 ```bash
-clickhouse-client --user default --password statix_dev --multiquery < deploy/clickhouse/01_init.sql
+set -a && source .env && set +a
+clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --multiquery < deploy/clickhouse/01_init.sql
 ```
 
 Compose applies automatically on **first** ClickHouse volume init (`make compose-up`).
@@ -31,7 +32,7 @@ After schema changes: `docker compose down -v && make compose-up`.
 ## Verify
 
 ```bash
-curl -s -u default:statix_dev \
+curl -s -u "default:${CLICKHOUSE_PASSWORD}" \
   'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
 ```
 
