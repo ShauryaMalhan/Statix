@@ -1,10 +1,10 @@
-# FinOps Agent — Roadmap & completed work
+# Statix eBPF Platform — Roadmap & completed work
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 5.5 V2** — L8 Audit V2 distributed hardening + micro-architecture fixes.
+**Current focus:** **Phase 5.5 V3** — L8/L9 Post-GA audit: async silent deaths, cache exhaustion, distributed state physics.
 
-**Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
+**Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
 **Validate:** [phase3-validation.md](../../../docs/phase3-validation.md). After gateway route changes: `docker compose build statix-gateway && docker compose up -d statix-gateway`. After CH schema change: `docker compose down -v && make compose-up`. Billing table: `statix.workload_metrics FINAL`.
 
@@ -77,7 +77,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 5.5 — L8 Audit V1 fixes ✅
 
-> Playbook V1: [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md). Shipped fixes are removed from the playbook; historical record in ADRs.
+> Playbook V1: [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md). All fixes shipped.
 
 ### P0-SHIP — Shipped ✅
 
@@ -93,11 +93,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
-## Phase 5.5 V2 — L8 Audit V2 fixes (ACTIVE)
+## Phase 5.5 V2 — L8 Audit V2 fixes ✅
 
-> Playbook V2: [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md). Fixes for Level 2 micro-architecture and distributed failure modes.
+> Playbook V2: [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md). All V2 items shipped for GA.
 
-### P0-BLOCKS-GA — Data Integrity & Availability
+### P0-BLOCKS-GA — Data Integrity & Availability ✅
 
 - [x] **V2-1: Agent SIGTERM handler** — SIGTERM + SIGINT flush partial window in main `select!` (`statix/src/main.rs`)
 - [x] **V2-2: `ReplacingMergeTree(window_end_ns)` version column** — Deterministic merge winner on retry (`deploy/clickhouse/01_init.sql`)
@@ -108,7 +108,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **V2-7: Pin images to registry digests** — `@sha256:<64-hex>` in gateway + agent manifests ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 - [x] **V2-8: Cross-AZ placement constraints** — `topologySpreadConstraints` on `topology.kubernetes.io/zone` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 
-### P1-WEEK — Hot-Path & Scale Fixes
+### P1-WEEK — Hot-Path & Scale Fixes ✅
 
 - [x] **V2-9: BPF ring buffer wakeup suppression** — `WAKEUP_COUNTER` + `BPF_RB_NO_WAKEUP` every 63/64 events; 1ms poll drain fallback (`statix-ebpf/src/main.rs`, `statix/src/main.rs`)
 - [x] **V2-10: Deduplicate procfs reads in `on_identity_event`** — Read-lock fast path + double-check before procfs ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
@@ -117,12 +117,51 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **V2-13: Hoist node key allocation** — One `node.to_vec()` per partition chunk; `bytes_to_record` removed ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
 - [x] **V2-14: Fix `merge_cgroup_labels_from_k8s` lock duration** — Snapshot under read lock, compute outside, batch insert ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
 
-### P2-SPRINT — Thundering Herd & Observability
+### P2-SPRINT — Thundering Herd & Observability ✅
 
 - [x] **V2-15: Agent-side jittered backoff recovery** — 0–5s jitter after recovery when `backoff_secs > initial_backoff` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **V2-16: ClickHouse merge pressure monitoring** — `deploy/grafana/clickhouse_monitoring.sql` parts + merges queries ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **V2-17: Kafka produce error rate metric** — `statix_api_kafka_produce_errors_total` + `statix_api_kafka_produce_dropped_total` (shipped with V2-11, [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
 - [x] **V2-18: End-to-end latency histogram** — `statix_api_ingest_lag_seconds` from `window_end_ns` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
+
+---
+
+## Phase 5.5 V3 — L8/L9 Post-GA Audit (ACTIVE)
+
+> Playbook V3: [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md). Silent killers found at 10,000-node scale after 6-month continuous operation analysis.
+
+### P0-CRITICAL — Silent Deaths & Data Integrity
+
+- [ ] **V3-7: K8s watcher `tokio::spawn` silently swallows panics** — Store `JoinHandle`, monitor in `select!` loop; emit `statix_k8s_watcher_panics_total`; restart on panic (`statix/src/main.rs:55-68`)
+- [ ] **V3-8: Ring drops monitor `tokio::spawn` also silently swallows panics** — Return `JoinHandle` from `spawn_ring_drops_monitor`; monitor in `select!`; emit `statix_ring_monitor_panics_total` (`statix/src/loader.rs:53-74`)
+- [ ] **V3-13: Ingest handler capacity pre-check is TOCTOU** — Atomic batch send via single channel item or `reserve_many`; eliminate partial batch delivery under concurrency (`statix-gateway/src/routes/ingest.rs:87-149`)
+
+### P0-WEEK — Resource Exhaustion Time Bombs
+
+- [ ] **V3-4: `AttributionCache` unbounded growth** — Evict stale cgroups on 60s timer; remove entries where `memory.current` path no longer exists; emit `statix_cache_evictions_total` (`statix/src/attribution/mod.rs:34-38`)
+- [ ] **V3-5: `pod_by_uid` never evicts deleted pods** — Handle `Event::Delete` in `watch_k8s_pods` to remove pod UID from map (`statix/src/attribution/mod.rs:411`)
+- [ ] **V3-9: K8s watcher reconnect has no backoff** — Jittered exponential backoff 5s→300s on reconnect loop; reset on successful reconnect (`statix/src/attribution/mod.rs:418-424`)
+
+### P1-SPRINT — Distributed State Physics
+
+- [ ] **V3-11: ClickHouse midnight partition boundary storm** — Coarser partition expression or round `window_start_ns` to prevent clock-drift partition splits (`deploy/clickhouse/01_init.sql:31`)
+- [ ] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — Set to match topic partition count (minimum 4 for production) (`deploy/clickhouse/01_init.sql:59`)
+- [ ] **V3-15: Agent recovery thundering herd** — Scale jitter with node hash; spread recovery over 30s instead of 5s (`statix/src/output.rs:115-118`)
+
+### P1-WEEK — Performance & Observability
+
+- [ ] **V3-2: `bootstrap_existing_cgroups` blocks async runtime** — Wrap `WalkDir` + `fs::metadata` in `spawn_blocking` (`statix/src/attribution/mod.rs:116-171`)
+- [ ] **V3-6: `RING_DROPS` counter uses `absolute()`** — Track previous reading; emit increments instead of absolute value (`statix/src/loader.rs:67`)
+- [ ] **V3-10: `spawn_blocking` JoinError silently returns empty Vec** — Log error + emit `statix_memory_sampler_errors_total` instead of `unwrap_or_default` (`statix/src/memory_sampler.rs:36-37`)
+- [ ] **V3-14: No explicit body size limit on POST /ingest** — Add `DefaultBodyLimit::max(2MB)` to Axum router (`statix-gateway/src/routes/ingest.rs`)
+- [ ] **V3-1: Agent DaemonSet missing resource requests/limits** — Add `requests: {cpu: 50m, memory: 64Mi}` + `limits: {cpu: 500m, memory: 256Mi}` (`deploy/k8s/statix-daemonset.yaml`)
+
+### P2-MONTH — Micro-architecture Polish
+
+- [ ] **V3-16: Magic number for `BPF_RB_NO_WAKEUP`** — Named constant `const BPF_RB_NO_WAKEUP: u64 = 1` (`statix-ebpf/src/main.rs:77`)
+- [ ] **V3-17: No alignment assertion for `StatixEvent` pointer cast** — Compile-time `const _: () = assert!(align_of::<StatixEvent>() <= 8)` (`statix/src/main.rs:109`)
+- [ ] **V3-18: 1ms poll interval unnecessarily aggressive** — Increase to 5ms (`statix/src/main.rs:92`)
+- [ ] **V3-3: `node.to_string()` allocation on every flush** — Change `BatchPayload.node` to `Arc<str>` (`statix/src/aggregator.rs:216`)
 
 ---
 
@@ -171,8 +210,6 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Statix company rename** — crate/dir `statix`, `Dockerfile.statix`, `statix-daemonset.yaml`, skill `statix-ebpf-agent` ([ADR 044](../../../docs/adr/044-statix-agent-rename.md))
 - [x] **Statix platform rename** — `statix-common/wire/infra/gateway/ebpf`, K8s `statix-system`, `STATIX_*` env, CH `statix` DB ([ADR 045](../../../docs/adr/045-statix-platform-rename.md))
-
-
 - [x] **Production gateway image:** `deploy/docker/Dockerfile.gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md))
 - [x] **Production agent image:** `deploy/docker/Dockerfile.statix` ([ADR 024](../../../docs/adr/024-agent-production-container.md))
 - [x] **K8s manifests:** `deploy/k8s/gateway.yaml`, `statix-daemonset.yaml` ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md))
@@ -207,9 +244,16 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
-## Execution Summary (L8 V2 recommended order)
+## Execution Summary
 
 ```
-L8 V2 (GA):             V2-1…18 shipped ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)); TLS at ALB ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md))
-MONTH 2 (P3):            arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
+L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
+L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
+L8/L9 V3 (ACTIVE):      V3-7…18 async silent deaths, cache exhaustion, distributed physics
+  Week 1:               V3-7, V3-8, V3-13   (silent death + data integrity)
+  Week 2:               V3-4, V3-5, V3-9    (memory leaks + API DDoS)
+  Week 3:               V3-11, V3-12, V3-15 (distributed state)
+  Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
+  Month 2:              V3-16…18, V3-3      (micro-architecture polish)
+MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
 ```

@@ -1,7 +1,7 @@
-# L8 Audit V2 — Cursor Playbook
+# L8 Audit V2 — Cursor Playbook (SHIPPED)
 
-> Strict instruction manual for AI-assisted implementation.
-> Shipped fixes are removed from this file (ADR index below). All V2 items are shipped for GA.
+> **Status:** All V2 fixes shipped for GA. This file is retained as an ADR index.
+> **Next:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — V3 Post-GA audit (async silent deaths, cache exhaustion, distributed state physics).
 > Run `cargo check --workspace` after each fix.
 
 ## Shipped (ADR index)
