@@ -147,7 +147,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [ ] **V3-11: ClickHouse midnight partition boundary storm** — Coarser partition expression or round `window_start_ns` to prevent clock-drift partition splits (`deploy/clickhouse/01_init.sql:31`)
 - [ ] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — Set to match topic partition count (minimum 4 for production) (`deploy/clickhouse/01_init.sql:59`)
-- [ ] **V3-15: Agent recovery thundering herd** — Scale jitter with node hash; spread recovery over 30s instead of 5s (`statix/src/output.rs:115-118`)
+- [ ] **V3-15: Agent recovery thundering herd** — Deterministic node-hash recovery spread (see **Phase 11**); replace 0–5s PRNG-only recovery jitter (`statix/src/output.rs:115-118`)
 
 ### P1-WEEK — Performance & Observability
 
@@ -248,13 +248,15 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 11 — Agent Network Hardening & Reliability
 
-> Scope: `statix/src/output.rs` — HTTP ingest retry path. Phase 7 (workspace/DX) is complete; this tracks **network durability** debt.
+> Scope: `statix/src/output.rs` — HTTP ingest retry path. (Phase 7 = workspace/DX, already complete.)
+
+- [x] **Exponential backoff with jitter (shipped)** — Phase 4 item 3.2, V2-15, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md). `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s); 30% jitter on retry sleep; 0–5s PRNG recovery jitter in `statix/src/output.rs:112-131`.
+
+- [ ] **Implement deterministic node-hash recovery spread (V3-15)** — **Recovery avalanche:** after a prolonged outage, every agent at max backoff detects success within the same window; V2-15's 0–5s PRNG jitter is insufficient — thousands of agents can flush backlogs simultaneously and DDoS the Axum gateway. On gateway recovery (first `Success` after elevated backoff / circuit close), sleep a **deterministic** offset derived from `STATIX_NODE_NAME`: e.g. `hash(node) % 30` seconds (use stable hasher, not PRNG). Guarantees flat traffic shaping across a 30s window without clumping. Also tracked in Phase 5.5 V3 P1-SPRINT.
 
 - [ ] **Local disk buffering (write-ahead log)** — Unacknowledged batches live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Depends on DaemonSet volume mount + `emptyDir` sizing in K8s.
 
-- [ ] **Circuit breaker on HTTP ingest client** — No open/half-open state today; retry worker keeps attempting `post_ingest` TCP handshakes on every backoff tick while gateway is hard-down. Wrap `reqwest` calls in a failure-count state machine: after N consecutive failures → **Open** (short-circuit POST, enqueue to WAL immediately); **Half-Open** probe every 30s; close on success. Complements WAL task above.
-
-**Not added (already shipped):** Exponential backoff + jitter — see Phase 4 item 3.2, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), V2-15 ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)). Current: `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s), 30% jitter on retry sleep, 0–5s recovery jitter in `statix/src/output.rs:112-131`. Remaining cluster-wide herd gap: **V3-15** (node-hash recovery spread over 30s).
+- [ ] **Circuit breaker on HTTP ingest client** — No open/half-open state today; retry worker keeps attempting `post_ingest` TCP handshakes on every backoff tick while gateway is hard-down. Wrap `reqwest` calls in a failure-count state machine: after N consecutive failures → **Open** (short-circuit POST, enqueue to WAL immediately); **Half-Open** probe every 30s; close on success. Complements WAL task above; recovery spread (V3-15) applies on **Close**.
 
 ---
 
@@ -270,5 +272,5 @@ L8/L9 V3 (ACTIVE):      V3-7…18 async silent deaths, cache exhaustion, distrib
   Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              V3-16…18, V3-3      (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
-PHASE 11 (planned):     Agent WAL + circuit breaker (output.rs network durability)
+PHASE 11 (planned):     V3-15 recovery spread, agent WAL, circuit breaker
 ```
