@@ -30,6 +30,10 @@ async fn main() -> anyhow::Result<()> {
     }
     check_privileges()?;
 
+    let clock_offset = statix_infra::clock::init_clock_offset();
+    log::info!("Clock domain offset: {clock_offset} ns (BPF/monotonic → wall)");
+    spawn_clock_recalibration_task();
+
     let ebpf_path = ebpf_select::resolve_ebpf_path()?;
     let window_secs = read_window_secs()?;
     let sample_secs = read_sample_interval_secs()?;
@@ -198,6 +202,19 @@ fn read_node_name() -> String {
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|_| "localhost".into())
         })
+}
+
+/// Periodic NTP drift correction — syscalls stay off the ring-buffer hot path.
+fn spawn_clock_recalibration_task() {
+    let secs = statix_infra::env::read_env_u64("STATIX_CLOCK_RECALIBRATE_SECS", 3600);
+    tokio::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(secs));
+        interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            statix_infra::clock::recalibrate_clock_offset();
+        }
+    });
 }
 
 fn check_privileges() -> anyhow::Result<()> {

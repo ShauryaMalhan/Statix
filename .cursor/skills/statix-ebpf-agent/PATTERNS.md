@@ -1,4 +1,4 @@
-# FinOps eBPF Agent — Patterns
+# Statix eBPF Agent — Patterns
 
 Enterprise templates. **Before coding:** [SKILL.md](SKILL.md) workflow → implement → `make build` → update ADR/docs/skills.
 
@@ -66,14 +66,15 @@ Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snap
 ## Pattern 5a — Batch lineage (audit)
 
 Each `Aggregator::flush` sets `batch_id = Uuid::new_v4()` and `agent_version = env!("CARGO_PKG_VERSION")`.  
-Propagated through `statix_wire::IngestBatch` → `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-statix-wire-and-agent-rename.md)).
+Propagated through `statix_wire::IngestBatch` → `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)).
 
 ## Pattern 5b — Aggregator clock domain
 
-`Aggregator::new` calibrates `clock_offset_ns = wall_unix - CLOCK_MONOTONIC` once.  
-Ring-buffer events: `wall_timestamp = event.timestamp + clock_offset_ns` in `on_statix_event`.  
-`window_start_ns` / `window_end_ns` use `mono_now + offset` (not raw `SystemTime` per flush).  
-Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)).
+`init_clock_offset()` at agent startup; global `AtomicU64` in `statix-infra::clock`.  
+Hot path: `clock_offset_ns()` (`Relaxed` load) — `wall = mono + offset` in `on_statix_event`.  
+Background: `spawn_clock_recalibration_task` every `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600).  
+`window_start_ns` / `window_end_ns` use `mono_now + offset` (not `SystemTime` per event).  
+Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)).
 
 ## Pattern 6b — Attribution cache
 
@@ -121,7 +122,7 @@ limits   = requests × 1.25;
 
 **Agent:** `OnceLock<reqwest::Client>`; `STATIX_API_TOKEN` → `default_headers` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `PrometheusBuilder` → `:9091/metrics` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `init_retry_worker` — `mpsc(60)`; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
 
-**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-statix-gateway-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
+**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
 
 **Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `STATIX_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
 
@@ -141,7 +142,7 @@ make compose-down
 ```
 
 - **Do not** `make run-api` while compose `statix-gateway` is on `:3000`.
-- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-statix-gateway-docker-compose.md)).
+- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
 
 Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
 
@@ -152,7 +153,7 @@ docker build -f deploy/docker/Dockerfile.gateway -t statix-gateway:latest .
 docker build -f deploy/docker/Dockerfile.statix -t statix:latest .
 ```
 
-Gateway: non-root `statix` user ([ADR 009](../../../docs/adr/009-statix-gateway-docker-compose.md)). Agent: root/privileged, `STATIX_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
+Gateway: non-root `statix` user ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)). Agent: root/privileged, `STATIX_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
 
 ```bash
 kubectl apply -f deploy/k8s/gateway.yaml
@@ -173,7 +174,7 @@ clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 
 ## Pattern 15 — Gateway `Config` (Phase 7)
 
-All `statix-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-statix-gateway-config-struct.md)).
+All `statix-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
 
 | Env | `Config` field | Default |
 |-----|----------------|---------|

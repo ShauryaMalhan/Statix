@@ -34,7 +34,8 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ### P2 — Scale & audit correctness
 
 - [x] **Ring buffer size (1.2):** `build.rs` + three ELFs (`target/bpf/`); CPU-tier auto-load in `ebpf_select.rs` ([ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md))
-- [x] **Clock domain offset (4.1):** `clock_offset_ns` in `Aggregator::new`; BPF `timestamp` + offset; window bounds via same domain ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
+- [x] **Clock domain offset (4.1):** BPF `timestamp` + offset; window bounds via same domain ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
+- [x] **NTP drift recalibration:** `AtomicU64` + hourly background task; hot-path `Relaxed` load ([ADR 047](../../../docs/adr/047-atomic-clock-offset-recalibration.md))
 - [x] **Data lineage (4.6):** `batch_id` (UUID v4 per flush) + `agent_version` on wire and ClickHouse ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
 
 ### P3 — Coverage & horizontal API
@@ -194,9 +195,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 7 — Architecture & developer experience ✅
 
-- [x] **`statix-wire` crate** — `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-statix-wire-and-agent-rename.md))
+- [x] **`statix-wire` crate** — `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md))
 - [x] **Centralized `Config` struct** — `statix-gateway/src/config.rs` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md))
-- [x] **Rename agent crate:** `finops-user` → `finops-agent` → `statix` ([ADR 028](../../../docs/adr/028-statix-wire-and-agent-rename.md), [044](../../../docs/adr/044-statix-agent-rename.md))
+- [x] **Rename agent crate:** `finops-user` → `finops-agent` → `statix` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md), [044](../../../docs/adr/044-statix-agent-rename.md))
 - [x] **Rename gateway crate:** `finops-api` → `statix-gateway` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
 - [x] **Remove deprecated `ProcessEvent`:** Dead code in `statix-common` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
 - [x] **`thiserror` for gateway errors** — `GatewayError` in `statix-gateway/src/error.rs` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))

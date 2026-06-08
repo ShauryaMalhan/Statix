@@ -33,7 +33,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [025](025-kubernetes-gateway-and-agent.md) | `deploy/k8s` gateway Deployment + agent DaemonSet | Accepted |
 | [026](026-clickhouse-finops-database-init.md) | `deploy/clickhouse/01_init.sql` — `statix.workload_metrics` | Accepted |
 | [027](027-api-read-path-clickhouse.md) | `GET /api/v1/workloads/summary` → ClickHouse | Accepted |
-| [028](028-statix-wire-and-agent-rename.md) | `statix-wire` + `finops-user` → `statix` | Accepted |
+| [028](028-finops-wire-and-agent-rename.md) | `statix-wire` + `finops-user` → `statix` | Accepted |
 | [029](029-ready-channel-depth-gate.md) | `/ready` fails when ingest mpsc &gt; 80% full | Accepted |
 | [030](030-finops-api-config-struct.md) | `statix-gateway` `Config::from_env()` | Accepted |
 | [031](031-grafana-clickhouse-compose.md) | Grafana + ClickHouse plugin on `:3001` (dev) | Accepted |
@@ -52,3 +52,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [044](044-statix-agent-rename.md) | `finops-agent` → `statix` company rename | Accepted |
 | [045](045-statix-platform-rename.md) | FinOps → Statix platform rename (shared crates, CH, K8s, env) | Accepted |
 | [046](046-secrets-env-file.md) | ClickHouse password in `.env`; scrub git history | Accepted |
+| [047](047-atomic-clock-offset-recalibration.md) | Atomic clock offset + hourly NTP drift recalibration | Accepted |

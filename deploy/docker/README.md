@@ -1,6 +1,6 @@
-# FinOps container images
+# Statix container images
 
-Build all commands from **repo root** (`finops-core`).
+Build all commands from **repo root** (`Statix/`).
 
 ## API gateway (`statix-gateway`)
 

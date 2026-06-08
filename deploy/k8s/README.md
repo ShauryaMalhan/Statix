@@ -1,4 +1,4 @@
-# Kubernetes — FinOps platform (Target 1)
+# Kubernetes — Statix platform (Target 1)
 
 Namespace: `statix-system`. Apply from repo root:
 

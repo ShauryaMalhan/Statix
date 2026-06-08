@@ -3,12 +3,12 @@
 //! - `FxHashMap`: fast `u64` keys (no SipHash DoS resistance needed).
 //! - Double-buffered maps: ping-pong + `.clear()` preserves capacity (no realloc per window).
 //! - Early flush at `max_keys`: never drop telemetry (FinOps correctness).
-//! - `clock_offset_ns`: maps BPF / monotonic timestamps to wall-clock for window boundaries.
+//! - Atomic `clock_offset_ns` (statix-infra): maps BPF monotonic timestamps to wall-clock.
 
 use std::cell::RefCell;
 use std::sync::Arc;
 use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
-use statix_infra::clock::{calibrate_clock_offset_ns, mono_now_ns};
+use statix_infra::clock::{clock_offset_ns, mono_now_ns};
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use rustc_hash::FxHashMap;
@@ -55,7 +55,6 @@ impl Default for WorkloadStats {
 #[derive(Debug)]
 pub struct Aggregator {
     window_start_ns: u64,
-    clock_offset_ns: u64,
     buffers: [FxHashMap<u64, WorkloadStats>; 2],
     active: usize,
     max_keys: usize,
@@ -63,15 +62,10 @@ pub struct Aggregator {
 
 impl Aggregator {
     pub fn new(_window_secs: u64) -> Self {
-        let clock_offset_ns = calibrate_clock_offset_ns();
-        let window_start_ns = mono_now_ns().saturating_add(clock_offset_ns);
-        log::debug!(
-            "Clock domain offset: {clock_offset_ns} ns (BPF/monotonic → wall)"
-        );
+        let window_start_ns = mono_now_ns().saturating_add(clock_offset_ns());
 
         Self {
             window_start_ns,
-            clock_offset_ns,
             buffers: [
                 FxHashMap::with_capacity_and_hasher(DEFAULT_MAX_KEYS, Default::default()),
                 FxHashMap::with_capacity_and_hasher(DEFAULT_MAX_KEYS, Default::default()),
@@ -81,9 +75,10 @@ impl Aggregator {
         }
     }
 
-    /// Monotonic ns → wall ns using the offset captured at `new()`.
+    /// Monotonic ns → wall ns via lock-free atomic offset (refreshed in background).
+    #[inline]
     fn mono_to_wall(&self, mono_ns: u64) -> u64 {
-        mono_ns.saturating_add(self.clock_offset_ns)
+        mono_ns.saturating_add(clock_offset_ns())
     }
 
     /// Current wall time in the same domain as converted BPF event timestamps.

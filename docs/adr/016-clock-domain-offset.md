@@ -27,7 +27,7 @@ User-space memory samples already pass wall time from `memory_sampler`; they do 
 ## Consequences
 
 - **Positive:** BPF events and aggregator windows share one calibrated wall domain.
-- **Negative:** Offset is not refreshed after NTP adjustments; long uptimes may drift from true UTC (acceptable until periodic recalibration is added).
+- **Superseded (drift):** Periodic recalibration shipped in [ADR 047](047-atomic-clock-offset-recalibration.md).
 - **Negative:** `CLOCK_MONOTONIC` is an approximation of `bpf_ktime_get_ns()` (boot-time); sub-second skew possible on some kernels.
 
 ## References

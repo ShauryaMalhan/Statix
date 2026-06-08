@@ -4,14 +4,16 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 
 ## Status
 
-| Phase | State | What ships |
-|-------|--------|------------|
-| **1** | Done | `sched:sched_process_exec` tracepoint, ring buffer, basic agent loop |
-| **2** | Done | cgroup attribution, K8s labels (optional), `memory.current` sampling, `schema_version: 2` batches |
-| **3** | Done | HTTP ingest → Kafka → ClickHouse ([spec](docs/phase3-ingest-interface.md)) |
-| **4** | Done | Partition routing, retry/jitter, dedupe, Prometheus, ring tiers, clock offset, lineage, cgroup bootstrap |
-| **5** | **Active** | TLS; prod CH/Kafka ops ([guide](docs/phase5-production-readiness.md)) — P0 security/hot-path shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
-| **6** | Done | L8 hot path ([ADR 018](docs/adr/018-phase-roadmap-status.md), [ADR 023](docs/adr/023-phase5-hot-path-fixes.md)) |
+| Phase / target | State | What ships |
+|----------------|--------|------------|
+| **1–4** | Done | eBPF agent, attribution, ingest E2E, scale/reliability (partition routing, dedupe, lineage, bootstrap) |
+| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md), [ADR 043](docs/adr/043-kubernetes-alb-tls-termination.md)); prod CH/Kafka ops remain ([guide](docs/phase5-production-readiness.md)) |
+| **5.5 V1/V2** | Done | L8 audit GA hardening ([ADR 032](docs/adr/032-phase55-l8-p0-hot-path-fixes.md)–[043](docs/adr/043-kubernetes-alb-tls-termination.md)) |
+| **5.5 V3** | **Active** | Post-GA audit — async silent deaths, cache exhaustion, distributed state ([playbook](.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md), [TODO](.cursor/skills/statix-ebpf-agent/TODO.md)) |
+| **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
+| **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/028-finops-wire-and-agent-rename.md)–[036](docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
+| **8** | Partial | K8s manifests, informer, drain, digest pins shipped; stronger cgroup→pod mapping open |
+| **9** | Partial | eBPF verifier CI matrix shipped ([ADR 037](docs/adr/037-phase9-ebpf-verifier-ci.md)); arm64 CI + cgroup v1 detection open |
 | **T1–3** | Done | Prod deploy, CH init, `GET /api/v1/workloads/summary` ([ADR 024](docs/adr/024-agent-production-container.md)–[027](docs/adr/027-api-read-path-clickhouse.md)) |
 
 ## What’s in the repo
@@ -41,7 +43,7 @@ Contributing: read `.cursor/skills/statix-ebpf-agent/SKILL.md` first; update ADR
 
 ## CI
 
-[![eBPF Verifier CI](https://github.com/ShauryaMalhan/finops-core/actions/workflows/ebpf-ci.yml/badge.svg)](https://github.com/ShauryaMalhan/finops-core/actions/workflows/ebpf-ci.yml)
+[![eBPF Verifier CI](https://github.com/ShauryaMalhan/Statix/actions/workflows/ebpf-ci.yml/badge.svg)](https://github.com/ShauryaMalhan/Statix/actions/workflows/ebpf-ci.yml)
 
 On every push/PR to `main`, [`.github/workflows/ebpf-ci.yml`](.github/workflows/ebpf-ci.yml) runs:
 
@@ -62,7 +64,7 @@ Pre-BTF / legacy kernels are **not** supported.
 ## Install & build
 
 ```bash
-cd statix-core
+cd Statix   # repo root
 make deps
 make build
 ```
@@ -139,7 +141,7 @@ See [deploy/docker/README.md](deploy/docker/README.md), [deploy/k8s/README.md](d
 ## Layout
 
 ```
-finops-core/
+Statix/
 ├── statix-ebpf/
 ├── statix-common/
 ├── statix-wire/

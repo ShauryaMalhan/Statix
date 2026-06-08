@@ -1,7 +1,7 @@
 ---
 name: statix-ebpf-agent
 description: >-
-  Enterprise low-latency standards for the Statix eBPF stack (statix-core):
+  Enterprise low-latency standards for the Statix eBPF stack:
   BPF ring buffer, batched agent, HTTP→Kafka→ClickHouse; Phase 5 security focus.
   Use when editing statix-common, statix-ebpf, statix-wire, statix-infra, statix, statix-gateway; adding probes;
   ingest, Docker infra, or ADRs. Always read this skill first, then build with make,
@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **6 done** (L8 + [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) · **T1–3 done** (deploy/CH/read API — [ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **5 partial** (TLS at ALB [ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md); prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **8 partial** (K8s GA hardening [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md)–[043](../../../docs/adr/043-kubernetes-alb-tls-termination.md) — [TODO](TODO.md))
+Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/043-kubernetes-alb-tls-termination.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **5.5 V3 active** ([L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — [TODO](TODO.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
 
 ## Mandatory workflow (every change)
 
@@ -68,7 +68,7 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)) |
 | `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
-| Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + `clock_offset_ns` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
+| Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
 Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.md)
@@ -113,7 +113,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Map | `rustc_hash::FxHashMap` |
 | Buffers | Two maps; flip before drain ([ADR 004](../../../docs/adr/004-swap-buffer-before-drain.md)) |
 | Cap | Early flush — never random eviction ([ADR 003](../../../docs/adr/003-early-flush-instead-of-cap-eviction.md)) |
-| Clock | `clock_offset_ns` at `new`; `on_statix_event` converts BPF mono → wall ([ADR 016](../../../docs/adr/016-clock-domain-offset.md)) |
+| Clock | `AtomicU64` offset in `statix-infra::clock`; hot-path `Relaxed` load; hourly recalibration task ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 
 ### Attribution
 
@@ -175,6 +175,8 @@ Deferred: [TODO.md](TODO.md)
 **L8 playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — all fixes shipped (ADR index).
 
 **L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)).
+
+**L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — post-GA audit (async silent deaths, cache exhaustion, distributed state). Track in [TODO.md](TODO.md).
 
 ## OOM-safe remediation (Phases 4–5)
 
