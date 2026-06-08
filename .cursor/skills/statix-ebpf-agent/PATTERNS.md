@@ -196,3 +196,33 @@ curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
 - Env: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)).
 - SQL uses `statix.workload_metrics FINAL`; default lookback 24h.
 - Rebuild API after changes: `docker compose build statix-gateway && docker compose up -d statix-gateway`.
+
+## Pattern 16 — Positive-bounded numeric env (`statix-infra::env`)
+
+All numeric tuning env vars that feed timers, intervals, or channel depths must use `read_env_u64` / `read_env_usize` — never raw `parse()` in callers ([ADR 048](../../../docs/adr/048-generic-env-positive-parsing.md)).
+
+```rust
+// statix-infra/src/env.rs — internal generic; public wrappers unchanged
+fn read_env_positive<T>(name: &str, default: T) -> T
+where
+    T: Copy + Default + PartialOrd + std::fmt::Display + FromStr,
+{
+    match var_with_legacy(name) {
+        Some(s) => match s.parse::<T>() {
+            Ok(v) if v > T::default() => v,
+            _ => {
+                log::warn!("Invalid {name}={s:?}; using default {default}");
+                default
+            }
+        },
+        None => default,
+    }
+}
+
+pub fn read_env_u64(name: &str, default: u64) -> u64 {
+    read_env_positive(name, default)
+}
+```
+
+- `STATIX_WINDOW_SECS=0` → warns, uses default `10` (prevents Tokio zero-duration panic).
+- Do **not** add parallel `read_env_i64` / ad-hoc `.max(1)` parsers — extend the generic if a new numeric type is needed.

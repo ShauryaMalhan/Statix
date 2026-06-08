@@ -53,3 +53,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [045](045-statix-platform-rename.md) | FinOps → Statix platform rename (shared crates, CH, K8s, env) | Accepted |
 | [046](046-secrets-env-file.md) | ClickHouse password in `.env`; scrub git history | Accepted |
 | [047](047-atomic-clock-offset-recalibration.md) | Atomic clock offset + hourly NTP drift recalibration | Accepted |
+| [048](048-generic-env-positive-parsing.md) | Generic `read_env_positive` — reject `<= T::default()` numeric env | Accepted |

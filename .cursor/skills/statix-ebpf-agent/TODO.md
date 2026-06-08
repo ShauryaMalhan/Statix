@@ -203,6 +203,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **`thiserror` for gateway errors** — `GatewayError` in `statix-gateway/src/error.rs` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 - [x] **Typed errors in `attribution.rs`** — `AttributionError`; `read_memory_current_at` in attribution module ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 - [x] **Extract `statix-infra` crate:** `read_env_u64`/`read_env_usize`, clock utilities ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
+- [x] **Generic positive-bounded env parsing:** `read_env_positive<T>` — reject `<= T::default()`; agent window/sample via shared helper ([ADR 048](../../../docs/adr/048-generic-env-positive-parsing.md))
 - [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `watch_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
 
 ---

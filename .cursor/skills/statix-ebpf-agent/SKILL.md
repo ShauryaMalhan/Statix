@@ -47,7 +47,7 @@ Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/
 | `statix-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`STATIX_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `statix` | host | loader, attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | `statix-gateway` | host | `Config::from_env()`; `GatewayError` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)); ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)) |
-| `statix-infra` | lib | `read_env_u64`/`read_env_usize`, clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md)) |
+| `statix-infra` | lib | `read_env_positive` (via `read_env_u64`/`read_env_usize`), clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md), [048](../../../docs/adr/048-generic-env-positive-parsing.md)) |
 
 **Infra:** `docker-compose.yml` (Kafka, ClickHouse, Grafana `:3001`, API), `deploy/docker/`, `deploy/k8s/` (incl. `gateway-ingress.yaml` ALB TLS), `deploy/clickhouse/01_init.sql`
 

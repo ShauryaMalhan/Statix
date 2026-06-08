@@ -101,8 +101,8 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_INGEST_URL` | (unset) | HTTP ingest URL; unset = stdout |
 | `STATIX_EBF_PATH` | (auto) | Override path to BPF ELF; else CPU-tier pick from `STATIX_BPF_DIR` (`target/bpf`) |
 | `STATIX_BPF_DIR` | `target/bpf` | Directory with `statix-ebpf-{small,large,xlarge}` |
-| `STATIX_WINDOW_SECS` | `10` | Aggregation flush interval |
-| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | `memory.current` poll interval |
+| `STATIX_WINDOW_SECS` | `10` | Aggregation flush interval (must be &gt; 0; invalid → default) |
+| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | `memory.current` poll interval (must be &gt; 0; invalid → default) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 | `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |

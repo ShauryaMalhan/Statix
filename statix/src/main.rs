@@ -35,8 +35,8 @@ async fn main() -> anyhow::Result<()> {
     spawn_clock_recalibration_task();
 
     let ebpf_path = ebpf_select::resolve_ebpf_path()?;
-    let window_secs = read_window_secs()?;
-    let sample_secs = read_sample_interval_secs()?;
+    let window_secs = statix_infra::env::read_env_u64("STATIX_WINDOW_SECS", 10);
+    let sample_secs = statix_infra::env::read_env_u64("STATIX_SAMPLE_INTERVAL_SECS", 10);
     let node = read_node_name();
     let raw_events = statix_infra::env::var("STATIX_RAW_EVENTS").as_deref() == Some("1");
 
@@ -178,20 +178,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn read_window_secs() -> anyhow::Result<u64> {
-    match statix_infra::env::var("STATIX_WINDOW_SECS") {
-        Some(s) => Ok(s.parse::<u64>()?.max(1)),
-        None => Ok(10),
-    }
-}
-
-fn read_sample_interval_secs() -> anyhow::Result<u64> {
-    match statix_infra::env::var("STATIX_SAMPLE_INTERVAL_SECS") {
-        Some(s) => Ok(s.parse::<u64>()?.max(1)),
-        None => Ok(10),
-    }
 }
 
 fn read_node_name() -> String {
