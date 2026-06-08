@@ -66,7 +66,7 @@ async fn main() -> Result<(), GatewayError> {
         kafka_tx: producer.tx.clone(),
         kafka_channel_capacity,
         kafka_ready: producer.is_ready.clone(),
-        expected_bearer: config.expected_bearer(),
+        expected_bearer: config.expected_bearer().map(str::to_string),
         ch_client,
     };
 

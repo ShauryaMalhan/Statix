@@ -11,6 +11,8 @@ pub struct Config {
     pub kafka_brokers: String,
     pub api_port: u16,
     pub api_token: Option<String>,
+    /// Precomputed `Authorization` header value (`Bearer {token}`) when `api_token` is set.
+    pub expected_bearer: Option<String>,
     pub clickhouse_url: String,
     pub clickhouse_user: String,
     pub clickhouse_password: String,
@@ -19,20 +21,25 @@ pub struct Config {
 impl Config {
     /// Load configuration from the process environment (defaults when unset).
     pub fn from_env() -> Self {
+        let api_token = statix_infra::env::var("STATIX_API_TOKEN").filter(|s| !s.is_empty());
+        let expected_bearer = api_token
+            .as_ref()
+            .map(|t| format!("Bearer {t}"));
+
         Self {
             kafka_brokers: env_string("KAFKA_BROKERS", DEFAULT_KAFKA_BROKERS),
             api_port: env_api_port(),
-            api_token: statix_infra::env::var("STATIX_API_TOKEN")
-                .filter(|s| !s.is_empty()),
+            api_token,
+            expected_bearer,
             clickhouse_url: env_string("CLICKHOUSE_URL", DEFAULT_CLICKHOUSE_URL),
             clickhouse_user: env_string("CLICKHOUSE_USER", DEFAULT_CLICKHOUSE_USER),
             clickhouse_password: std::env::var("CLICKHOUSE_PASSWORD").unwrap_or_default(),
         }
     }
 
-    /// Full `Authorization` header value for `POST /ingest` when `api_token` is set.
-    pub fn expected_bearer(&self) -> Option<String> {
-        self.api_token.as_ref().map(|t| format!("Bearer {t}"))
+    /// Borrow the precomputed full `Authorization` header value for `POST /ingest`.
+    pub fn expected_bearer(&self) -> Option<&str> {
+        self.expected_bearer.as_deref()
     }
 
     /// ClickHouse HTTP client for the read path.
@@ -76,29 +83,31 @@ fn env_api_port() -> u16 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn expected_bearer_formats_token() {
-        let cfg = Config {
+    fn test_config(api_token: Option<String>) -> Config {
+        Config {
             kafka_brokers: String::new(),
             api_port: 3000,
-            api_token: Some("secret".into()),
+            api_token: api_token.clone(),
+            expected_bearer: api_token
+                .as_ref()
+                .map(|t| format!("Bearer {t}")),
             clickhouse_url: String::new(),
             clickhouse_user: String::new(),
             clickhouse_password: String::new(),
-        };
-        assert_eq!(cfg.expected_bearer().as_deref(), Some("Bearer secret"));
+        }
+    }
+
+    #[test]
+    fn expected_bearer_formats_token() {
+        let cfg = test_config(Some("secret".into()));
+        assert_eq!(cfg.expected_bearer(), Some("Bearer secret"));
+        assert_eq!(cfg.expected_bearer.as_deref(), Some("Bearer secret"));
     }
 
     #[test]
     fn expected_bearer_none_without_token() {
-        let cfg = Config {
-            kafka_brokers: String::new(),
-            api_port: 3000,
-            api_token: None,
-            clickhouse_url: String::new(),
-            clickhouse_user: String::new(),
-            clickhouse_password: String::new(),
-        };
+        let cfg = test_config(None);
         assert!(cfg.expected_bearer().is_none());
+        assert!(cfg.expected_bearer.is_none());
     }
 }

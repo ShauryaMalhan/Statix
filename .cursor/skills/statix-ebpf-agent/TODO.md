@@ -260,6 +260,12 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
+## Phase 12 — Gateway Performance & Zero-Copy Hardening
+
+- [x] **Eliminate hot-path heap allocations in `Config` bearer auth** — `Config::expected_bearer()` previously returned `Option<String>` via per-call `format!("Bearer {t}")`; ingest hot path was already safe via `AppState`, but the API invited accidental re-allocation. Precompute `pub expected_bearer: Option<String>` once in `Config::from_env()`; accessor returns `Option<&str>` via `as_deref()`. `AppState` clones at startup only (`statix-gateway/src/config.rs`, `main.rs`).
+
+---
+
 ## Execution Summary
 
 ```

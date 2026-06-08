@@ -1,6 +1,6 @@
 [package]
 name = "statix-gateway"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 # Ingest gateway: POST /ingest → Kafka; GET read-path → ClickHouse
 
