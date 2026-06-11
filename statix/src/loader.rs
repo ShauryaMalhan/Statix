@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use aya::maps::{MapData, PerCpuArray, RingBuf};
 use aya::{programs::TracePoint, Ebpf};
+use tokio::task::JoinHandle;
 
 pub fn load_and_attach(ebpf_path: &str) -> anyhow::Result<Ebpf> {
     log::info!("Loading eBPF program from: {ebpf_path}");
@@ -50,7 +51,7 @@ pub fn take_ring_drops_map(bpf: &mut Ebpf) -> anyhow::Result<PerCpuArray<MapData
 }
 
 /// Poll `RING_DROPS` every 10s; log and export cumulative drop count when non-zero.
-pub fn spawn_ring_drops_monitor(ring_drops: PerCpuArray<MapData, u64>) {
+pub fn spawn_ring_drops_monitor(ring_drops: PerCpuArray<MapData, u64>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -70,5 +71,5 @@ pub fn spawn_ring_drops_monitor(ring_drops: PerCpuArray<MapData, u64>) {
                 Err(e) => log::warn!("Failed to read RING_DROPS map: {e}"),
             }
         }
-    });
+    })
 }

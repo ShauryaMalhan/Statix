@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 5.5 V3** — L8/L9 Post-GA audit: async silent deaths, cache exhaustion, distributed state physics.
+**Current focus:** **Phase 5.5 V3** — L8/L9 Post-GA audit. **Strategic pivot (planned):** **Phase 13** — queue-less ingest (remove Kafka; agent WAL + gateway → ClickHouse HTTP).
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -133,9 +133,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P0-CRITICAL — Silent Deaths & Data Integrity
 
-- [ ] **V3-7: K8s watcher `tokio::spawn` silently swallows panics** — Store `JoinHandle`, monitor in `select!` loop; emit `statix_k8s_watcher_panics_total`; restart on panic (`statix/src/main.rs:55-68`)
-- [ ] **V3-8: Ring drops monitor `tokio::spawn` also silently swallows panics** — Return `JoinHandle` from `spawn_ring_drops_monitor`; monitor in `select!`; emit `statix_ring_monitor_panics_total` (`statix/src/loader.rs:53-74`)
-- [ ] **V3-13: Ingest handler capacity pre-check is TOCTOU** — Atomic batch send via single channel item or `reserve_many`; eliminate partial batch delivery under concurrency (`statix-gateway/src/routes/ingest.rs:87-149`)
+- [x] **V3-7: K8s watcher `tokio::spawn` silently swallows panics** — `JoinHandle` in `select!`; panic metric + restart (`statix/src/main.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
+- [x] **V3-8: Ring drops monitor `tokio::spawn` also silently swallows panics** — Return `JoinHandle` from `spawn_ring_drops_monitor`; monitor in `select!`; `statix_ring_monitor_panics_total` (`statix/src/loader.rs`, `main.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
+- [x] **V3-13: Ingest handler capacity pre-check is TOCTOU** — Pre-serialize rows + `try_reserve_many`; atomic batch accept/reject (`statix-gateway/src/routes/ingest.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
 
 ### P0-WEEK — Resource Exhaustion Time Bombs
 
@@ -254,7 +254,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [ ] **Implement deterministic node-hash recovery spread (V3-15)** — **Recovery avalanche:** after a prolonged outage, every agent at max backoff detects success within the same window; V2-15's 0–5s PRNG jitter is insufficient — thousands of agents can flush backlogs simultaneously and DDoS the Axum gateway. On gateway recovery (first `Success` after elevated backoff / circuit close), sleep a **deterministic** offset derived from `STATIX_NODE_NAME`: e.g. `hash(node) % 30` seconds (use stable hasher, not PRNG). Guarantees flat traffic shaping across a 30s window without clumping. Also tracked in Phase 5.5 V3 P1-SPRINT.
 
-- [ ] **Local disk buffering (write-ahead log)** — Unacknowledged batches live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Depends on DaemonSet volume mount + `emptyDir` sizing in K8s.
+- [ ] **Local disk buffering (write-ahead log)** — **Primary resilience mechanism** for the queue-less architecture (Phase 13): replaces Kafka as the shock absorber when gateway or ClickHouse is unavailable. Unacknowledged batches today live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Gateway **503 backpressure** (Phase 13) intentionally trips agent circuit breakers → WAL. Depends on DaemonSet volume mount + durable volume sizing in K8s.
 
 - [ ] **Circuit breaker on HTTP ingest client** — No open/half-open state today; retry worker keeps attempting `post_ingest` TCP handshakes on every backoff tick while gateway is hard-down. Wrap `reqwest` calls in a failure-count state machine: after N consecutive failures → **Open** (short-circuit POST, enqueue to WAL immediately); **Half-Open** probe every 30s; close on success. Complements WAL task above; recovery spread (V3-15) applies on **Close**.
 
@@ -266,17 +266,30 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
+## Phase 13 — Queue-less Architecture (Kafka Removal)
+
+> **Strategic pivot:** Eliminate Apache Kafka from the stack. Agent local disk WAL is the edge shock absorber; `statix-gateway` writes telemetry directly to ClickHouse via HTTP. Supersedes Phases 3–4 Kafka ingest path ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)) once shipped. *(Phase 9 in this file remains eBPF CI — queue-less tracked here as Phase 13.)*
+
+- [ ] **Strip Kafka producer from gateway** — Remove `rskafka`, `statix-gateway/src/kafka.rs`, ingest `mpsc` → Kafka channels, and Kafka from `docker-compose.yml` / K8s manifests. Refactor `POST /ingest` (`statix-gateway/src/routes/ingest.rs`) to denormalize batches and **async insert directly into ClickHouse** via the native HTTP client (`clickhouse` crate / JSONEachRow). Retain `ReplacingMergeTree` dedupe on `(node, window_start_ns, cgroup_id)` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)).
+
+- [ ] **Implement gateway 503 backpressure** — Without Kafka, the gateway cannot buffer when ClickHouse is down. If ClickHouse insert fails or times out, return **`503 Service Unavailable`** immediately on `POST /ingest` (no partial accept). Agents' circuit breakers (Phase 11) open and batches go to **local disk WAL**. `/ready` should reflect ClickHouse reachability, not Kafka mpsc depth ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md) — refactor probes).
+
+- [ ] **Remove ClickHouse Kafka engine tables** — Drop `statix.kafka_telemetry_queue`, `telemetry_mv`, and `kafka_num_consumers` tuning from `deploy/clickhouse/01_init.sql`; direct insert to `statix.workload_metrics` only. Cancels open Phase 5 Kafka ops items (retention, `kafka_num_consumers`, broken-message alerting).
+
+---
+
 ## Execution Summary
 
 ```
 L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
 L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
-L8/L9 V3 (ACTIVE):      V3-7…18 async silent deaths, cache exhaustion, distributed physics
-  Week 1:               V3-7, V3-8, V3-13   (silent death + data integrity)
+L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1 shipped: V3-7, V3-8, V3-13 — ADR 049)
+  Week 1:               [x] V3-7, V3-8, V3-13 (silent death + data integrity)
   Week 2:               V3-4, V3-5, V3-9    (memory leaks + API DDoS)
   Week 3:               V3-11, V3-12, V3-15 (distributed state)
   Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              V3-16…18, V3-3      (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
-PHASE 11 (planned):     V3-15 recovery spread, agent WAL, circuit breaker
+PHASE 11 (planned):     V3-15 recovery spread, agent WAL (primary buffer), circuit breaker
+PHASE 13 (pivot):       Remove Kafka; gateway → ClickHouse HTTP; 503 → agent WAL
 ```

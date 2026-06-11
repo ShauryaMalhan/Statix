@@ -14,6 +14,7 @@ use std::mem::size_of;
 use statix_common::StatixEvent;
 use tokio::io::unix::AsyncFd;
 use tokio::signal;
+use tokio::task::JoinHandle;
 use tokio::time::{self, Duration};
 
 #[tokio::main]
@@ -42,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut bpf = loader::load_and_attach(&ebpf_path)?;
     let ring_drops = loader::take_ring_drops_map(&mut bpf)?;
-    loader::spawn_ring_drops_monitor(ring_drops);
+    let mut ring_monitor_handle = loader::spawn_ring_drops_monitor(ring_drops);
     let ring_buf = loader::get_events_ring_buf(&mut bpf)?;
     let mut async_fd = AsyncFd::new(ring_buf)?;
 
@@ -55,21 +56,8 @@ async fn main() -> anyhow::Result<()> {
     let mut sample_interval = time::interval(Duration::from_secs(sample_secs));
     sample_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
-    let cache_for_k8s = cache.clone();
-    tokio::spawn(async move {
-        if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
-            log::info!("Not in K8s — pod watch disabled");
-            return;
-        }
-        match kube::Client::try_default().await {
-            Ok(client) => {
-                attribution::watch_k8s_pods(cache_for_k8s, client).await;
-            }
-            Err(e) => {
-                log::warn!("K8s client init failed; pod resolution disabled: {e}");
-            }
-        }
-    });
+    let in_k8s = std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
+    let mut k8s_handle = spawn_k8s_watcher(cache.clone());
 
     if let Some(url) = statix_infra::env::var("STATIX_INGEST_URL") {
         log::info!("Ingest: POST batches to {url}");
@@ -157,6 +145,31 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
+            _ = &mut k8s_handle, if in_k8s => {
+                match k8s_handle.await {
+                    Ok(()) => log::warn!("K8s watcher exited unexpectedly"),
+                    Err(e) => {
+                        log::error!("CRITICAL: K8s watcher task panicked: {e}");
+                        metrics::counter!("statix_k8s_watcher_panics_total").increment(1);
+                    }
+                }
+                k8s_handle = spawn_k8s_watcher(cache.clone());
+            }
+
+            _ = &mut ring_monitor_handle => {
+                match ring_monitor_handle.await {
+                    Ok(()) => log::warn!("Ring drops monitor exited unexpectedly"),
+                    Err(e) => {
+                        log::error!("CRITICAL: Ring drops monitor task panicked: {e}");
+                        metrics::counter!("statix_ring_monitor_panics_total").increment(1);
+                    }
+                }
+                // Map was moved into the monitor task; cannot respawn — park this branch.
+                ring_monitor_handle = tokio::spawn(async {
+                    std::future::pending::<()>().await
+                });
+            }
+
             _ = signal::ctrl_c() => {
                 log::info!("SIGINT received — flushing partial window");
                 if let Some(batch) = agg.flush(&node, &cache) {
@@ -178,6 +191,23 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn spawn_k8s_watcher(cache: attribution::AttributionCache) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
+            log::info!("Not in K8s — pod watch disabled");
+            return;
+        }
+        match kube::Client::try_default().await {
+            Ok(client) => {
+                attribution::watch_k8s_pods(cache, client).await;
+            }
+            Err(e) => {
+                log::warn!("K8s client init failed; pod resolution disabled: {e}");
+            }
+        }
+    })
 }
 
 fn read_node_name() -> String {

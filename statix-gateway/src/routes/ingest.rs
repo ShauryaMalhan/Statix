@@ -84,22 +84,9 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             .into_response();
     }
 
-    let required_slots = batch.workloads.len();
-    let available_slots = state.kafka_tx.capacity();
-    if available_slots < required_slots {
-        metrics::counter!("statix_api_kafka_channel_full_total").increment(1);
-        log::warn!(
-            "Kafka channel has insufficient capacity ({available_slots}/{required_slots} needed); rejecting entire batch"
-        );
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Ingest channel capacity insufficient for batch. Retry later.",
-        )
-            .into_response();
-    }
-
     let node_key: Arc<[u8]> = Arc::from(batch.node.as_bytes());
 
+    let mut row_bytes = Vec::with_capacity(batch.workloads.len());
     for row in &batch.workloads {
         let flat = FlatRowRef {
             window_start_ns: batch.window_start_ns,
@@ -118,34 +105,48 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             sample_count: row.sample_count,
         };
 
-        let bytes = match serde_json::to_vec(&flat) {
-            Ok(b) => b,
+        match serde_json::to_vec(&flat) {
+            Ok(bytes) => row_bytes.push(bytes),
             Err(e) => {
                 log::warn!("flat row JSON encode failed: {e}");
-                continue;
-            }
-        };
-
-        match state.kafka_tx.try_send((Arc::clone(&node_key), bytes)) {
-            Ok(()) => kafka::on_kafka_enqueued(),
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                metrics::counter!("statix_api_kafka_channel_full_total").increment(1);
-                log::warn!("Kafka channel full (backpressure), rejecting batch");
-                return (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Ingest channel full. Broker backpressure active.",
-                )
-                    .into_response();
-            }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                log::warn!("Kafka channel closed, rejecting batch");
-                return (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Ingest channel closed. Producer unavailable.",
-                )
-                    .into_response();
             }
         }
+    }
+
+    let required_slots = row_bytes.len();
+    if required_slots == 0 {
+        return StatusCode::OK.into_response();
+    }
+
+    let mut permits = match state.kafka_tx.try_reserve_many(required_slots) {
+        Ok(p) => p,
+        Err(mpsc::error::TrySendError::Full(_)) => {
+            metrics::counter!("statix_api_kafka_channel_full_total").increment(1);
+            log::warn!(
+                "Kafka channel has insufficient capacity for batch ({required_slots} slots needed); rejecting entire batch"
+            );
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Ingest channel capacity insufficient for batch. Retry later.",
+            )
+                .into_response();
+        }
+        Err(mpsc::error::TrySendError::Closed(_)) => {
+            log::warn!("Kafka channel closed, rejecting batch");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Ingest channel closed. Producer unavailable.",
+            )
+                .into_response();
+        }
+    };
+
+    for bytes in row_bytes {
+        permits
+            .next()
+            .expect("try_reserve_many exact capacity")
+            .send((Arc::clone(&node_key), bytes));
+        kafka::on_kafka_enqueued();
     }
 
     let now_ns = std::time::SystemTime::now()

@@ -454,7 +454,7 @@ Wave 5 (MONTH 2):   V3-16, V3-17, V3-18, V3-3  — polish
 
 | Wave | ADR | Items |
 |------|-----|-------|
-| Wave 1 | TBD | V3-7 spawn panic, V3-8 ring monitor panic, V3-13 TOCTOU batch |
+| Wave 1 | [049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md) | V3-7 spawn panic, V3-8 ring monitor panic, V3-13 TOCTOU batch |
 | Wave 2 | TBD | V3-4 cache eviction, V3-5 pod eviction, V3-9 reconnect backoff |
 | Wave 3 | TBD | V3-11 CH partition, V3-12 kafka consumers, V3-15 thundering herd |
 | Wave 4 | TBD | V3-2 bootstrap blocking, V3-6 ring drops counter, V3-10 join error, V3-14 body limit, V3-1 resource limits |
