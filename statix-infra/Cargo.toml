@@ -1,6 +1,6 @@
 [package]
 name = "statix-infra"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "Shared env parsing and clock utilities for statix and statix-gateway"
 
