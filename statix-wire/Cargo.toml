@@ -1,6 +1,6 @@
 [package]
 name = "statix-wire"
-version = "1.0.3"
+version = "1.0.4"
 edition = "2021"
 description = "Shared ingest wire types (batch envelope, workload rows, Kafka/ClickHouse flat rows)"
 

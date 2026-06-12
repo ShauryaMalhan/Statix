@@ -56,6 +56,9 @@ async fn main() -> anyhow::Result<()> {
     let mut sample_interval = time::interval(Duration::from_secs(sample_secs));
     sample_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
+    let mut eviction_interval = time::interval(Duration::from_secs(60));
+    eviction_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+
     let in_k8s = std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
     let mut k8s_handle = spawn_k8s_watcher(cache.clone());
 
@@ -122,6 +125,14 @@ async fn main() -> anyhow::Result<()> {
                     memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node).await
                 {
                     output::emit_batch(batch);
+                }
+            }
+
+            _ = eviction_interval.tick() => {
+                let evicted = cache.evict_stale_cgroups();
+                if evicted > 0 {
+                    log::info!("Evicted {evicted} stale cgroup cache entries");
+                    metrics::counter!("statix_cache_evictions_total").increment(evicted as u64);
                 }
             }
 

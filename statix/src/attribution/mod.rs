@@ -109,6 +109,33 @@ impl AttributionCache {
         let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)));
         state.cgroup_labels.insert(cgroup_id, labels);
     }
+
+    /// Remove entries whose `memory.current` path no longer exists (terminated pods/cgroups).
+    pub fn evict_stale_cgroups(&self) -> usize {
+        let stale_ids: Vec<u64> = {
+            let state = self.state.read();
+            state
+                .memory_current_paths
+                .iter()
+                .filter(|(_, path)| !path.exists())
+                .map(|(id, _)| *id)
+                .collect()
+        };
+        if stale_ids.is_empty() {
+            return 0;
+        }
+        let mut state = self.state.write();
+        for id in &stale_ids {
+            state.cgroup_paths.remove(id);
+            state.memory_current_paths.remove(id);
+            state.cgroup_labels.remove(id);
+        }
+        stale_ids.len()
+    }
+
+    pub fn remove_pod_by_uid(&self, uid: &str) {
+        self.state.write().pod_by_uid.remove(uid);
+    }
 }
 
 /// Walk cgroup v2 hierarchy and seed the aggregator for workloads that started before the agent.
@@ -367,6 +394,9 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
     use kube::runtime::watcher::Event;
     use kube::runtime::WatchStreamExt;
 
+    let mut reconnect_backoff = Duration::from_secs(5);
+    const MAX_RECONNECT_BACKOFF: Duration = Duration::from_secs(300);
+
     loop {
         let node_name = statix_infra::env::var("STATIX_NODE_NAME")
             .or_else(|| std::env::var("NODE_NAME").ok())
@@ -378,6 +408,8 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
         let mut stream = pin!(watcher(pods, wc).default_backoff());
 
         while let Ok(Some(event)) = stream.try_next().await {
+            reconnect_backoff = Duration::from_secs(5);
+
             match event {
                 Event::Apply(pod) | Event::InitApply(pod) => {
                     let meta = &pod.metadata;
@@ -408,7 +440,11 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
                     );
                     merge_cgroup_labels_from_k8s(&cache);
                 }
-                Event::Delete(_pod) => {}
+                Event::Delete(pod) => {
+                    if let Some(uid) = pod.metadata.uid.as_ref() {
+                        cache.remove_pod_by_uid(uid);
+                    }
+                }
                 Event::Init | Event::InitDone => {
                     merge_cgroup_labels_from_k8s(&cache);
                     log::info!("K8s watcher initial sync complete for node {node_name}");
@@ -416,11 +452,13 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
             }
         }
 
-        log::warn!("K8s pod watcher stream ended; running list fallback before reconnect");
+        log::warn!("K8s pod watcher stream ended; reconnecting in {reconnect_backoff:?}");
         if let Err(e) = refresh_k8s_pods(&cache, &client).await {
             log::warn!("K8s list fallback failed: {e}");
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        let jitter = rand::random::<f64>() * reconnect_backoff.as_secs_f64() * 0.3;
+        tokio::time::sleep(reconnect_backoff + Duration::from_secs_f64(jitter)).await;
+        reconnect_backoff = (reconnect_backoff * 2).min(MAX_RECONNECT_BACKOFF);
     }
 }
 

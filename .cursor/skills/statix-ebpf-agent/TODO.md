@@ -139,9 +139,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P0-WEEK — Resource Exhaustion Time Bombs
 
-- [ ] **V3-4: `AttributionCache` unbounded growth** — Evict stale cgroups on 60s timer; remove entries where `memory.current` path no longer exists; emit `statix_cache_evictions_total` (`statix/src/attribution/mod.rs:34-38`)
-- [ ] **V3-5: `pod_by_uid` never evicts deleted pods** — Handle `Event::Delete` in `watch_k8s_pods` to remove pod UID from map (`statix/src/attribution/mod.rs:411`)
-- [ ] **V3-9: K8s watcher reconnect has no backoff** — Jittered exponential backoff 5s→300s on reconnect loop; reset on successful reconnect (`statix/src/attribution/mod.rs:418-424`)
+- [x] **V3-4: `AttributionCache` unbounded growth** — 60s `evict_stale_cgroups()` sweep; cascade delete; `statix_cache_evictions_total` (`statix/src/attribution/mod.rs`, `main.rs`) ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
+- [x] **V3-5: `pod_by_uid` never evicts deleted pods** — `Event::Delete` → `remove_pod_by_uid` in `watch_k8s_pods` ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
+- [x] **V3-9: K8s watcher reconnect has no backoff** — Jittered exponential backoff 5s→300s; reset on successful stream event ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
 
 ### P1-SPRINT — Distributed State Physics
 
@@ -283,9 +283,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ```
 L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
 L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
-L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1 shipped: V3-7, V3-8, V3-13 — ADR 049)
+L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–2 shipped: ADR 049–050)
   Week 1:               [x] V3-7, V3-8, V3-13 (silent death + data integrity)
-  Week 2:               V3-4, V3-5, V3-9    (memory leaks + API DDoS)
+  Week 2:               [x] V3-4, V3-5, V3-9    (memory leaks + API DDoS)
   Week 3:               V3-11, V3-12, V3-15 (distributed state)
   Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              V3-16…18, V3-3      (micro-architecture polish)
