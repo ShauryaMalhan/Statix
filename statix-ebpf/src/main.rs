@@ -14,6 +14,9 @@ use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 
 include!(concat!(env!("OUT_DIR"), "/ring_config.rs"));
 
+/// Ring buffer submit flag: suppress userspace wakeup (see `man bpf_ringbuf_submit`).
+const BPF_RB_NO_WAKEUP: u64 = 1;
+
 #[map]
 static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 
@@ -74,7 +77,7 @@ fn capture_identity(_ctx: &TracePointContext) {
         Some(ptr) => unsafe {
             let count = (*ptr).wrapping_add(1);
             *ptr = count;
-            if count & 63 == 0 { 0 } else { 1 } // 1 = BPF_RB_NO_WAKEUP
+            if count & 63 == 0 { 0 } else { BPF_RB_NO_WAKEUP }
         },
         None => 0, // fallback: always wake
     };

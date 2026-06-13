@@ -17,6 +17,11 @@ use tokio::signal;
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration};
 
+const _: () = assert!(
+    std::mem::align_of::<StatixEvent>() <= 8,
+    "StatixEvent alignment exceeds BPF ring buffer guarantee"
+);
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
@@ -84,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
         .expect("failed to install SIGTERM handler");
 
-    let mut poll_interval = time::interval(Duration::from_millis(1));
+    let mut poll_interval = time::interval(Duration::from_millis(5));
     poll_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
     const DRAIN_BUDGET: usize = 256;

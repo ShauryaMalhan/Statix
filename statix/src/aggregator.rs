@@ -208,7 +208,7 @@ impl Aggregator {
         Some(BatchPayload {
             window_start_ns,
             window_end_ns,
-            node: node.to_string(),
+            node: Arc::from(node),
             batch_id,
             agent_version: env!("CARGO_PKG_VERSION"),
             workloads,
@@ -231,7 +231,7 @@ impl Aggregator {
 pub struct BatchPayload {
     pub window_start_ns: u64,
     pub window_end_ns: u64,
-    pub node: String,
+    pub node: Arc<str>,
     pub batch_id: String,
     pub agent_version: &'static str,
     pub workloads: Vec<WorkloadRow>,

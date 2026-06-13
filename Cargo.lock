@@ -2692,7 +2692,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "statix"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "anyhow",
  "aya",
@@ -2723,14 +2723,14 @@ dependencies = [
 
 [[package]]
 name = "statix-common"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "aya",
 ]
 
 [[package]]
 name = "statix-gateway"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "axum",
  "chrono",
@@ -2751,7 +2751,7 @@ dependencies = [
 
 [[package]]
 name = "statix-infra"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "libc",
  "log",
@@ -2759,7 +2759,7 @@ dependencies = [
 
 [[package]]
 name = "statix-wire"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "serde",
 ]

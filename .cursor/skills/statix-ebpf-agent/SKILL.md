@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/guides/phase5-production-readiness.md)) · **5.5 V3 active** ([L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — Wave 5 remaining; [TODO](TODO.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** (L8 GA + post-GA — [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/guides/phase5-production-readiness.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
 
 ## Mandatory workflow (every change)
 
@@ -77,7 +77,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 
 - No `?` after `EVENTS.reserve`
 - No `bpf_trace_printk`
-- `submit(wakeup_flag)` — `BPF_RB_NO_WAKEUP` (flag `1`) on 63/64 events; 1ms poll drain in agent (V2-9)
+- `submit(wakeup_flag)` — `BPF_RB_NO_WAKEUP` (flag `1`) on 63/64 events; 5ms poll drain in agent ([ADR 053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md))
 - `cgroup_id` from `bpf_get_current_cgroup_id()` on identity events
 - **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** (mainline LTS tips, not `.0`) — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); `.github/workflows/ebpf-ci.yml`; `scripts/verify-ebpf-kernel.sh` + `statix-ebpf-verify`
 - **5.10 memlock:** `bpf_memlock::bump_memlock_rlimit()` before `Ebpf::load()` — pre-5.11 kernels default 64 KiB `RLIMIT_MEMLOCK`; 512 KiB ringbuf needs infinity bump
@@ -176,7 +176,7 @@ Deferred: [TODO.md](TODO.md)
 
 **L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/phase55/v2/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)).
 
-**L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — post-GA audit (async silent deaths, cache exhaustion, distributed state). Track in [TODO.md](TODO.md).
+**L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — all V3 waves shipped ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

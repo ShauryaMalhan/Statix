@@ -159,10 +159,10 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P2-MONTH — Micro-architecture Polish
 
-- [ ] **V3-16: Magic number for `BPF_RB_NO_WAKEUP`** — Named constant `const BPF_RB_NO_WAKEUP: u64 = 1` (`statix-ebpf/src/main.rs:77`)
-- [ ] **V3-17: No alignment assertion for `StatixEvent` pointer cast** — Compile-time `const _: () = assert!(align_of::<StatixEvent>() <= 8)` (`statix/src/main.rs:109`)
-- [ ] **V3-18: 1ms poll interval unnecessarily aggressive** — Increase to 5ms (`statix/src/main.rs:92`)
-- [ ] **V3-3: `node.to_string()` allocation on every flush** — Change `BatchPayload.node` to `Arc<str>` (`statix/src/aggregator.rs:216`)
+- [x] **V3-16: Magic number for `BPF_RB_NO_WAKEUP`** — `const BPF_RB_NO_WAKEUP: u64 = 1` (`statix-ebpf/src/main.rs`) ([ADR 053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md))
+- [x] **V3-17: No alignment assertion for `StatixEvent` pointer cast** — Compile-time `align_of::<StatixEvent>() <= 8` (`statix/src/main.rs`) ([ADR 053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md))
+- [x] **V3-18: 1ms poll interval unnecessarily aggressive** — 5ms ring poll interval (`statix/src/main.rs`) ([ADR 053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md))
+- [x] **V3-3: `node.to_string()` allocation on every flush** — `BatchPayload.node: Arc<str>`; `Arc::from(node)` in flush (`statix/src/aggregator.rs`) ([ADR 053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md))
 
 ---
 
@@ -283,12 +283,12 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ```
 L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
 L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
-L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–4 shipped: ADR 049–052)
+L8/L9 V3 (shipped):     V3-1…18 (Wave 1–5: ADR 049–053)
   Week 1:               [x] V3-7, V3-8, V3-13 (silent death + data integrity)
   Week 2:               [x] V3-4, V3-5, V3-9    (memory leaks + API DDoS)
   Week 3:               [x] V3-11, V3-12, V3-15 (distributed state)
   Week 4:               [x] V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
-  Month 2:              V3-16…18, V3-3      (micro-architecture polish)
+  Month 2:              [x] V3-16, V3-17, V3-18, V3-3 (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
 PHASE 11 (planned):     agent WAL (primary buffer), circuit breaker
 PHASE 13 (pivot):       Remove Kafka; gateway → ClickHouse HTTP; 503 → agent WAL

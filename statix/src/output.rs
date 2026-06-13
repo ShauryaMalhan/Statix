@@ -246,7 +246,7 @@ pub fn emit_batch(payload: BatchPayload) {
         schema_version: SCHEMA_VERSION,
         window_start_ns: payload.window_start_ns,
         window_end_ns: payload.window_end_ns,
-        node: payload.node,
+        node: payload.node.as_ref().to_string(),
         batch_id: payload.batch_id,
         agent_version: payload.agent_version.to_string(),
         workloads: payload.workloads,
