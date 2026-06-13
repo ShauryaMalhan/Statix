@@ -146,33 +146,45 @@ pub async fn bootstrap_existing_cgroups(
     node: &str,
 ) -> Vec<crate::aggregator::BatchPayload> {
     let root = cgroup_v2_mount();
+    let walk_root = root.clone();
+
+    let discovered = tokio::task::spawn_blocking(move || {
+        let mut entries = Vec::new();
+        for entry in WalkDir::new(&walk_root).into_iter().filter_map(|e| e.ok()) {
+            if !entry.file_type().is_dir() {
+                continue;
+            }
+            let dir = entry.path();
+            if dir == walk_root.as_path() {
+                continue;
+            }
+
+            let Ok(meta) = fs::metadata(dir) else {
+                continue;
+            };
+            let cgroup_id = meta.ino();
+            if cgroup_id == 0 {
+                continue;
+            }
+
+            let rel_path = dir
+                .strip_prefix(&walk_root)
+                .ok()
+                .map(|p| PathBuf::from("/").join(p));
+            if let Some(rel_path) = rel_path {
+                entries.push((cgroup_id, rel_path));
+            }
+        }
+        entries
+    })
+    .await
+    .unwrap_or_default();
+
     let mut bootstrapped = 0usize;
     let mut early_flushes = Vec::new();
 
-    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
-        if !entry.file_type().is_dir() {
-            continue;
-        }
-        let dir = entry.path();
-        if dir == root.as_path() {
-            continue;
-        }
-
-        let Ok(meta) = fs::metadata(dir) else {
-            continue;
-        };
-        let cgroup_id = meta.ino();
-        if cgroup_id == 0 {
-            continue;
-        }
-
-        let rel_path = dir
-            .strip_prefix(&root)
-            .ok()
-            .map(|p| PathBuf::from("/").join(p));
-        if let Some(rel_path) = rel_path {
-            cache.register_cgroup_directory(cgroup_id, rel_path);
-        }
+    for (cgroup_id, rel_path) in discovered {
+        cache.register_cgroup_directory(cgroup_id, rel_path);
 
         let event = StatixEvent {
             kind: EVENT_KIND_WORKLOAD_IDENTITY,

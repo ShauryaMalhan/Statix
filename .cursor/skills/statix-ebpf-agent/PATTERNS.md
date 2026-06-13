@@ -2,7 +2,7 @@
 
 Enterprise templates. **Before coding:** [SKILL.md](SKILL.md) workflow → implement → `make build` → update ADR/docs/skills.
 
-Rules: [enterprise-latency.md](../../../docs/enterprise-latency.md). Architecture: [REFERENCE.md](REFERENCE.md).
+Rules: [enterprise-latency.md](../../../docs/guides/enterprise-latency.md). Architecture: [REFERENCE.md](REFERENCE.md).
 
 ---
 
@@ -144,7 +144,7 @@ make compose-down
 - **Do not** `make run-api` while compose `statix-gateway` is on `:3000`.
 - **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
 
-Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md).
+Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validation.md).
 
 ## Pattern 12 — Production container images (Target 1)
 

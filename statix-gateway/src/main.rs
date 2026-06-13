@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::DefaultBodyLimit;
 use axum::extract::State;
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
@@ -75,7 +76,10 @@ async fn main() -> Result<(), GatewayError> {
         .route("/health", get(health_check))
         .route("/ready", get(readiness_check))
         .route("/metrics", get(move || metrics_endpoint(metrics_handle.clone())))
-        .route("/ingest", post(routes::ingest::handler))
+        .route(
+            "/ingest",
+            post(routes::ingest::handler).layer(DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
         .route(
             "/api/v1/workloads/summary",
             get(routes::query::workloads_summary),

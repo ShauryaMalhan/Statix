@@ -57,5 +57,5 @@ Every feature or optimization must:
 ## Related
 
 - [docs/adr/](../adr/) — point-in-time decisions
-- [docs/phase3-ingest-interface.md](phase3-ingest-interface.md) — HTTP ingest contract
+- [docs/guides/phase3-ingest-interface.md](phase3-ingest-interface.md) — HTTP ingest contract
 - [.cursor/skills/statix-ebpf-agent/](../.cursor/skills/statix-ebpf-agent/) — agent coding standards

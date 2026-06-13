@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-06  
-**Context:** L8 audit — seven P0-SHIP bottlenecks on the agent ingest hot path before production. Original fix IDs F1–F5, F7, F8; removed from [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md) after ship (playbook retains only open work, renumbered F1–F7).
+**Context:** L8 audit — seven P0-SHIP bottlenecks on the agent ingest hot path before production. Original fix IDs F1–F5, F7, F8; removed from [L8-AUDIT-FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md) after ship (playbook retains only open work, renumbered F1–F7).
 
 ## Decision
 
@@ -25,11 +25,11 @@
 
 ## Consequences
 
-- **Positive:** Agent hot path aligned with [enterprise-latency.md](../enterprise-latency.md) mechanical sympathy targets.
+- **Positive:** Agent hot path aligned with [enterprise-latency.md](../../../guides/enterprise-latency.md) mechanical sympathy targets.
 - **Negative:** `batch_id` uses non-crypto RNG after one-time OS seed — acceptable for correlation ([ADR 017](017-batch-lineage-metadata.md)).
 - **Deferred (now shipped):** P1-WEEK in [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md). L8 playbook retains F1 (`Arc<[u8]>` node key) only.
 
 ## References
 
-- [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
+- [L8-AUDIT-FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
 - [ADR 023](023-phase5-hot-path-fixes.md)

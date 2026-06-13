@@ -2,7 +2,22 @@
 
 Point-in-time notes on **why** we chose something—not polished docs. When code changes, add a new numbered file; don't rewrite history.
 
-**Workflow:** Any architectural change must add or update an ADR and sync [enterprise-latency.md](../enterprise-latency.md) + `.cursor/skills/statix-ebpf-agent/`.
+**Workflow:** Any architectural change must add or update an ADR and sync [enterprise-latency.md](../guides/enterprise-latency.md) + `.cursor/skills/statix-ebpf-agent/`.
+
+**Layout:**
+
+| Folder | ADRs |
+|--------|------|
+| [adr/](.) (this directory) | 001–031, 035–048 — foundations through Phase 9 |
+| [phase55/l8/](phase55/l8/) | 032–034 — L8 audit V1 |
+| [phase55/v2/](phase55/v2/) | 038–043 — L8 audit V2 |
+| [phase55/v3/](phase55/v3/) | 049–052 — Post-GA V3 waves |
+
+See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.md).
+
+---
+
+## Index (001–048)
 
 | ADR | Title | Status |
 |-----|-------|--------|
@@ -37,23 +52,29 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [029](029-ready-channel-depth-gate.md) | `/ready` fails when ingest mpsc &gt; 80% full | Accepted |
 | [030](030-finops-api-config-struct.md) | `statix-gateway` `Config::from_env()` | Accepted |
 | [031](031-grafana-clickhouse-compose.md) | Grafana + ClickHouse plugin on `:3001` (dev) | Accepted |
-| [032](032-phase55-l8-p0-hot-path-fixes.md) | Phase 5.5 L8 P0-SHIP agent hot-path (F1–F5, F7, F8) | Accepted |
-| [033](033-phase55-l8-p1-week-gateway-fixes.md) | Phase 5.5 L8 P1-WEEK gateway + agent fixes | Accepted |
-| [034](034-phase55-l8-p2-ingest-zero-copy.md) | Phase 5.5 L8 P2 ingest `Arc<[u8]>` + `FlatRowRef` | Accepted |
 | [035](035-phase7-workspace-restructure.md) | `statix-gateway` rename + `statix-infra`; drop `ProcessEvent` | Accepted |
 | [036](036-phase7-typed-errors-labels-read-path.md) | `GatewayError` + `AttributionError`; read-only `labels_for_cgroup` | Accepted |
 | [037](037-phase9-ebpf-verifier-ci.md) | eBPF verifier CI — kernel matrix 5.10–6.8 (virtme-ng + Aya) | Accepted |
-| [038](038-phase55-v2-wave1-l8-fixes.md) | Phase 5.5 V2 Wave 1 — SIGTERM, CH version col, atomic ingest, BPF wakeup | Accepted |
-| [039](039-phase55-v2-wave2-l8-fixes.md) | Phase 5.5 V2 Wave 2 — procfs dedup, FxHasher, key hoist, K8s merge lock | Accepted |
-| [040](040-phase55-v2-wave3-l8-fixes.md) | Phase 5.5 V2 Wave 3 — Kafka produce retry, agent preStop, gateway PDB | Accepted |
-| [041](041-phase55-v2-wave4-l8-fixes.md) | Phase 5.5 V2 Wave 4 — K8s watch, digest pins, cross-AZ spread | Accepted |
-| [042](042-phase55-v2-p2-sprint-l8-fixes.md) | Phase 5.5 V2 P2-SPRINT — jitter recovery, ingest lag, CH merge SQL | Accepted |
-| [043](043-kubernetes-alb-tls-termination.md) | AWS ALB Ingress TLS termination for `/ingest` | Accepted |
 | [044](044-statix-agent-rename.md) | `finops-agent` → `statix` company rename | Accepted |
 | [045](045-statix-platform-rename.md) | FinOps → Statix platform rename (shared crates, CH, K8s, env) | Accepted |
 | [046](046-secrets-env-file.md) | ClickHouse password in `.env`; scrub git history | Accepted |
 | [047](047-atomic-clock-offset-recalibration.md) | Atomic clock offset + hourly NTP drift recalibration | Accepted |
 | [048](048-generic-env-positive-parsing.md) | Generic `read_env_positive` — reject `<= T::default()` numeric env | Accepted |
-| [049](049-phase55-v3-wave1-silent-deaths.md) | Phase 5.5 V3 Wave 1 — K8s/ring monitor panic visibility; ingest `try_reserve_many` | Accepted |
-| [050](050-phase55-v3-wave2-cache-eviction.md) | Phase 5.5 V3 Wave 2 — cgroup/pod cache eviction; K8s reconnect backoff | Accepted |
-| [051](051-phase55-v3-wave3-distributed-state.md) | Phase 5.5 V3 Wave 3 — CH hour partitions; Kafka consumers; recovery spread | Accepted |
+
+## Phase 5.5 L8 audit (grouped)
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [032](phase55/l8/032-phase55-l8-p0-hot-path-fixes.md) | L8 P0-SHIP agent hot-path | Accepted |
+| [033](phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md) | L8 P1-WEEK gateway + agent fixes | Accepted |
+| [034](phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md) | L8 P2 ingest `Arc<[u8]>` + `FlatRowRef` | Accepted |
+| [038](phase55/v2/038-phase55-v2-wave1-l8-fixes.md) | V2 Wave 1 — SIGTERM, CH version, atomic ingest, BPF wakeup | Accepted |
+| [039](phase55/v2/039-phase55-v2-wave2-l8-fixes.md) | V2 Wave 2 — procfs dedup, FxHasher, key hoist | Accepted |
+| [040](phase55/v2/040-phase55-v2-wave3-l8-fixes.md) | V2 Wave 3 — Kafka retry, preStop, gateway PDB | Accepted |
+| [041](phase55/v2/041-phase55-v2-wave4-l8-fixes.md) | V2 Wave 4 — K8s watch, digest pins, cross-AZ | Accepted |
+| [042](phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md) | V2 P2-SPRINT — jitter recovery, ingest lag | Accepted |
+| [043](phase55/v2/043-kubernetes-alb-tls-termination.md) | AWS ALB Ingress TLS for `/ingest` | Accepted |
+| [049](phase55/v3/049-phase55-v3-wave1-silent-deaths.md) | V3 Wave 1 — panic monitors; ingest `try_reserve_many` | Accepted |
+| [050](phase55/v3/050-phase55-v3-wave2-cache-eviction.md) | V3 Wave 2 — cache eviction; K8s reconnect backoff | Accepted |
+| [051](phase55/v3/051-phase55-v3-wave3-distributed-state.md) | V3 Wave 3 — CH partitions; Kafka consumers; recovery spread | Accepted |
+| [052](phase55/v3/052-phase55-v3-wave4-perf-observability.md) | V3 Wave 4 — bootstrap blocking; ring metrics; body limit; QoS | Accepted |

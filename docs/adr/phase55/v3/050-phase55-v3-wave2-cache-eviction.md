@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-12
-**Context:** L8/L9 Post-GA audit Wave 2 ([L8_POST_GA_FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md)) — `AttributionCache` and `pod_by_uid` grew without bound; K8s watcher reconnect loop hammered the API at a fixed 5s interval during outages.
+**Context:** L8/L9 Post-GA audit Wave 2 ([L8_POST_GA_FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md)) — `AttributionCache` and `pod_by_uid` grew without bound; K8s watcher reconnect loop hammered the API at a fixed 5s interval during outages.
 
 ## Decision
 
@@ -34,5 +34,5 @@
 
 ## References
 
-- [ADR 049](049-phase55-v3-wave1-silent-deaths.md) — Wave 1
-- [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) — V3-4, V3-5, V3-9
+- [ADR 049]((../v3/049-phase55-v3-wave1-silent-deaths.md)) — Wave 1
+- [TODO.md](../../../../.cursor/skills/statix-ebpf-agent/TODO.md) — V3-4, V3-5, V3-9

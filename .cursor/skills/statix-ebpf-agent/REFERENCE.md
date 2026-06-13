@@ -2,7 +2,7 @@
 
 Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka → ClickHouse.
 
-**Principles:** [docs/enterprise-latency.md](../../../docs/enterprise-latency.md)  
+**Principles:** [docs/guides/enterprise-latency.md](../../../docs/guides/enterprise-latency.md)  
 **Workflow:** Update ADR + docs + skills with every architectural change.
 
 ## Overview
@@ -49,8 +49,8 @@ ring buffer → aggregator → emit_batch
 |----------------|--------|
 | 1–3 | Done (E2E ingest) |
 | 4 | Done (scale, lineage, bootstrap, metrics) |
-| 5 | **Partial** — TLS + P0 shipped; prod CH/Kafka ops ([phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) |
-| 5.5 V1/V2 | Done — L8 GA hardening ([ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/043-kubernetes-alb-tls-termination.md)) |
+| 5 | **Partial** — TLS + P0 shipped; prod CH/Kafka ops ([phase5-production-readiness.md](../../../docs/guides/phase5-production-readiness.md)) |
+| 5.5 V1/V2 | Done — L8 GA hardening ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) |
 | 5.5 V3 | **Active** — post-GA audit ([L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md), [TODO.md](TODO.md)) |
 | 6 | Done — mechanical sympathy / hot path ([ADR 018](../../../docs/adr/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | 7 | **Done** — wire, agent, gateway, infra, `Config`, typed errors, read-only labels ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)–[036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
@@ -68,8 +68,8 @@ ring buffer → aggregator → emit_batch
 - Kafka: host `localhost:9092`, in-compose `kafka:29092` (API + ClickHouse consumer)
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/statix-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `STATIX_EBF_PATH`
-- Agent event loop: `watch_k8s_pods` stream (node-scoped informer — [ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md)); `labels_for_cgroup` read-only; ring drain `DRAIN_BUDGET=256`; memory samples = one `spawn_blocking`/tick; ingest retry = `bytes::Bytes` ([ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md), [ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md), [ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [enterprise-latency.md](../../../docs/enterprise-latency.md))
-- Gateway ingest: `FlatRowRef` + `Arc<[u8]>` node key — no envelope string clones on HTTP thread ([ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md))
+- Agent event loop: `watch_k8s_pods` stream (node-scoped informer — [ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md)); `labels_for_cgroup` read-only; ring drain `DRAIN_BUDGET=256`; memory samples = one `spawn_blocking`/tick; ingest retry = `bytes::Bytes` ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md), [ADR 033](../../../docs/adr/phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md), [ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
+- Gateway ingest: `FlatRowRef` + `Arc<[u8]>` node key — no envelope string clones on HTTP thread ([ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md))
 - Startup cgroup bootstrap: `bootstrap_existing_cgroups` (walkdir + dir `ino()` = `cgroup_id`; `STATIX_CGROUP_ROOT`) — [ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)
 - Aggregator clock: global `AtomicU64` offset; `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600) — [ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)
 - Batch lineage: `batch_id` (UUID v4) + `agent_version` on every flush — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)

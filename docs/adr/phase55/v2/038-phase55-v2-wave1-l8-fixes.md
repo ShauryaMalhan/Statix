@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-06  
-**Context:** L8 Audit V2 P0/P1 — data integrity, availability, kernel scheduling ([L8_AUDIT_V2_FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8_AUDIT_V2_FIXES.md) Wave 1).
+**Context:** L8 Audit V2 P0/P1 — data integrity, availability, kernel scheduling ([L8_AUDIT_V2_FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8_AUDIT_V2_FIXES.md) Wave 1).
 
 ## Decision
 
@@ -22,4 +22,4 @@
 
 - [ADR 011](011-replacingmergetree-dedupe-identity.md) — dedupe identity (amended by V2-2)
 - [ADR 010](010-kafka-partition-key-by-node.md) — partition routing
-- [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)
+- [TODO.md](../../../../.cursor/skills/statix-ebpf-agent/TODO.md)

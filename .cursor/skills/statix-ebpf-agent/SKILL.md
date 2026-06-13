@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/043-kubernetes-alb-tls-termination.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/phase5-production-readiness.md)) · **5.5 V3 active** ([L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — [TODO](TODO.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
+Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/guides/phase5-production-readiness.md)) · **5.5 V3 active** ([L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — Wave 5 remaining; [TODO](TODO.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
 
 ## Mandatory workflow (every change)
 
@@ -20,7 +20,7 @@ Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/
 2. **For hot-path / performance fixes:** Read [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — contains exact before/after code, dependency order, and pitfalls. Follow the prescribed approach exactly; do not invent alternatives.
 3. Implement using patterns below (do not invent parallel conventions)
 4. `make build && make check` (add `make verify-btf` if BPF/deploy changed)
-5. **ADR** — new file in `docs/adr/` for architectural decisions ([enterprise-latency.md](../../../docs/enterprise-latency.md))
+5. **ADR** — new file in `docs/adr/` (Phase 5.5 waves → `docs/adr/phase55/v3/`) ([enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
 6. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
 7. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
 8. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
@@ -30,7 +30,7 @@ Phases: **1–4 done** · **5.5 V1/V2 done** (L8 GA — [ADR 032](../../../docs/
 ```
 - [ ] statix-common: StatixEvent / kinds only here
 - [ ] BPF: EVENTS map name matches loader; reserve → fill → submit(0); on reserve fail increment `RING_DROPS` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md))
-- [ ] Agent: no await on ring-buffer path; `DRAIN_BUDGET=256` ([ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md)); `emit_batch` moves `BatchPayload`; Prometheus `:9091` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
+- [ ] Agent: no await on ring-buffer path; `DRAIN_BUDGET=256` ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)); `emit_batch` moves `BatchPayload`; Prometheus `:9091` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
 - [ ] Output: `STATIX_INGEST_URL` → `init_http_client` (+ optional `STATIX_API_TOKEN`) + `init_retry_worker` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md))
 - [ ] API: `Config::from_env()` first in `main` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); GET /health; GET /ready; POST /ingest `try_send`; read API
@@ -65,13 +65,13 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)) |
+| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)) |
 | `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
-Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.md)
+Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterprise-latency.md)
 
 ## BPF verifier
 
@@ -81,18 +81,18 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 - `cgroup_id` from `bpf_get_current_cgroup_id()` on identity events
 - **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** (mainline LTS tips, not `.0`) — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); `.github/workflows/ebpf-ci.yml`; `scripts/verify-ebpf-kernel.sh` + `statix-ebpf-verify`
 - **5.10 memlock:** `bpf_memlock::bump_memlock_rlimit()` before `Ebpf::load()` — pre-5.11 kernels default 64 KiB `RLIMIT_MEMLOCK`; 512 KiB ringbuf needs infinity bump
-- **Attribution hot path (V2):** `on_identity_event` procfs skip when cgroup known; K8s label merge outside write lock ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
-- **Kafka routing (V2):** `FxHasher` partition slot; one key `Vec` per produce chunk ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
-- **Kafka durability (V2):** `failed_batches` `VecDeque` (cap 100) on produce `Err`; drain before each batch + metadata tick ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- **K8s eviction (V2):** agent + gateway `preStop sleep 5` + `terminationGracePeriodSeconds: 30`; gateway PDB `minAvailable: 1` ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- **K8s labels (V2):** `watch_k8s_pods` — `kube::runtime::watcher` with node field selector; no 30s list poll ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
-- **K8s deploy (V2):** digest-pinned images; gateway cross-AZ `topologySpreadConstraints` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- **Attribution hot path (V2):** `on_identity_event` procfs skip when cgroup known; K8s label merge outside write lock ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- **Kafka routing (V2):** `FxHasher` partition slot; one key `Vec` per produce chunk ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- **Kafka durability (V2):** `failed_batches` `VecDeque` (cap 100) on produce `Err`; drain before each batch + metadata tick ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- **K8s eviction (V2):** agent + gateway `preStop sleep 5` + `terminationGracePeriodSeconds: 30`; gateway PDB `minAvailable: 1` ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- **K8s labels (V2):** `watch_k8s_pods` — `kube::runtime::watcher` with node field selector; no 30s list poll ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
+- **K8s deploy (V2):** digest-pinned images; gateway cross-AZ `topologySpreadConstraints` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 
 ## User-space (Phase 2)
 
 - Batched JSON `schema_version: 2`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
 - `STATIX_RAW_EVENTS=1` debug only
-- K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`
 - Env: `STATIX_WINDOW_SECS`, `STATIX_SAMPLE_INTERVAL_SECS`, `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
@@ -129,7 +129,7 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | Component | Rule |
 |-----------|------|
 | Agent | `init_http_client` (`STATIX_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
-| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` + `statix_api_ingest_lag_seconds` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
+| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` + 2MB body limit ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md)) + `statix_api_ingest_lag_seconds` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://0.0.0.0:9091/metrics` — ring drops + future counters ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `statix-gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
 | Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
@@ -137,8 +137,8 @@ Full principles: [docs/enterprise-latency.md](../../../docs/enterprise-latency.m
 | CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md), V2-2) |
 | Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
 
-Spec: [docs/phase3-ingest-interface.md](../../../docs/phase3-ingest-interface.md)  
-Validate: [docs/phase3-validation.md](../../../docs/phase3-validation.md)
+Spec: [docs/guides/phase3-ingest-interface.md](../../../docs/guides/phase3-ingest-interface.md)  
+Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validation.md)
 
 ## Build (always via Makefile)
 
@@ -160,21 +160,21 @@ curl -s http://127.0.0.1:3000/metrics | grep statix_api_
 curl -s http://127.0.0.1:9091/metrics | grep statix_ring_drops   # agent (root)
 ```
 
-Phase 2 validation: [docs/phase2-validation.md](../../../docs/phase2-validation.md)  
+Phase 2 validation: [docs/guides/phase2-validation.md](../../../docs/guides/phase2-validation.md)  
 ADRs: [docs/adr/](../../../docs/adr/)  
 Deferred: [TODO.md](TODO.md)
 
 ## L8 Audit Fixes (Phase 5.5)
 
-**P0-SHIP shipped:** [ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md) — agent hot path.
+**P0-SHIP shipped:** [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md) — agent hot path.
 
-**P1-WEEK shipped:** [ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md) — `Bytes` retry body, Kafka producer alloc fixes, cached `kube::Client`, metadata refresh, `argMax` summary query.
+**P1-WEEK shipped:** [ADR 033](../../../docs/adr/phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md) — `Bytes` retry body, Kafka producer alloc fixes, cached `kube::Client`, metadata refresh, `argMax` summary query.
 
-**P2-SPRINT shipped:** [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md) — `Arc<[u8]>` node key + `FlatRowRef` on ingest.
+**P2-SPRINT shipped:** [ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md) — `Arc<[u8]>` node key + `FlatRowRef` on ingest.
 
 **L8 playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — all fixes shipped (ADR index).
 
-**L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md)).
+**L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/phase55/v2/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)).
 
 **L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — post-GA audit (async silent deaths, cache exhaustion, distributed state). Track in [TODO.md](TODO.md).
 

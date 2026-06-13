@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-28  
-**Context:** Phase 5.5 P1-WEEK ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)) — eliminate moderate-effort allocations and connection overhead on agent retry path, K8s refresh, Kafka producer, and operational ClickHouse reads. P0-SHIP already landed in [ADR 032](032-phase55-l8-p0-hot-path-fixes.md).
+**Context:** Phase 5.5 P1-WEEK ([TODO.md](../../../../.cursor/skills/statix-ebpf-agent/TODO.md)) — eliminate moderate-effort allocations and connection overhead on agent retry path, K8s refresh, Kafka producer, and operational ClickHouse reads. P0-SHIP already landed in [ADR 032](032-phase55-l8-p0-hot-path-fixes.md).
 
 ## Decision
 
@@ -33,5 +33,5 @@
 
 ## References
 
-- [L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
+- [L8-AUDIT-FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md)
 - [ADR 032](032-phase55-l8-p0-hot-path-fixes.md)

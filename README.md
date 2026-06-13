@@ -7,8 +7,8 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | Phase / target | State | What ships |
 |----------------|--------|------------|
 | **1–4** | Done | eBPF agent, attribution, ingest E2E, scale/reliability (partition routing, dedupe, lineage, bootstrap) |
-| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md), [ADR 043](docs/adr/043-kubernetes-alb-tls-termination.md)); prod CH/Kafka ops remain ([guide](docs/phase5-production-readiness.md)) |
-| **5.5 V1/V2** | Done | L8 audit GA hardening ([ADR 032](docs/adr/032-phase55-l8-p0-hot-path-fixes.md)–[043](docs/adr/043-kubernetes-alb-tls-termination.md)) |
+| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md), [ADR 043](docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)); prod CH/Kafka ops remain ([guide](docs/guides/phase5-production-readiness.md)) |
+| **5.5 V1/V2** | Done | L8 audit GA hardening ([ADR 032](docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) |
 | **5.5 V3** | **Active** | Post-GA audit — async silent deaths, cache exhaustion, distributed state ([playbook](.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md), [TODO](.cursor/skills/statix-ebpf-agent/TODO.md)) |
 | **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
 | **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/028-finops-wire-and-agent-rename.md)–[036](docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
@@ -37,7 +37,7 @@ Phase 2 behavior in short:
 
 Phase 3 adds HTTP ingest, keyed Kafka by `node`, ClickHouse Kafka engine → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). Production packaging: [deploy/](deploy/).
 
-**Enterprise low-latency contract:** [docs/enterprise-latency.md](docs/enterprise-latency.md)  
+**Enterprise low-latency contract:** [docs/guides/enterprise-latency.md](docs/guides/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
 Contributing: read `.cursor/skills/statix-ebpf-agent/SKILL.md` first; update ADR + docs + skills with every architectural change.
 
@@ -125,8 +125,8 @@ make verify-btf
 # Optional local verifier (KVM + virtme-ng): see scripts/verify-ebpf-kernel.sh
 ```
 
-- Phase 2: [docs/phase2-validation.md](docs/phase2-validation.md)
-- Phase 3: [docs/phase3-validation.md](docs/phase3-validation.md)
+- Phase 2: [docs/guides/phase2-validation.md](docs/guides/phase2-validation.md)
+- Phase 3: [docs/guides/phase3-validation.md](docs/guides/phase3-validation.md)
 
 ## Production deploy
 

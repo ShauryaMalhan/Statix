@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-06-12 
-**Context:** L8/L9 Post-GA audit Wave 1 ([L8_POST_GA_FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md)) — fire-and-forget `tokio::spawn` tasks could panic without visibility; ingest capacity pre-check was TOCTOU under concurrent `POST /ingest`.
+**Context:** L8/L9 Post-GA audit Wave 1 ([L8_POST_GA_FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md)) — fire-and-forget `tokio::spawn` tasks could panic without visibility; ingest capacity pre-check was TOCTOU under concurrent `POST /ingest`.
 
 ## Decision
 
@@ -21,13 +21,13 @@
 
 - Pre-serialize all flat rows, then `kafka_tx.try_reserve_many(n)` (Tokio 1.33+).
 - Send all rows through reserved `Permit`s — no partial batch delivery when capacity is insufficient (503 on `Full` before any send).
-- Replaces non-atomic `capacity()` pre-check + per-row `try_send` ([V2-3](../../docs/adr/038-phase55-v2-wave1-l8-fixes.md) partial mitigation).
+- Replaces non-atomic `capacity()` pre-check + per-row `try_send` ([ADR 038](../v2/038-phase55-v2-wave1-l8-fixes.md) V2-3 partial mitigation).
 
 ## Rationale
 
 - Silent task death = months of undetected `k8s_resolved: false` or invisible ring drops at scale.
 - TOCTOU split batches corrupt billing windows under concurrent ingest load.
-- `try_reserve_many` preserves non-blocking 503 backpressure ([ADR 005](005-non-blocking-ingest-pipeline.md)).
+- `try_reserve_many` preserves non-blocking 503 backpressure ([ADR 005](../../../005-non-blocking-ingest-pipeline.md)).
 
 ## Consequences
 
@@ -37,5 +37,5 @@
 
 ## References
 
-- [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) — V3-7, V3-8, V3-13
+- [TODO.md](../../../../.cursor/skills/statix-ebpf-agent/TODO.md) — V3-7, V3-8, V3-13
 - `statix/src/main.rs`, `statix/src/loader.rs`, `statix-gateway/src/routes/ingest.rs`

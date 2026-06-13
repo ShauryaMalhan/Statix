@@ -55,6 +55,7 @@ pub fn spawn_ring_drops_monitor(ring_drops: PerCpuArray<MapData, u64>) -> JoinHa
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(10));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut prev_total: u64 = 0;
         loop {
             interval.tick().await;
             match ring_drops.get(&0, 0) {
@@ -65,7 +66,11 @@ pub fn spawn_ring_drops_monitor(ring_drops: PerCpuArray<MapData, u64>) -> JoinHa
                             "SEVERE: eBPF ring buffer overflow! {} events silently dropped.",
                             total_drops
                         );
-                        metrics::counter!("statix_ring_drops_total").absolute(total_drops);
+                        let delta = total_drops.saturating_sub(prev_total);
+                        if delta > 0 {
+                            metrics::counter!("statix_ring_drops_total").increment(delta);
+                            prev_total = total_drops;
+                        }
                     }
                 }
                 Err(e) => log::warn!("Failed to read RING_DROPS map: {e}"),

@@ -23,7 +23,7 @@ pub async fn sample_tracked_cgroups(
         targets.push((cgroup_id, path));
     });
 
-    let readings = tokio::task::spawn_blocking(move || {
+    let readings = match tokio::task::spawn_blocking(move || {
         let mut results = Vec::with_capacity(targets.len());
         for (cgroup_id, path) in targets {
             match read_memory_current_at(path.as_path()) {
@@ -34,7 +34,14 @@ pub async fn sample_tracked_cgroups(
         results
     })
     .await
-    .unwrap_or_default();
+    {
+        Ok(results) => results,
+        Err(e) => {
+            log::error!("Memory sampler blocking task failed: {e}");
+            metrics::counter!("statix_memory_sampler_errors_total").increment(1);
+            Vec::new()
+        }
+    };
 
     let mut early_batches = Vec::new();
     for (cgroup_id, memory_bytes) in readings {

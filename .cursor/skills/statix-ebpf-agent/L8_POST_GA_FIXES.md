@@ -5,7 +5,7 @@
 > Run `cargo check --workspace` after each fix. Create an ADR per wave.
 > Priority: P0 = data loss / crash at scale, P1 = resource exhaustion / silent degradation, P2 = performance / correctness edge-case.
 
-**Status:** Waves 1–3 shipped. Remaining: Waves 4–5. Canonical checklist: [TODO.md](TODO.md).
+**Status:** Waves 1–4 shipped. Remaining: Wave 5. Canonical checklist: [TODO.md](TODO.md).
 
 ---
 
@@ -13,122 +13,14 @@
 
 | Wave | ADR | Items |
 |------|-----|-------|
-| Wave 1 ✅ | [049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md) | V3-7 K8s watcher panic monitor, V3-8 ring drops monitor panic, V3-13 ingest `try_reserve_many` |
-| Wave 2 ✅ | [050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cgroup cache eviction, V3-5 pod delete eviction, V3-9 K8s reconnect backoff |
-| Wave 3 ✅ | [051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH hour partitions, V3-12 kafka consumers, V3-15 recovery spread |
+| Wave 1 ✅ | [049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md) | V3-7 K8s watcher panic monitor, V3-8 ring drops monitor panic, V3-13 ingest `try_reserve_many` |
+| Wave 2 ✅ | [050](../../../docs/adr/phase55/v3/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cgroup cache eviction, V3-5 pod delete eviction, V3-9 K8s reconnect backoff |
+| Wave 3 ✅ | [051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH hour partitions, V3-12 kafka consumers, V3-15 recovery spread |
+| Wave 4 ✅ | [052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md) | V3-2 bootstrap blocking, V3-6 ring drops counter, V3-10 join error, V3-14 body limit, V3-1 resource limits |
 
 ---
 
-## Wave 4 — P1: Performance & Observability (ACTIVE)
-
-### V3-2: `bootstrap_existing_cgroups` blocking async runtime
-
-**File:** `statix/src/attribution/mod.rs:116-171`
-
-**What:** `WalkDir` + `fs::metadata` are blocking syscalls on the Tokio worker thread.
-
-**How:** Wrap the walk in `spawn_blocking`:
-
-```rust
-pub async fn bootstrap_existing_cgroups(
-    cache: &AttributionCache,
-    agg: &mut Aggregator,
-    node: &str,
-) -> Vec<BatchPayload> {
-    let root = cgroup_v2_mount();
-    let cache_clone = cache.clone();
-    
-    let discovered = tokio::task::spawn_blocking(move || {
-        let mut entries = Vec::new();
-        for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
-            // ... collect (cgroup_id, rel_path) pairs ...
-        }
-        entries
-    }).await.unwrap_or_default();
-    
-    // Register and aggregate on the async thread (no I/O)
-    // ...
-}
-```
-
----
-
-### V3-6: `RING_DROPS` counter uses `absolute()` — fragile on reload
-
-**File:** `statix/src/loader.rs:67`
-
-**What:** `metrics::counter!("statix_ring_drops_total").absolute(total_drops)` assumes the BPF counter is monotonically increasing across agent restarts. If the BPF program is reloaded, the counter resets and Prometheus sees a counter decrease — which violates the counter monotonicity invariant.
-
-**How:** Track the previous reading and emit increments:
-
-```rust
-let mut prev_total: u64 = 0;
-// In the loop:
-let delta = total_drops.saturating_sub(prev_total);
-if delta > 0 {
-    metrics::counter!("statix_ring_drops_total").increment(delta);
-    prev_total = total_drops;
-}
-```
-
----
-
-### V3-10: `spawn_blocking` JoinError silently returns empty Vec
-
-**File:** `statix/src/memory_sampler.rs:36-37`
-
-**What:** `.await.unwrap_or_default()` silently swallows panics in the blocking task.
-
-**How:**
-
-```rust
-let readings = match tokio::task::spawn_blocking(move || { /* ... */ }).await {
-    Ok(results) => results,
-    Err(e) => {
-        log::error!("Memory sampler blocking task failed: {e}");
-        metrics::counter!("statix_memory_sampler_errors_total").increment(1);
-        Vec::new()
-    }
-};
-```
-
----
-
-### V3-14: No explicit body size limit on POST /ingest
-
-**File:** `statix-gateway/src/routes/ingest.rs`
-
-**How:** Add an explicit Axum body limit layer:
-
-```rust
-use axum::extract::DefaultBodyLimit;
-
-// In Router setup (main.rs):
-.route("/ingest", post(routes::ingest::handler))
-.layer(DefaultBodyLimit::max(2 * 1024 * 1024)) // 2MB explicit
-```
-
----
-
-### V3-1: Agent DaemonSet missing resource requests/limits
-
-**File:** `deploy/k8s/statix-daemonset.yaml`
-
-**How:** Add resource stanza to guarantee `Burstable` QoS class:
-
-```yaml
-resources:
-  requests:
-    cpu: 50m
-    memory: 64Mi
-  limits:
-    cpu: 500m
-    memory: 256Mi
-```
-
----
-
-## Wave 5 — P2: Micro-architecture Polish
+## Wave 5 — P2: Micro-architecture Polish (ACTIVE)
 
 ### V3-16: Magic number for `BPF_RB_NO_WAKEUP`
 
@@ -206,16 +98,16 @@ node: Arc::from(node),
 Wave 1 ✅ (shipped):  V3-7, V3-8, V3-13          — ADR 049
 Wave 2 ✅ (shipped):  V3-4, V3-5, V3-9            — ADR 050
 Wave 3 ✅ (shipped):  V3-11, V3-12, V3-15         — ADR 051
-Wave 4 (ACTIVE):      V3-2, V3-6, V3-10, V3-14, V3-1  — perf + observability
-Wave 5:               V3-16, V3-17, V3-18, V3-3  — polish
+Wave 4 ✅ (shipped):  V3-2, V3-6, V3-10, V3-14, V3-1  — ADR 052
+Wave 5 (ACTIVE):      V3-16, V3-17, V3-18, V3-3  — polish
 ```
 
 ## ADR Index
 
 | Wave | ADR | Items |
 |------|-----|-------|
-| Wave 1 ✅ | [049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md) | V3-7 spawn panic, V3-8 ring monitor panic, V3-13 TOCTOU batch |
-| Wave 2 ✅ | [050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cache eviction, V3-5 pod eviction, V3-9 reconnect backoff |
-| Wave 3 ✅ | [051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH partition, V3-12 kafka consumers, V3-15 thundering herd |
-| Wave 4 | TBD | V3-2 bootstrap blocking, V3-6 ring drops counter, V3-10 join error, V3-14 body limit, V3-1 resource limits |
+| Wave 1 ✅ | [049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md) | V3-7 spawn panic, V3-8 ring monitor panic, V3-13 TOCTOU batch |
+| Wave 2 ✅ | [050](../../../docs/adr/phase55/v3/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cache eviction, V3-5 pod eviction, V3-9 reconnect backoff |
+| Wave 3 ✅ | [051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH partition, V3-12 kafka consumers, V3-15 thundering herd |
+| Wave 4 ✅ | [052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md) | V3-2 bootstrap blocking, V3-6 ring drops, V3-10 join error, V3-14 body limit, V3-1 QoS |
 | Wave 5 | TBD | V3-16 BPF const, V3-17 alignment, V3-18 poll interval, V3-3 node alloc |

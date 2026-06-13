@@ -6,7 +6,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
-**Validate:** [phase3-validation.md](../../../docs/phase3-validation.md). After gateway route changes: `docker compose build statix-gateway && docker compose up -d statix-gateway`. After CH schema change: `docker compose down -v && make compose-up`. Billing table: `statix.workload_metrics FINAL`.
+**Validate:** [phase3-validation.md](../../../docs/guides/phase3-validation.md). After gateway route changes: `docker compose build statix-gateway && docker compose up -d statix-gateway`. After CH schema change: `docker compose down -v && make compose-up`. Billing table: `statix.workload_metrics FINAL`.
 
 **Build tip:** `cargo check --workspace`; full stack `make build`; prod images `deploy/docker/README.md`.
 
@@ -51,7 +51,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 5 — Production-critical blockers (prod ops tuning remains)
 
-> P0 regressions shipped ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)). TLS shipped at ALB ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md)).
+> P0 regressions shipped ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)). TLS shipped at ALB ([ADR 043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)).
 
 ### P0 — Regressions & critical fixes ✅
 
@@ -62,7 +62,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ### P0 — Data integrity & security
 
 - [x] **Bearer auth:** `expected_bearer` + agent `STATIX_API_TOKEN` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [x] **TLS on `POST /ingest`:** AWS ALB Ingress HTTPS :443 → `statix-gateway-svc:3000` ([ADR 043](../../../docs/adr/043-kubernetes-alb-tls-termination.md))
+- [x] **TLS on `POST /ingest`:** AWS ALB Ingress HTTPS :443 → `statix-gateway-svc:3000` ([ADR 043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md))
 - [x] **BPF ring buffer overflow counter:** `RING_DROPS` + `statix_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md))
 - [x] **Schema evolution:** `schema_version` 2..=3 ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md))
 
@@ -82,15 +82,15 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P0-SHIP — Shipped ✅
 
-- [x] **Agent hot-path P0 fixes** — [ADR 032](../../../docs/adr/032-phase55-l8-p0-hot-path-fixes.md) (OnceLock env, thread-local RNG, static `agent_version`, `DEFAULT_LABELS`, move `BatchPayload`, batched `spawn_blocking`, ring drain budget)
+- [x] **Agent hot-path P0 fixes** — [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md) (OnceLock env, thread-local RNG, static `agent_version`, `DEFAULT_LABELS`, move `BatchPayload`, batched `spawn_blocking`, ring drain budget)
 
 ### P1-WEEK — Shipped ✅
 
-- [x] **Gateway + agent P1 fixes** — [ADR 033](../../../docs/adr/033-phase55-l8-p1-week-gateway-fixes.md) (`Bytes` retry body, reuse `by_partition` + batch `Utc::now`, cached `kube::Client`, Kafka metadata refresh, `argMax` summary query)
+- [x] **Gateway + agent P1 fixes** — [ADR 033](../../../docs/adr/phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md) (`Bytes` retry body, reuse `by_partition` + batch `Utc::now`, cached `kube::Client`, Kafka metadata refresh, `argMax` summary query)
 
 ### P2-SPRINT — Shipped ✅
 
-- [x] **Ingest zero-copy hot path** — [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md) (`Arc<[u8]>` node key, `FlatRowRef` serialization)
+- [x] **Ingest zero-copy hot path** — [ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md) (`Arc<[u8]>` node key, `FlatRowRef` serialization)
 
 ---
 
@@ -103,27 +103,27 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **V2-1: Agent SIGTERM handler** — SIGTERM + SIGINT flush partial window in main `select!` (`statix/src/main.rs`)
 - [x] **V2-2: `ReplacingMergeTree(window_end_ns)` version column** — Deterministic merge winner on retry (`deploy/clickhouse/01_init.sql`)
 - [x] **V2-3: Fix partial batch delivery in ingest handler** — Pre-check `kafka_tx.capacity()` vs `batch.workloads.len()`; atomic batch accept/reject (`statix-gateway/src/routes/ingest.rs`)
-- [x] **V2-4: K8s Watch/Informer instead of List polling** — `watch_k8s_pods` via `kube::runtime::watcher` + node field selector ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
-- [x] **V2-5: DaemonSet `preStop` hook + `terminationGracePeriodSeconds`** — `sleep 5` preStop + 30s grace for eviction flush ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- [x] **V2-6: Gateway `PodDisruptionBudget`** — `minAvailable: 1`; gateway preStop + grace ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- [x] **V2-7: Pin images to registry digests** — `@sha256:<64-hex>` in gateway + agent manifests ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
-- [x] **V2-8: Cross-AZ placement constraints** — `topologySpreadConstraints` on `topology.kubernetes.io/zone` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **V2-4: K8s Watch/Informer instead of List polling** — `watch_k8s_pods` via `kube::runtime::watcher` + node field selector ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **V2-5: DaemonSet `preStop` hook + `terminationGracePeriodSeconds`** — `sleep 5` preStop + 30s grace for eviction flush ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-6: Gateway `PodDisruptionBudget`** — `minAvailable: 1`; gateway preStop + grace ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-7: Pin images to registry digests** — `@sha256:<64-hex>` in gateway + agent manifests ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **V2-8: Cross-AZ placement constraints** — `topologySpreadConstraints` on `topology.kubernetes.io/zone` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 
 ### P1-WEEK — Hot-Path & Scale Fixes ✅
 
 - [x] **V2-9: BPF ring buffer wakeup suppression** — `WAKEUP_COUNTER` + `BPF_RB_NO_WAKEUP` every 63/64 events; 1ms poll drain fallback (`statix-ebpf/src/main.rs`, `statix/src/main.rs`)
-- [x] **V2-10: Deduplicate procfs reads in `on_identity_event`** — Read-lock fast path + double-check before procfs ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
-- [x] **V2-11: Kafka produce retry buffer** — `failed_batches` `VecDeque` cap 100; drain before produce + metadata tick ([ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- [x] **V2-12: Stable partition hash** — `FxHasher` in `hash_node_to_slot` ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
-- [x] **V2-13: Hoist node key allocation** — One `node.to_vec()` per partition chunk; `bytes_to_record` removed ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
-- [x] **V2-14: Fix `merge_cgroup_labels_from_k8s` lock duration** — Snapshot under read lock, compute outside, batch insert ([ADR 039](../../../docs/adr/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-10: Deduplicate procfs reads in `on_identity_event`** — Read-lock fast path + double-check before procfs ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-11: Kafka produce retry buffer** — `failed_batches` `VecDeque` cap 100; drain before produce + metadata tick ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-12: Stable partition hash** — `FxHasher` in `hash_node_to_slot` ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-13: Hoist node key allocation** — One `node.to_vec()` per partition chunk; `bytes_to_record` removed ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- [x] **V2-14: Fix `merge_cgroup_labels_from_k8s` lock duration** — Snapshot under read lock, compute outside, batch insert ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
 
 ### P2-SPRINT — Thundering Herd & Observability ✅
 
-- [x] **V2-15: Agent-side jittered backoff recovery** — 0–5s jitter after recovery when `backoff_secs > initial_backoff` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
-- [x] **V2-16: ClickHouse merge pressure monitoring** — `deploy/grafana/clickhouse_monitoring.sql` parts + merges queries ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
-- [x] **V2-17: Kafka produce error rate metric** — `statix_api_kafka_produce_errors_total` + `statix_api_kafka_produce_dropped_total` (shipped with V2-11, [ADR 040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
-- [x] **V2-18: End-to-end latency histogram** — `statix_api_ingest_lag_seconds` from `window_end_ns` ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **V2-15: Agent-side jittered backoff recovery** — 0–5s jitter after recovery when `backoff_secs > initial_backoff` ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **V2-16: ClickHouse merge pressure monitoring** — `deploy/grafana/clickhouse_monitoring.sql` parts + merges queries ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **V2-17: Kafka produce error rate metric** — `statix_api_kafka_produce_errors_total` + `statix_api_kafka_produce_dropped_total` (shipped with V2-11, [ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **V2-18: End-to-end latency histogram** — `statix_api_ingest_lag_seconds` from `window_end_ns` ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
 
 ---
 
@@ -133,29 +133,29 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P0-CRITICAL — Silent Deaths & Data Integrity
 
-- [x] **V3-7: K8s watcher `tokio::spawn` silently swallows panics** — `JoinHandle` in `select!`; panic metric + restart (`statix/src/main.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
-- [x] **V3-8: Ring drops monitor `tokio::spawn` also silently swallows panics** — Return `JoinHandle` from `spawn_ring_drops_monitor`; monitor in `select!`; `statix_ring_monitor_panics_total` (`statix/src/loader.rs`, `main.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
-- [x] **V3-13: Ingest handler capacity pre-check is TOCTOU** — Pre-serialize rows + `try_reserve_many`; atomic batch accept/reject (`statix-gateway/src/routes/ingest.rs`) ([ADR 049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md))
+- [x] **V3-7: K8s watcher `tokio::spawn` silently swallows panics** — `JoinHandle` in `select!`; panic metric + restart (`statix/src/main.rs`) ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md))
+- [x] **V3-8: Ring drops monitor `tokio::spawn` also silently swallows panics** — Return `JoinHandle` from `spawn_ring_drops_monitor`; monitor in `select!`; `statix_ring_monitor_panics_total` (`statix/src/loader.rs`, `main.rs`) ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md))
+- [x] **V3-13: Ingest handler capacity pre-check is TOCTOU** — Pre-serialize rows + `try_reserve_many`; atomic batch accept/reject (`statix-gateway/src/routes/ingest.rs`) ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md))
 
 ### P0-WEEK — Resource Exhaustion Time Bombs
 
-- [x] **V3-4: `AttributionCache` unbounded growth** — 60s `evict_stale_cgroups()` sweep; cascade delete; `statix_cache_evictions_total` (`statix/src/attribution/mod.rs`, `main.rs`) ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
-- [x] **V3-5: `pod_by_uid` never evicts deleted pods** — `Event::Delete` → `remove_pod_by_uid` in `watch_k8s_pods` ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
-- [x] **V3-9: K8s watcher reconnect has no backoff** — Jittered exponential backoff 5s→300s; reset on successful stream event ([ADR 050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md))
+- [x] **V3-4: `AttributionCache` unbounded growth** — 60s `evict_stale_cgroups()` sweep; cascade delete; `statix_cache_evictions_total` (`statix/src/attribution/mod.rs`, `main.rs`) ([ADR 050](../../../docs/adr/phase55/v3/050-phase55-v3-wave2-cache-eviction.md))
+- [x] **V3-5: `pod_by_uid` never evicts deleted pods** — `Event::Delete` → `remove_pod_by_uid` in `watch_k8s_pods` ([ADR 050](../../../docs/adr/phase55/v3/050-phase55-v3-wave2-cache-eviction.md))
+- [x] **V3-9: K8s watcher reconnect has no backoff** — Jittered exponential backoff 5s→300s; reset on successful stream event ([ADR 050](../../../docs/adr/phase55/v3/050-phase55-v3-wave2-cache-eviction.md))
 
 ### P1-SPRINT — Distributed State Physics
 
-- [x] **V3-11: ClickHouse midnight partition boundary storm** — Hour-aligned `toStartOfHour` partition expression (`deploy/clickhouse/01_init.sql:31`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
-- [x] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — `kafka_num_consumers = 4` on `kafka_telemetry_queue` (`deploy/clickhouse/01_init.sql:59`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
-- [x] **V3-15: Agent recovery thundering herd** — Deterministic node-hash recovery spread 0–30s + PRNG (`statix/src/output.rs`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
+- [x] **V3-11: ClickHouse midnight partition boundary storm** — Hour-aligned `toStartOfHour` partition expression (`deploy/clickhouse/01_init.sql:31`) ([ADR 051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md))
+- [x] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — `kafka_num_consumers = 4` on `kafka_telemetry_queue` (`deploy/clickhouse/01_init.sql:59`) ([ADR 051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md))
+- [x] **V3-15: Agent recovery thundering herd** — Deterministic node-hash recovery spread 0–30s + PRNG (`statix/src/output.rs`) ([ADR 051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md))
 
 ### P1-WEEK — Performance & Observability
 
-- [ ] **V3-2: `bootstrap_existing_cgroups` blocks async runtime** — Wrap `WalkDir` + `fs::metadata` in `spawn_blocking` (`statix/src/attribution/mod.rs:116-171`)
-- [ ] **V3-6: `RING_DROPS` counter uses `absolute()`** — Track previous reading; emit increments instead of absolute value (`statix/src/loader.rs:67`)
-- [ ] **V3-10: `spawn_blocking` JoinError silently returns empty Vec** — Log error + emit `statix_memory_sampler_errors_total` instead of `unwrap_or_default` (`statix/src/memory_sampler.rs:36-37`)
-- [ ] **V3-14: No explicit body size limit on POST /ingest** — Add `DefaultBodyLimit::max(2MB)` to Axum router (`statix-gateway/src/routes/ingest.rs`)
-- [ ] **V3-1: Agent DaemonSet missing resource requests/limits** — Add `requests: {cpu: 50m, memory: 64Mi}` + `limits: {cpu: 500m, memory: 256Mi}` (`deploy/k8s/statix-daemonset.yaml`)
+- [x] **V3-2: `bootstrap_existing_cgroups` blocks async runtime** — `spawn_blocking` for WalkDir + metadata; register on async thread (`statix/src/attribution/mod.rs`) ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md))
+- [x] **V3-6: `RING_DROPS` counter uses `absolute()`** — `increment(delta)` with `prev_total` tracking (`statix/src/loader.rs`) ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md))
+- [x] **V3-10: `spawn_blocking` JoinError silently returns empty Vec** — Log + `statix_memory_sampler_errors_total` (`statix/src/memory_sampler.rs`) ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md))
+- [x] **V3-14: No explicit body size limit on POST /ingest** — `DefaultBodyLimit::max(2MB)` on `/ingest` route (`statix-gateway/src/main.rs`) ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md))
+- [x] **V3-1: Agent DaemonSet missing resource requests/limits** — Burstable QoS: 50m/64Mi requests, 500m/256Mi limits (`deploy/k8s/statix-daemonset.yaml`) ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md))
 
 ### P2-MONTH — Micro-architecture Polish
 
@@ -185,7 +185,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ### Gateway hot path
 
 - [x] **Kafka queue `Vec<u8>`** ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md))
-- [x] **Refactor ingest handler to `Arc<[u8]>` node key** — [ADR 034](../../../docs/adr/034-phase55-l8-p2-ingest-zero-copy.md)
+- [x] **Refactor ingest handler to `Arc<[u8]>` node key** — [ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md)
 
 ### Memory sampler ✅
 
@@ -204,7 +204,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **Typed errors in `attribution.rs`** — `AttributionError`; `read_memory_current_at` in attribution module ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md))
 - [x] **Extract `statix-infra` crate:** `read_env_u64`/`read_env_usize`, clock utilities ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
 - [x] **Generic positive-bounded env parsing:** `read_env_positive<T>` — reject `<= T::default()`; agent window/sample via shared helper ([ADR 048](../../../docs/adr/048-generic-env-positive-parsing.md))
-- [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `watch_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **Simplify `labels_for_cgroup` read path:** Read-only lookup; K8s merge in `watch_k8s_pods` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 
 ---
 
@@ -215,11 +215,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [x] **Production gateway image:** `deploy/docker/Dockerfile.gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md))
 - [x] **Production agent image:** `deploy/docker/Dockerfile.statix` ([ADR 024](../../../docs/adr/024-agent-production-container.md))
 - [x] **K8s manifests:** `deploy/k8s/gateway.yaml`, `statix-daemonset.yaml` ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md))
-- [x] **Pin images to registry digests** — V2-7 ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **Pin images to registry digests** — V2-7 ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - [x] **Reuse `kube::Client` across K8s refresh polls** (shipped in Phase 5.5 P1)
-- [x] **K8s informer** — V2-4 `watch_k8s_pods` ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **K8s informer** — V2-4 `watch_k8s_pods` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - [ ] **Stronger cgroup → pod mapping**
-- [x] **Graceful rolling update drain** — V2-1 SIGTERM flush + V2-5 preStop ([ADR 038](../../../docs/adr/038-phase55-v2-wave1-l8-fixes.md), [040](../../../docs/adr/040-phase55-v2-wave3-l8-fixes.md))
+- [x] **Graceful rolling update drain** — V2-1 SIGTERM flush + V2-5 preStop ([ADR 038](../../../docs/adr/phase55/v2/038-phase55-v2-wave1-l8-fixes.md), [040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
 
 ---
 
@@ -238,9 +238,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Grafana in Compose:** `:3001` + `grafana-clickhouse-datasource` ([ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md))
 - [x] **Agent `/metrics` baseline:** `:9091` + ring drops ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
-- [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/041-phase55-v2-wave4-l8-fixes.md))
-- [x] **ClickHouse merge pressure monitoring** — V2-16 ([ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
+- [x] **ClickHouse merge pressure monitoring** — V2-16 ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [ ] **ClickHouse skip index / granularity tuning:** Add `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` for cgroup-filtered queries
 - [ ] **ClickHouse Kafka engine lag monitoring:** Alert on `system.kafka_consumers` lag exceeding threshold
 
@@ -250,9 +250,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 > Scope: `statix/src/output.rs` — HTTP ingest retry path. (Phase 7 = workspace/DX, already complete.)
 
-- [x] **Exponential backoff with jitter (shipped)** — Phase 4 item 3.2, V2-15, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md). `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s); 30% jitter on retry sleep; 0–5s PRNG recovery jitter in `statix/src/output.rs:112-131`.
+- [x] **Exponential backoff with jitter (shipped)** — Phase 4 item 3.2, V2-15, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md). `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s); 30% jitter on retry sleep; 0–5s PRNG recovery jitter in `statix/src/output.rs:112-131`.
 
-- [x] **Implement deterministic node-hash recovery spread (V3-15)** — On gateway recovery (first `Success` after elevated backoff), sleep `hash(STATIX_NODE_NAME) % 30s` + 0–5s PRNG via `recovery_spread_sleep_secs` in `statix/src/output.rs` ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md)).
+- [x] **Implement deterministic node-hash recovery spread (V3-15)** — On gateway recovery (first `Success` after elevated backoff), sleep `hash(STATIX_NODE_NAME) % 30s` + 0–5s PRNG via `recovery_spread_sleep_secs` in `statix/src/output.rs` ([ADR 051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md)).
 
 - [ ] **Local disk buffering (write-ahead log)** — **Primary resilience mechanism** for the queue-less architecture (Phase 13): replaces Kafka as the shock absorber when gateway or ClickHouse is unavailable. Unacknowledged batches today live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Gateway **503 backpressure** (Phase 13) intentionally trips agent circuit breakers → WAL. Depends on DaemonSet volume mount + durable volume sizing in K8s.
 
@@ -283,11 +283,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ```
 L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
 L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
-L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–3 shipped: ADR 049–051)
+L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–4 shipped: ADR 049–052)
   Week 1:               [x] V3-7, V3-8, V3-13 (silent death + data integrity)
   Week 2:               [x] V3-4, V3-5, V3-9    (memory leaks + API DDoS)
   Week 3:               [x] V3-11, V3-12, V3-15 (distributed state)
-  Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
+  Week 4:               [x] V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              V3-16…18, V3-3      (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
 PHASE 11 (planned):     agent WAL (primary buffer), circuit breaker

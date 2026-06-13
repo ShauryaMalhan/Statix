@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-05-28  
-**Context:** Final L8 playbook item F1 — eliminate per-row heap allocations on the gateway `POST /ingest` thread ([L8-AUDIT-FIXES.md](../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md), [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
+**Context:** Final L8 playbook item F1 — eliminate per-row heap allocations on the gateway `POST /ingest` thread ([L8-AUDIT-FIXES.md](../../../../.cursor/skills/statix-ebpf-agent/L8-AUDIT-FIXES.md), [ADR 033](033-phase55-l8-p1-week-gateway-fixes.md)).
 
 ## Decision
 

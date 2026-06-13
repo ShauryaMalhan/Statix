@@ -35,5 +35,5 @@
 
 ## References
 
-- [ADR 050](050-phase55-v3-wave2-cache-eviction.md) — Wave 2
+- [ADR 050](../v3/050-phase55-v3-wave2-cache-eviction.md) — Wave 2
 - [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) — V3-11, V3-12, V3-15
