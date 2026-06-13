@@ -145,9 +145,9 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### P1-SPRINT — Distributed State Physics
 
-- [ ] **V3-11: ClickHouse midnight partition boundary storm** — Coarser partition expression or round `window_start_ns` to prevent clock-drift partition splits (`deploy/clickhouse/01_init.sql:31`)
-- [ ] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — Set to match topic partition count (minimum 4 for production) (`deploy/clickhouse/01_init.sql:59`)
-- [ ] **V3-15: Agent recovery thundering herd** — Deterministic node-hash recovery spread (see **Phase 11**); replace 0–5s PRNG-only recovery jitter (`statix/src/output.rs:115-118`)
+- [x] **V3-11: ClickHouse midnight partition boundary storm** — Hour-aligned `toStartOfHour` partition expression (`deploy/clickhouse/01_init.sql:31`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
+- [x] **V3-12: `kafka_num_consumers = 1` bottleneck at scale** — `kafka_num_consumers = 4` on `kafka_telemetry_queue` (`deploy/clickhouse/01_init.sql:59`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
+- [x] **V3-15: Agent recovery thundering herd** — Deterministic node-hash recovery spread 0–30s + PRNG (`statix/src/output.rs`) ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md))
 
 ### P1-WEEK — Performance & Observability
 
@@ -252,7 +252,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Exponential backoff with jitter (shipped)** — Phase 4 item 3.2, V2-15, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 042](../../../docs/adr/042-phase55-v2-p2-sprint-l8-fixes.md). `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s); 30% jitter on retry sleep; 0–5s PRNG recovery jitter in `statix/src/output.rs:112-131`.
 
-- [ ] **Implement deterministic node-hash recovery spread (V3-15)** — **Recovery avalanche:** after a prolonged outage, every agent at max backoff detects success within the same window; V2-15's 0–5s PRNG jitter is insufficient — thousands of agents can flush backlogs simultaneously and DDoS the Axum gateway. On gateway recovery (first `Success` after elevated backoff / circuit close), sleep a **deterministic** offset derived from `STATIX_NODE_NAME`: e.g. `hash(node) % 30` seconds (use stable hasher, not PRNG). Guarantees flat traffic shaping across a 30s window without clumping. Also tracked in Phase 5.5 V3 P1-SPRINT.
+- [x] **Implement deterministic node-hash recovery spread (V3-15)** — On gateway recovery (first `Success` after elevated backoff), sleep `hash(STATIX_NODE_NAME) % 30s` + 0–5s PRNG via `recovery_spread_sleep_secs` in `statix/src/output.rs` ([ADR 051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md)).
 
 - [ ] **Local disk buffering (write-ahead log)** — **Primary resilience mechanism** for the queue-less architecture (Phase 13): replaces Kafka as the shock absorber when gateway or ClickHouse is unavailable. Unacknowledged batches today live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Gateway **503 backpressure** (Phase 13) intentionally trips agent circuit breakers → WAL. Depends on DaemonSet volume mount + durable volume sizing in K8s.
 
@@ -283,13 +283,13 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ```
 L8 V1 (shipped):        P0/P1/P2 hot-path fixes (ADR 032–034)
 L8 V2 (shipped, GA):    V2-1…18 distributed hardening (ADR 038–043)
-L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–2 shipped: ADR 049–050)
+L8/L9 V3 (ACTIVE):      V3-4…18 (Wave 1–3 shipped: ADR 049–051)
   Week 1:               [x] V3-7, V3-8, V3-13 (silent death + data integrity)
   Week 2:               [x] V3-4, V3-5, V3-9    (memory leaks + API DDoS)
-  Week 3:               V3-11, V3-12, V3-15 (distributed state)
+  Week 3:               [x] V3-11, V3-12, V3-15 (distributed state)
   Week 4:               V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              V3-16…18, V3-3      (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
-PHASE 11 (planned):     V3-15 recovery spread, agent WAL (primary buffer), circuit breaker
+PHASE 11 (planned):     agent WAL (primary buffer), circuit breaker
 PHASE 13 (pivot):       Remove Kafka; gateway → ClickHouse HTTP; 503 → agent WAL
 ```

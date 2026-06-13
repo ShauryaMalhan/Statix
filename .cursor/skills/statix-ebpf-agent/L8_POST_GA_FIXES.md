@@ -5,7 +5,7 @@
 > Run `cargo check --workspace` after each fix. Create an ADR per wave.
 > Priority: P0 = data loss / crash at scale, P1 = resource exhaustion / silent degradation, P2 = performance / correctness edge-case.
 
-**Status:** Waves 1–2 shipped. Remaining: Waves 3–5. Canonical checklist: [TODO.md](TODO.md).
+**Status:** Waves 1–3 shipped. Remaining: Waves 4–5. Canonical checklist: [TODO.md](TODO.md).
 
 ---
 
@@ -15,80 +15,11 @@
 |------|-----|-------|
 | Wave 1 ✅ | [049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md) | V3-7 K8s watcher panic monitor, V3-8 ring drops monitor panic, V3-13 ingest `try_reserve_many` |
 | Wave 2 ✅ | [050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cgroup cache eviction, V3-5 pod delete eviction, V3-9 K8s reconnect backoff |
+| Wave 3 ✅ | [051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH hour partitions, V3-12 kafka consumers, V3-15 recovery spread |
 
 ---
 
-## Wave 3 — P1: Distributed State Physics (ACTIVE)
-
-### V3-11: ClickHouse midnight partition boundary storm
-
-**File:** `deploy/clickhouse/01_init.sql:31`
-
-**What:** `PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000)))` creates day-boundary partitions. Agents with clock drift (NTP accuracy: 1-100ms on EC2) produce windows that straddle midnight UTC, splitting into two partitions.
-
-**Why:** Dual-partition writes at midnight double merge pressure for ~20 seconds. With 10,000 agents, the midnight boundary storm creates a spike of cross-partition parts that can exceed `max_parts_per_partition` (default 300) and trigger INSERT rejection.
-
-**How:** Round partition expression to a coarser boundary. Use hour-aligned partitions or add a guard:
-
-```sql
--- Option A: Partition by YYYYMMDDHH (hourly) to reduce boundary crossings
-PARTITION BY toStartOfHour(toDateTime(intDiv(window_start_ns, 1000000000)))
-
--- Option B: Keep daily but truncate to prevent drift splits
-PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000) - 
-    (intDiv(window_start_ns, 1000000000) % 60)))
-```
-
-Verify merge pressure with `SELECT partition, count() FROM system.parts WHERE table = 'workload_metrics' AND active GROUP BY partition`.
-
----
-
-### V3-12: `kafka_num_consumers = 1` bottleneck at scale
-
-**File:** `deploy/clickhouse/01_init.sql:59`
-
-**What:** Single ClickHouse Kafka consumer for the entire telemetry stream.
-
-**Why:** At 10,000 nodes × 100 workloads × 0.1 Hz = 100,000 rows/second. A single Kafka consumer thread in ClickHouse can typically handle ~50,000 rows/second of JSONEachRow. At 2x this rate, consumer lag grows unboundedly.
-
-**How:** Set `kafka_num_consumers` to match topic partition count:
-
-```sql
--- Set to topic partition count (at least 4 for production)
-kafka_num_consumers = 4;
-```
-
-Add a TODO entry for monitoring: `SELECT * FROM system.kafka_consumers WHERE table = 'kafka_telemetry_queue'`.
-
----
-
-### V3-15: Agent recovery thundering herd
-
-**File:** `statix/src/output.rs:115-118`
-
-**What:** After gateway outage recovery, all agents detect success within seconds. The 5-second jitter window means 10,000 agents recover in ~5 seconds = 2,000 agents/second.
-
-**Why:** Each agent has up to 60 queued batches. Initial burst: up to 120,000 batches in 5 seconds against 2 gateway replicas = 12,000 batches/second/replica. This can OOM the gateway or trigger Kafka backpressure.
-
-**How:** Scale jitter with node identity to naturally stagger recovery:
-
-```rust
-// Hash node name to produce a deterministic spread over 30 seconds
-let node_hash = {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    node_name.hash(&mut h);
-    h.finish()
-};
-let spread_secs = (node_hash % 30_000) as f64 / 1000.0;
-let jitter = rand::random::<f64>() * 5.0 + spread_secs;
-```
-
-Also tracked in **Phase 11** ([TODO.md](TODO.md)).
-
----
-
-## Wave 4 — P1: Performance & Observability
+## Wave 4 — P1: Performance & Observability (ACTIVE)
 
 ### V3-2: `bootstrap_existing_cgroups` blocking async runtime
 
@@ -274,8 +205,8 @@ node: Arc::from(node),
 ```
 Wave 1 ✅ (shipped):  V3-7, V3-8, V3-13          — ADR 049
 Wave 2 ✅ (shipped):  V3-4, V3-5, V3-9            — ADR 050
-Wave 3 (ACTIVE):      V3-11, V3-12, V3-15         — distributed state
-Wave 4:               V3-2, V3-6, V3-10, V3-14, V3-1  — perf + observability
+Wave 3 ✅ (shipped):  V3-11, V3-12, V3-15         — ADR 051
+Wave 4 (ACTIVE):      V3-2, V3-6, V3-10, V3-14, V3-1  — perf + observability
 Wave 5:               V3-16, V3-17, V3-18, V3-3  — polish
 ```
 
@@ -285,6 +216,6 @@ Wave 5:               V3-16, V3-17, V3-18, V3-3  — polish
 |------|-----|-------|
 | Wave 1 ✅ | [049](../../../docs/adr/049-phase55-v3-wave1-silent-deaths.md) | V3-7 spawn panic, V3-8 ring monitor panic, V3-13 TOCTOU batch |
 | Wave 2 ✅ | [050](../../../docs/adr/050-phase55-v3-wave2-cache-eviction.md) | V3-4 cache eviction, V3-5 pod eviction, V3-9 reconnect backoff |
-| Wave 3 | TBD | V3-11 CH partition, V3-12 kafka consumers, V3-15 thundering herd |
+| Wave 3 ✅ | [051](../../../docs/adr/051-phase55-v3-wave3-distributed-state.md) | V3-11 CH partition, V3-12 kafka consumers, V3-15 thundering herd |
 | Wave 4 | TBD | V3-2 bootstrap blocking, V3-6 ring drops counter, V3-10 join error, V3-14 body limit, V3-1 resource limits |
 | Wave 5 | TBD | V3-16 BPF const, V3-17 alignment, V3-18 poll interval, V3-3 node alloc |

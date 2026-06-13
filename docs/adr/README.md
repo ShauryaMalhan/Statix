@@ -56,3 +56,4 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [048](048-generic-env-positive-parsing.md) | Generic `read_env_positive` — reject `<= T::default()` numeric env | Accepted |
 | [049](049-phase55-v3-wave1-silent-deaths.md) | Phase 5.5 V3 Wave 1 — K8s/ring monitor panic visibility; ingest `try_reserve_many` | Accepted |
 | [050](050-phase55-v3-wave2-cache-eviction.md) | Phase 5.5 V3 Wave 2 — cgroup/pod cache eviction; K8s reconnect backoff | Accepted |
+| [051](051-phase55-v3-wave3-distributed-state.md) | Phase 5.5 V3 Wave 3 — CH hour partitions; Kafka consumers; recovery spread | Accepted |

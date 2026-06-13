@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS statix.workload_metrics
     exec_count UInt32,
     sample_count UInt32
 )
-ENGINE = ReplacingMergeTree(window_end_ns)
-PARTITION BY toYYYYMMDD(toDateTime(intDiv(window_start_ns, 1000000000)))
+ENGINE = ReplacingMergeTree(window_end_ns)-- Hour-aligned partitions: reduces midnight UTC boundary merge storms (V3-11 / ADR 051)
+PARTITION BY toStartOfHour(toDateTime(intDiv(window_start_ns, 1000000000)))
 ORDER BY (node, window_start_ns, cgroup_id)
 TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
 
@@ -56,7 +56,8 @@ SETTINGS
     kafka_group_name = 'clickhouse-ingest-group',
     kafka_format = 'JSONEachRow',
     kafka_skip_broken_messages = 1000,
-    kafka_num_consumers = 1;
+    -- Match Kafka topic partition count (min 4 prod); scale with broker topic config (V3-12 / ADR 051)
+    kafka_num_consumers = 4;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS statix.telemetry_mv
 TO statix.workload_metrics AS

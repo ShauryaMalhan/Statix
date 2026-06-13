@@ -1,5 +1,6 @@
 //! Batched JSON (schema v2), optional HTTP ingest, and raw per-event debug output.
 
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -21,6 +22,24 @@ const DEFAULT_BACKOFF_MAX_SECS: u64 = 30;
 
 const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_HTTP_POOL_IDLE_SECS: u64 = 55;
+
+fn read_node_name_for_retry_worker() -> String {
+    statix_infra::env::var("STATIX_NODE_NAME")
+        .or_else(|| std::env::var("NODE_NAME").ok())
+        .unwrap_or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "localhost".into())
+        })
+}
+
+/// Deterministic node-hash spread over 30s + 0–5s PRNG (V3-15) — avoids post-outage thundering herd.
+fn recovery_spread_sleep_secs(node_name: &str) -> f64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    node_name.hash(&mut hasher);
+    let spread_secs = (hasher.finish() % 30_000) as f64 / 1000.0;
+    rand::random::<f64>() * 5.0 + spread_secs
+}
 
 fn read_http_timeout_secs() -> u64 {
     read_env_u64("STATIX_HTTP_TIMEOUT_SECS", DEFAULT_HTTP_TIMEOUT_SECS)
@@ -93,9 +112,11 @@ pub fn init_retry_worker(url: String) {
     let max_backoff = read_env_u64("STATIX_BACKOFF_MAX_SECS", DEFAULT_BACKOFF_MAX_SECS)
         .max(initial_backoff);
 
+    let node_name = read_node_name_for_retry_worker();
+
     log::info!(
-        "Ingest retry worker: backoff {initial_backoff}s..{max_backoff}s with 30% jitter \
-         (STATIX_BACKOFF_INITIAL_SECS / STATIX_BACKOFF_MAX_SECS)"
+        "Ingest retry worker: backoff {initial_backoff}s..{max_backoff}s with 30% jitter; \
+         recovery spread keyed on node={node_name:?} (STATIX_BACKOFF_* / STATIX_NODE_NAME)"
     );
 
     tokio::spawn(async move {
@@ -113,8 +134,12 @@ pub fn init_retry_worker(url: String) {
                 match post_ingest(&url, body.clone()).await {
                     PostOutcome::Success => {
                         if backoff_secs > initial_backoff {
-                            let jitter = rand::random::<f64>() * 5.0;
-                            tokio::time::sleep(Duration::from_secs_f64(jitter)).await;
+                            let sleep_secs = recovery_spread_sleep_secs(&node_name);
+                            log::info!(
+                                "Gateway recovered after outage; staggering backlog flush {:.2}s (node spread)",
+                                sleep_secs
+                            );
+                            tokio::time::sleep(Duration::from_secs_f64(sleep_secs)).await;
                         }
                         backoff_secs = initial_backoff;
                         break;
