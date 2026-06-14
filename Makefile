@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check
+.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check wal-test wal-faultfs
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -160,6 +160,15 @@ check:
 	cd $(WORKSPACE_ROOT) && cargo check -p statix
 	cd $(WORKSPACE_ROOT) && cargo check -p statix-infra
 	cd $(WORKSPACE_ROOT) && cargo check -p statix-gateway
+
+# Phase 11 — WAL spillway transactional-integrity tests (frame CRC, torn-tail
+# recovery, segment rotation, hard-cap drop-oldest, crash replay, circuit breaker).
+wal-test:
+	cd $(WORKSPACE_ROOT) && cargo test -p statix wal
+
+# Phase 11 — WAL disk-degradation (ENOSPC) test on a size-limited tmpfs (root).
+wal-faultfs:
+	sudo $(WORKSPACE_ROOT)/scripts/wal-faultfs.sh
 
 verify: build-ebpf
 	@echo "==> BPF program sections:"

@@ -1,6 +1,6 @@
 [package]
 name = "statix"
-version = "1.0.7"
+version = "1.0.8"
 edition = "2021"
 
 [[bin]]
@@ -41,6 +41,10 @@ uuid       = { version = "1.8", features = ["v4"] }
 
 parking_lot = "0.12"
 rustc-hash = "1.1"
+
+# crc32fast: per-frame integrity for the disk WAL spillway (Phase 11). Detects
+# torn tails (SIGKILL/power-loss) and corrupt frames during recovery.
+crc32fast = "1"
 
 statix-common = { path = "../statix-common", features = ["user"] }
 

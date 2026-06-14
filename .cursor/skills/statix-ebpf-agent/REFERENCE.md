@@ -10,10 +10,10 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → Kafka
 | Layer | Role |
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `StatixEvent` → `EVENTS` |
-| Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` |
+| Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` (overflow → disk WAL `statix/src/wal/`, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
 | Ingest API | `POST /ingest`; `try_send((Vec<u8>, Vec<u8>))` — [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md) |
 | Read API | `GET /api/v1/workloads/summary?hours=` → `AppState.ch_client` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
-| Agent metrics | `http://<host>:9091/metrics` — `statix_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
+| Agent metrics | `http://<host>:9091/metrics` — `statix_ring_drops_total` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); disk WAL `statix_wal_*` (bytes/segments/frames_written/frames_replayed/dropped_batches/dropped_bytes/corrupt_frames/write_errors/fsync_seconds/circuit_state) ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
 | Storage | Kafka → CH Kafka engine → `ReplacingMergeTree` (billing: `FINAL`) |
 
 ## File map

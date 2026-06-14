@@ -8,6 +8,7 @@ mod ebpf_select;
 mod loader;
 mod memory_sampler;
 mod output;
+mod wal;
 
 use std::mem::size_of;
 
@@ -45,6 +46,13 @@ async fn main() -> anyhow::Result<()> {
     let sample_secs = statix_infra::env::read_env_u64("STATIX_SAMPLE_INTERVAL_SECS", 10);
     let node = read_node_name();
     let raw_events = statix_infra::env::var("STATIX_RAW_EVENTS").as_deref() == Some("1");
+
+    // Phase 11: recover any on-disk WAL and start the disk spillway + drainer.
+    // Must follow init_retry_worker (drainer feeds the retry queue) and precede
+    // event ingestion so a recovered backlog replays as soon as the gateway is up.
+    if statix_infra::env::var("STATIX_INGEST_URL").is_some() {
+        output::init_wal(&node);
+    }
 
     let mut bpf = loader::load_and_attach(&ebpf_path)?;
     let ring_drops = loader::take_ring_drops_map(&mut bpf)?;

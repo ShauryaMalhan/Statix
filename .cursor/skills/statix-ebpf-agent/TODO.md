@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 5.5 V3** — L8/L9 Post-GA audit. **Strategic pivot (planned):** **Phase 13** — queue-less ingest (remove Kafka; agent WAL + gateway → ClickHouse HTTP).
+**Current focus:** **Phase 13 Part 1** — queue-less ingest (remove Kafka; gateway → ClickHouse RowBinary HTTP; 503 → agent WAL). Playbook: [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md). **Prior wave:** **Phase 5.5 V3** L8/L9 Post-GA audit (shipped).
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -248,15 +248,15 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 11 — Agent Network Hardening & Reliability
 
-> Scope: `statix/src/output.rs` — HTTP ingest retry path. (Phase 7 = workspace/DX, already complete.)
+> Scope: `statix/src/output.rs` (HTTP ingest retry path) + `statix/src/wal/` (disk spillway, Phase 11). (Phase 7 = workspace/DX, already complete.)
 
 - [x] **Exponential backoff with jitter (shipped)** — Phase 4 item 3.2, V2-15, [ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md). `backoff * 2` capped at `STATIX_BACKOFF_MAX_SECS` (default 30s); 30% jitter on retry sleep; 0–5s PRNG recovery jitter in `statix/src/output.rs:112-131`.
 
 - [x] **Implement deterministic node-hash recovery spread (V3-15)** — On gateway recovery (first `Success` after elevated backoff), sleep `hash(STATIX_NODE_NAME) % 30s` + 0–5s PRNG via `recovery_spread_sleep_secs` in `statix/src/output.rs` ([ADR 051](../../../docs/adr/phase55/v3/051-phase55-v3-wave3-distributed-state.md)).
 
-- [ ] **Local disk buffering (write-ahead log)** — **Primary resilience mechanism** for the queue-less architecture (Phase 13): replaces Kafka as the shock absorber when gateway or ClickHouse is unavailable. Unacknowledged batches today live in a bounded in-memory `mpsc(60)` only; queue-full path drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)); OOM kill or node reboot destroys queued financial telemetry. Route failed batches (503/timeout/transport) to a persistent local store (mmap segment or SQLite, e.g. `/var/lib/statix/buffer.db`); background sweeper drains WAL when gateway `/ready` returns 200. Gateway **503 backpressure** (Phase 13) intentionally trips agent circuit breakers → WAL. Depends on DaemonSet volume mount + durable volume sizing in K8s.
+- [x] **Local disk buffering (write-ahead log) (shipped)** — Bounded **segmented append-only WAL** (`statix/src/wal/`): on retry-queue saturation / gateway down, `output::enqueue_batch_json` `try_append`s (non-blocking) to a dedicated `statix-wal-writer` thread instead of drop-oldest. CRC32-framed segments, `fdatasync` group-commit, hard cap `STATIX_WAL_MAX_BYTES` (drop-oldest at cap), boot recovery (torn-tail truncation / corrupt-segment drop). Chose segmented log over SQLite/mmap (write amplification / SIGBUS on ENOSPC). At-least-once (deduped by `ReplacingMergeTree`). ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md), [PLAYBOOK](PHASE_11_WAL_PLAYBOOK.md)). *Default `STATIX_WAL_DIR=/var/lib/statix/wal` — wire a DaemonSet volume mount + durable sizing when deploying.*
 
-- [ ] **Circuit breaker on HTTP ingest client** — No open/half-open state today; retry worker keeps attempting `post_ingest` TCP handshakes on every backoff tick while gateway is hard-down. Wrap `reqwest` calls in a failure-count state machine: after N consecutive failures → **Open** (short-circuit POST, enqueue to WAL immediately); **Half-Open** probe every 30s; close on success. Complements WAL task above; recovery spread (V3-15) applies on **Close**.
+- [x] **Circuit breaker on HTTP ingest client (shipped)** — `wal::CircuitState` (`Closed/HalfOpen/Open`, `AtomicU8`) driven by retry-worker POST outcomes (`record_post_success/failure`) — no extra TCP probes in steady state. Open routes overflow straight to WAL; drainer issues a `try_half_open` trial staggered by node-hash spread; success Closes. Recovery spread (V3-15) reused ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)).
 
 ---
 
@@ -269,12 +269,24 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 ## Phase 13 — Queue-less Architecture (Kafka Removal)
 
 > **Strategic pivot:** Eliminate Apache Kafka from the stack. Agent local disk WAL is the edge shock absorber; `statix-gateway` writes telemetry directly to ClickHouse via HTTP. Supersedes Phases 3–4 Kafka ingest path ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md)) once shipped. *(Phase 9 in this file remains eBPF CI — queue-less tracked here as Phase 13.)*
+>
+> **Core physics (decided):** Kafka was the shock absorber; without it the gateway is the **terminal buffer**. (1) The ingest `mpsc` is **retained but re-cast as a micro-batch coalescer** (ClickHouse dies on many small parts), drained by one **RowBinary insert worker** via the existing `clickhouse = "0.13"` crate. (2) **No `async_insert`** — the synchronous `insert.end()` ACK is the stall detector. (3) Backpressure is **fail-fast refusal**: a `ch_healthy: AtomicBool` flag (writer-driven) makes `POST /ingest` return `503` instantly, faster than the agent's 5s HTTP timeout, tripping the Phase-11 circuit breaker → WAL.
 
-- [ ] **Strip Kafka producer from gateway** — Remove `rskafka`, `statix-gateway/src/kafka.rs`, ingest `mpsc` → Kafka channels, and Kafka from `docker-compose.yml` / K8s manifests. Refactor `POST /ingest` (`statix-gateway/src/routes/ingest.rs`) to denormalize batches and **async insert directly into ClickHouse** via the native HTTP client (`clickhouse` crate / JSONEachRow). Retain `ReplacingMergeTree` dedupe on `(node, window_start_ns, cgroup_id)` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)).
+### Part 1 — Gateway + schema (executable now)
 
-- [ ] **Implement gateway 503 backpressure** — Without Kafka, the gateway cannot buffer when ClickHouse is down. If ClickHouse insert fails or times out, return **`503 Service Unavailable`** immediately on `POST /ingest` (no partial accept). Agents' circuit breakers (Phase 11) open and batches go to **local disk WAL**. `/ready` should reflect ClickHouse reachability, not Kafka mpsc depth ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md) — refactor probes).
+> Playbook: [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) — five ordered tasks; build goes green only after the last. Scope: `01_init.sql` + `main.rs` **plus** the compile-required companions (`kafka.rs` delete, `routes/ingest.rs` retype, `Cargo.toml` rskafka removal).
 
-- [ ] **Remove ClickHouse Kafka engine tables** — Drop `statix.kafka_telemetry_queue`, `telemetry_mv`, and `kafka_num_consumers` tuning from `deploy/clickhouse/01_init.sql`; direct insert to `statix.workload_metrics` only. Cancels open Phase 5 Kafka ops items (retention, `kafka_num_consumers`, broken-message alerting).
+- [ ] **Schema: drop Kafka objects** — `DROP VIEW statix.telemetry_mv SYNC` then `DROP TABLE statix.kafka_telemetry_queue SYNC` (consumer before source, non-locking, metadata-only) in `deploy/clickhouse/01_init.sql`. `statix.workload_metrics` unchanged — already absorbs batched RowBinary inserts; **do not add `async_insert`**. Retains `ReplacingMergeTree` dedupe on `(node, window_start_ns, cgroup_id)` ([ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md)).
+
+- [ ] **Gateway: ClickHouse insert worker** — New `statix-gateway/src/clickhouse_writer.rs` (replaces `kafka.rs`): mpsc coalescer (`STATIX_CH_LINGER_MS` + `STATIX_CH_BATCH_MAX`) drained by a worker doing `ch_client.insert("statix.workload_metrics")` (RowBinary, gateway-local `#[derive(Row)] MetricRow`). `insert.end()` wrapped in `tokio::time::timeout(STATIX_CH_INSERT_TIMEOUT_SECS=3s)` — **must be < agent 5s** — flips `ch_healthy`. Reuses the read-path `ch_client` connection pool. Drop `rskafka`, delete `kafka.rs`.
+
+- [ ] **Gateway: 503 backpressure + state** — `AppState` swaps `kafka_tx/kafka_ready` → `ingest_tx: mpsc::Sender<FlatRow>` / `ch_healthy: Arc<AtomicBool>` (`main.rs`). Three-tier 503 in `routes/ingest.rs`: **Tier 1** instant fast-fail when `!ch_healthy` (no enqueue); **Tier 2** existing `try_reserve_many`→`Full`→503; **Tier 3** `/ready` reflects `ch_healthy` + mpsc 80% gate (no partial accept). Agents' circuit breakers (Phase 11) open → batches to local disk WAL ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md) — probes refactored).
+
+### Part 2 — Project-rule companions + rollout (after Part 1)
+
+- [ ] **Strip Kafka from infra** — Remove Kafka/Zookeeper services from `docker-compose.yml` and any K8s manifests; remove `KAFKA_BROKERS` / `STATIX_KAFKA_*` env. Document new env: `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS`, `STATIX_INGEST_CHANNEL_SIZE`.
+
+- [ ] **ADR + docs + skill (CLAUDE.md hard rule)** — Add ADR under `docs/adr/phase13/`; update `README.md` + `docs/guides/*`; update skill files (`SKILL.md`/`REFERENCE.md`/`PATTERNS.md`/this `TODO.md`). Cancels open Phase 5 Kafka ops items (retention, `kafka_num_consumers`, broken-message alerting) and the Phase 10 Kafka-engine lag alert.
 
 ---
 
@@ -290,6 +302,8 @@ L8/L9 V3 (shipped):     V3-1…18 (Wave 1–5: ADR 049–053)
   Week 4:               [x] V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              [x] V3-16, V3-17, V3-18, V3-3 (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index, Kafka lag alerting
-PHASE 11 (planned):     agent WAL (primary buffer), circuit breaker
-PHASE 13 (pivot):       Remove Kafka; gateway → ClickHouse HTTP; 503 → agent WAL
+PHASE 11 (shipped):     agent WAL (primary buffer), circuit breaker  — ADR 054
+PHASE 13 (active):      Remove Kafka; gateway → ClickHouse HTTP; 503 → agent WAL
+  Part 1 (playbook):    [ ] schema drop · CH RowBinary insert worker · 3-tier 503  — PHASE_13_PART1_PLAYBOOK.md
+  Part 2 (companions):  [ ] strip Kafka infra/env · ADR phase13 + docs + skill
 ```

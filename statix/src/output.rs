@@ -53,6 +53,8 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static IS_HTTP_INGEST: OnceLock<bool> = OnceLock::new();
 static RETRY_TX: OnceLock<mpsc::Sender<bytes::Bytes>> = OnceLock::new();
 static RETRY_RX: OnceLock<Arc<Mutex<mpsc::Receiver<bytes::Bytes>>>> = OnceLock::new();
+/// Phase 11 disk WAL spillway handle (set by `init_wal`).
+static WAL: OnceLock<crate::wal::Wal> = OnceLock::new();
 
 fn is_http_ingest() -> bool {
     *IS_HTTP_INGEST.get_or_init(|| statix_infra::env::var("STATIX_INGEST_URL").is_some())
@@ -133,6 +135,7 @@ pub fn init_retry_worker(url: String) {
             loop {
                 match post_ingest(&url, body.clone()).await {
                     PostOutcome::Success => {
+                        crate::wal::record_post_success();
                         if backoff_secs > initial_backoff {
                             let sleep_secs = recovery_spread_sleep_secs(&node_name);
                             log::info!(
@@ -145,6 +148,7 @@ pub fn init_retry_worker(url: String) {
                         break;
                     }
                     PostOutcome::Retryable(reason) => {
+                        crate::wal::record_post_failure();
                         let jitter = rand::random::<f64>() * (backoff_secs as f64 * 0.3);
                         let sleep_secs = backoff_secs as f64 + jitter;
                         log::warn!(
@@ -156,6 +160,8 @@ pub fn init_retry_worker(url: String) {
                         backoff_secs = (backoff_secs * 2).min(max_backoff);
                     }
                     PostOutcome::NonRetryable(status) => {
+                        // Gateway is reachable (4xx) — treat as healthy for the circuit.
+                        crate::wal::record_post_success();
                         log::error!(
                             "ingest POST non-retryable status {status}; discarding batch window"
                         );
@@ -166,6 +172,34 @@ pub fn init_retry_worker(url: String) {
             }
         }
     });
+}
+
+/// Initialise the disk WAL spillway and start its replay drainer. Call once,
+/// after `init_retry_worker` (the drainer feeds the retry queue). Safe to skip
+/// when `STATIX_WAL_ENABLED=0`.
+pub fn init_wal(node: &str) {
+    let cfg = crate::wal::WalConfig::from_env();
+    if !cfg.enabled {
+        log::info!("Disk WAL spillway disabled (STATIX_WAL_ENABLED=0); overflow falls back to drop-oldest");
+        return;
+    }
+    log::info!(
+        "Disk WAL spillway: dir={:?}, max={} bytes, segment={} bytes (STATIX_WAL_DIR / STATIX_WAL_MAX_BYTES / STATIX_WAL_SEGMENT_BYTES)",
+        cfg.dir, cfg.max_bytes, cfg.segment_bytes
+    );
+    match crate::wal::Wal::open(cfg) {
+        Ok(wal) => {
+            if let Some(retry_tx) = RETRY_TX.get() {
+                crate::wal::drainer::spawn_drainer(wal.clone(), retry_tx.clone(), node.to_string());
+            } else {
+                log::warn!("init_wal called before init_retry_worker; WAL drainer not started");
+            }
+            let _ = WAL.set(wal);
+        }
+        Err(e) => log::error!(
+            "Failed to open disk WAL ({e}); spillover disabled, overflow falls back to drop-oldest"
+        ),
+    }
 }
 
 enum PostOutcome {
@@ -213,12 +247,25 @@ fn enqueue_batch_json(json: bytes::Bytes) {
     match tx.try_send(json) {
         Ok(()) => {}
         Err(mpsc::error::TrySendError::Full(json)) => {
+            // Phase 11: spill to the disk WAL instead of dropping (FinOps zero-loss).
+            // `try_append` is a non-blocking try_send to the dedicated writer thread —
+            // no disk I/O on the ring-buffer hot path. Returns the payload back if the
+            // WAL is disabled or its writer channel is also full.
+            let json = match WAL.get() {
+                Some(wal) => match wal.try_append(json) {
+                    Ok(()) => return,
+                    Err(json) => json,
+                },
+                None => json,
+            };
+
             let Some(rx_arc) = RETRY_RX.get() else {
                 log::error!("ingest retry queue full and receiver missing; dropping batch");
                 return;
             };
 
-            // Synchronous drop-oldest — never spawn on the ring-buffer hot path.
+            // Last-resort bound: WAL unavailable/full — synchronous drop-oldest
+            // (never spawn on the ring-buffer hot path).
             if let Ok(mut rx) = rx_arc.try_lock() {
                 if rx.try_recv().is_ok() {
                     log::error!(

@@ -65,7 +65,8 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | Layer | Rule |
 |-------|------|
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
-| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, sync `try_lock` drop-oldest (no spawn); backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)) |
+| `emit_batch` | Serialize + `try_send` to retry worker; on full queue, `try_append` to disk WAL spillway (Phase 11, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) then last-resort sync drop-oldest; backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)) |
+| Disk WAL | Hot path `try_append` (non-blocking) → dedicated `statix-wal-writer` thread (`fdatasync` group-commit); never disk I/O on the ring-buffer loop ([PLAYBOOK](PHASE_11_WAL_PLAYBOOK.md)) |
 | `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
 | Kafka | Background task only |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |

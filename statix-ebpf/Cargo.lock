@@ -197,11 +197,11 @@ dependencies = [
 
 [[package]]
 name = "statix-common"
-version = "1.0.7"
+version = "1.0.8"
 
 [[package]]
 name = "statix-ebpf"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aya-ebpf",
  "statix-common",

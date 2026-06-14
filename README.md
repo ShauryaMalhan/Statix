@@ -108,6 +108,12 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
 | `STATIX_BACKOFF_INITIAL_SECS` | `1` | Agent retry base backoff (seconds) |
 | `STATIX_BACKOFF_MAX_SECS` | `30` | Agent retry max backoff (seconds); 30% jitter on sleep |
+| `STATIX_WAL_ENABLED` | `true` | Disk WAL spillway (Phase 11); `0/false/no/off` → legacy drop-oldest |
+| `STATIX_WAL_DIR` | `/var/lib/statix/wal` | WAL segment directory (use a writable ephemeral volume) |
+| `STATIX_WAL_MAX_BYTES` | `536870912` | WAL hard disk cap (512 MiB; ≥ one segment); drop-oldest at cap |
+| `STATIX_WAL_SEGMENT_BYTES` | `8388608` | WAL segment rotation size (8 MiB) |
+| `STATIX_WAL_FSYNC_FRAMES` | `64` | Max frames between `fdatasync` group-commits |
+| `STATIX_WAL_FSYNC_INTERVAL_MS` | `200` | Max time between `fdatasync` group-commits |
 | `KAFKA_BROKERS` | `localhost:9092` | Gateway → Kafka (`statix-gateway/src/config.rs`) |
 | `STATIX_API_PORT` | `3000` | Gateway listen port (invalid value exits at startup) |
 | `STATIX_KAFKA_CHANNEL_SIZE` | `8192` | Gateway ingest mpsc depth (min 1024) |

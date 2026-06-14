@@ -226,3 +226,32 @@ pub fn read_env_u64(name: &str, default: u64) -> u64 {
 
 - `STATIX_WINDOW_SECS=0` → warns, uses default `10` (prevents Tokio zero-duration panic).
 - Do **not** add parallel `read_env_i64` / ad-hoc `.max(1)` parsers — extend the generic if a new numeric type is needed.
+
+## Pattern 17 — Disk WAL spillway (Phase 11, `statix/src/wal/`)
+
+When the in-memory retry queue saturates or the gateway is down, batches spill to
+a bounded segmented append-only log on disk instead of being dropped — preserving
+FinOps zero-data-loss. Full spec: [PHASE_11_WAL_PLAYBOOK.md](PHASE_11_WAL_PLAYBOOK.md), [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md).
+
+```rust
+// statix/src/output.rs — enqueue_batch_json Full branch (hot path)
+Err(mpsc::error::TrySendError::Full(json)) => {
+    // try_append is a NON-BLOCKING try_send to the dedicated writer thread —
+    // no disk I/O on the ring-buffer hot path. Returns the payload back on failure.
+    let json = match WAL.get() {
+        Some(wal) => match wal.try_append(json) {
+            Ok(()) => return,
+            Err(json) => json,
+        },
+        None => json,
+    };
+    // ...last-resort legacy drop-oldest only if WAL disabled / channel full
+}
+```
+
+- **Storage:** segmented `seg-<seq>.wal`, CRC32-framed `[u32 len][u32 crc][u64 seq][payload]`; `bytes::Bytes` written verbatim (zero-copy). Never SQLite/mmap (write amplification / SIGBUS on ENOSPC).
+- **Writer:** one `std::thread` (`statix-wal-writer`) owns the active fd; `fdatasync` (not `fsync`) group-commit. Never `spawn_blocking` (pool starvation).
+- **Recovery:** `wal::recovery::recover()` at boot truncates torn tails (CRC/len), drops corrupt-header segments, rebuilds cursors from segments (superblock advisory).
+- **Circuit:** `Closed/HalfOpen/Open` driven by retry-worker POST outcomes (`record_post_success/failure`) — no health polling. Drainer replays oldest-first, staggered by node-hash spread.
+- **Bounds:** `STATIX_WAL_MAX_BYTES` drop-oldest at cap; ENOSPC → metric + truncate, never panic. At-least-once; deduped by `ReplacingMergeTree`.
+- **Verify:** `make wal-test` (unit/integration), `make wal-faultfs` (root tmpfs ENOSPC).

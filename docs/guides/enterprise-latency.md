@@ -11,6 +11,7 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | **Bounded memory** | Aggregator early flush at `max_keys`; double-buffered maps with `.clear()` (retain capacity) |
 | **No hot-path heap churn** | Stack reads: `[u8; 32]` `memory.current`, `[u8; 1024]` `/proc/{pid}/cgroup`; `spawn_blocking` for sampler; `FxHashMap` for `u64` keys |
 | **Explicit backpressure** | Channel full → `503` + plain text (handler never blocks); tune `STATIX_KAFKA_CHANNEL_SIZE` for burst ([ADR 014](adr/014-kafka-producer-env-tuning.md)) |
+| **No telemetry loss on outage** | Agent retry queue full / gateway down → spill to bounded disk WAL (segmented append-only log) via non-blocking `try_append` to a dedicated writer thread; background drainer replays oldest-first when the gateway recovers; FIFO loss only at the disk hard cap. At-least-once; deduped by `ReplacingMergeTree` ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md), [PLAYBOOK](../../.cursor/skills/statix-ebpf-agent/PHASE_11_WAL_PLAYBOOK.md)) |
 | **Raw bytes on the wire** | `serde_json` only; no ORM; ClickHouse Kafka engine consumes `JSONEachRow` |
 | **Shared I/O pools** | One `reqwest::Client` via `OnceLock` (`STATIX_HTTP_TIMEOUT_SECS` default 5s, `STATIX_HTTP_POOL_IDLE_SECS` default 55s); one Kafka producer task per API process |
 | **Partition by node** | Kafka record key = `node`; producer hashes to broker partition count ([ADR 010](adr/010-kafka-partition-key-by-node.md)) |

@@ -2692,11 +2692,12 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "statix"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "aya",
  "bytes",
+ "crc32fast",
  "env_logger",
  "futures",
  "k8s-openapi",
@@ -2723,14 +2724,14 @@ dependencies = [
 
 [[package]]
 name = "statix-common"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "aya",
 ]
 
 [[package]]
 name = "statix-gateway"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "axum",
  "chrono",
@@ -2751,7 +2752,7 @@ dependencies = [
 
 [[package]]
 name = "statix-infra"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "libc",
  "log",
@@ -2759,7 +2760,7 @@ dependencies = [
 
 [[package]]
 name = "statix-wire"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "serde",
 ]
