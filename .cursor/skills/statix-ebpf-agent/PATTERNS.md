@@ -118,15 +118,17 @@ limits   = requests × 1.25;
 
 ---
 
-## Pattern 10 — Phase 3 non-blocking ingest (enterprise)
+## Pattern 10 — Phase 13 queue-less ingest
 
-**Agent:** `OnceLock<reqwest::Client>`; `STATIX_API_TOKEN` → `default_headers` ([ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)); `PrometheusBuilder` → `:9091/metrics` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `init_retry_worker` — `mpsc(60)`; `emit_batch` → `try_send`; on `Full`, `try_lock` drop-oldest ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md)).
+**Agent:** `OnceLock<reqwest::Client>`; circuit breaker + WAL on sustained 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)); `init_retry_worker` — `mpsc(60)` + disk spillway.
 
-**API:** `GET /health`, `GET /ready` ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md)); `GET /metrics` ([ADR 012](../../../docs/adr/012-finops-api-prometheus-metrics.md)); `expected_bearer` precomputed at startup — no per-request `format!` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)); `schema_version` `2..=3` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send` — `200`/`401`/`400`/`503`.
+**API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `schema_version` `2..=3`; 2MB body limit.
 
-**Kafka:** channel `(Vec<u8>, Vec<u8>)`; `bytes_to_record` moves vecs (no `to_vec`); env `STATIX_KAFKA_*` — [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md).
+**Writer:** `clickhouse_writer.rs` — coalesce `FlatRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE`.
 
-**ClickHouse:** Kafka engine settings — [ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md). `ReplacingMergeTree`: LC only `node`/`namespace`; `ORDER BY (node, window_start_ns, cgroup_id)`; billing `SELECT … FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
+**ClickHouse:** `statix.workload_metrics` only (no Kafka engine); `ReplacingMergeTree`; billing `FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
+
+*(Historical Kafka path: [ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md).)*
 
 ---
 
@@ -168,7 +170,7 @@ See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../do
 clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 ```
 
-`statix.workload_metrics` + `kafka_telemetry_queue` + `telemetry_mv`; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md)).
+`statix.workload_metrics` only; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md), [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 
 **API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
 
@@ -176,9 +178,12 @@ clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 
 All `statix-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
 
-| Env | `Config` field | Default |
-|-----|----------------|---------|
-| `KAFKA_BROKERS` | `kafka_brokers` | `localhost:9092` |
+| Env | `Config` field / module | Default |
+|-----|-------------------------|---------|
+| `STATIX_INGEST_CHANNEL_SIZE` | `clickhouse_writer` mpsc | `8192` (min 1024) |
+| `STATIX_CH_BATCH_MAX` | writer coalesce | `1024` (64–16384) |
+| `STATIX_CH_LINGER_MS` | writer coalesce | `50` (1–1000) |
+| `STATIX_CH_INSERT_TIMEOUT_SECS` | insert ACK timeout | `3` (1–30; must be &lt; agent HTTP timeout) |
 | `STATIX_API_PORT` | `api_port` | `3000` (invalid u16 → process exit) |
 | `STATIX_API_TOKEN` | `api_token` | `None` |
 | `CLICKHOUSE_URL` | `clickhouse_url` | `http://localhost:8123` |

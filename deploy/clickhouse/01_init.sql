@@ -1,11 +1,9 @@
--- FinOps telemetry: Kafka engine → ReplacingMergeTree (single source of truth)
--- Wire: JSONEachRow on topic `statix-telemetry` (statix_wire::FlatRow)
+-- FinOps telemetry: gateway RowBinary → ReplacingMergeTree (single source of truth)
+-- Wire: POST /ingest JSON batch → gateway coalescer → RowBinary INSERT
 --
 -- Billing: SELECT * FROM statix.workload_metrics FINAL WHERE node = '...';
 --
 -- Schema change on existing volume: docker compose down -v && make compose-up
---
--- Broker overrides: Compose statix-net = kafka:29092; K8s = kafka-broker.default.svc.cluster.local:9092
 
 CREATE DATABASE IF NOT EXISTS statix;
 
@@ -32,33 +30,12 @@ PARTITION BY toStartOfHour(toDateTime(intDiv(window_start_ns, 1000000000)))
 ORDER BY (node, window_start_ns, cgroup_id)
 TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS statix.kafka_telemetry_queue
-(
-    window_start_ns UInt64,
-    window_end_ns UInt64,
-    node LowCardinality(String),
-    batch_id String,
-    agent_version LowCardinality(String),
-    cgroup_id UInt64,
-    namespace LowCardinality(Nullable(String)),
-    pod Nullable(String),
-    container Nullable(String),
-    k8s_resolved Bool,
-    memory_bytes_max UInt64,
-    memory_bytes_last UInt64,
-    exec_count UInt32,
-    sample_count UInt32
-)
-ENGINE = Kafka
-SETTINGS
-    kafka_broker_list = 'kafka:29092',
-    kafka_topic_list = 'statix-telemetry',
-    kafka_group_name = 'clickhouse-ingest-group',
-    kafka_format = 'JSONEachRow',
-    kafka_skip_broken_messages = 1000,
-    -- Match Kafka topic partition count (min 4 prod); scale with broker topic config (V3-12 / ADR 051)
-    kafka_num_consumers = 4;
+-- Phase 13: Kafka removed — gateway inserts RowBinary batches directly.
+-- Drop the consumer (MV) before the source (Kafka table) so no rows are read mid-teardown.
+DROP VIEW  IF EXISTS statix.telemetry_mv          SYNC;
+DROP TABLE IF EXISTS statix.kafka_telemetry_queue SYNC;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS statix.telemetry_mv
-TO statix.workload_metrics AS
-SELECT * FROM statix.kafka_telemetry_queue;
+-- statix.workload_metrics (defined above) is UNCHANGED:
+--   ReplacingMergeTree(window_end_ns) natively absorbs batched HTTP inserts;
+--   ReplacingMergeTree + FINAL dedups at-least-once WAL replays.
+-- Do NOT add async_insert: the synchronous insert ACK is the stall-detection primitive.

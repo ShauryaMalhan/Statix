@@ -3,87 +3,76 @@
 ## Prerequisites
 
 - Phase 2 prerequisites ([phase2-validation.md](phase2-validation.md))
-- Docker: `docker.io` + `docker-compose-v2` (`make compose-up` checks for `docker`)
+- Docker: `docker compose` v2
 - `make build` includes `statix-gateway`, `statix`, and `statix-wire`
 
 ## Stack smoke test
 
 ```bash
-cd statix-core
-cp .env.example .env   # local secrets; load before curl -u examples below
+cd /root/ebpf-shaurya/Statix
+cp .env.example .env
 set -a && source .env && set +a
 make compose-up
-docker compose ps   # kafka, kafka-ui, clickhouse, grafana, statix-gateway running
-# API in compose listens :3000 — or use `make run-api` on host (not both)
+docker compose ps   # clickhouse, grafana, statix-gateway running
 ```
 
 Expect: `make compose-up` prints `http://127.0.0.1:3000/health (OK)`.
 
-## Agent → API → Kafka → ClickHouse
+## Agent → API → ClickHouse
 
 ```bash
-# terminal 2 (root for BPF)
 export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
 sudo -E make run
 ```
 
-Trigger workload activity (`ls /tmp`, pod exec, etc.). Wait one flush window.
+Trigger workload activity. Wait one flush window.
 
 ### Pass criteria
 
 | Test | Pass |
 |------|------|
 | API liveness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health` → `200` |
-| API readiness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ready` → `200` after Kafka metadata load (may `503` for first seconds) |
-| Prometheus (API) | `curl -s http://127.0.0.1:3000/metrics \| grep statix_api_` → lines present (404 = rebuild API image) |
-| Prometheus (agent) | With agent running: `curl -s http://127.0.0.1:9091/metrics \| grep statix_ring_drops` → metric registered ([ADR 023](adr/023-phase5-hot-path-fixes.md)) |
-| API ingest | `curl ... -X POST http://127.0.0.1:3000/ingest` (no auth when `STATIX_API_TOKEN` unset) → `200` |
-| Ingest auth | With `STATIX_API_TOKEN` set on API: missing header → `401`; `curl -H 'Authorization: Bearer <token>' ...` → `200` ([ADR 019](adr/019-ingest-bearer-token-auth.md)) |
-| Kafka topic | Kafka UI `:8080` shows topic `statix-telemetry` with messages |
-| ClickHouse rows | `curl -s -u default:${CLICKHOUSE_PASSWORD} 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'` → count &gt; 0 after traffic |
-| Read API | `curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24'` → `200` + JSON array (empty `[]` OK before traffic; `500` = check `CLICKHOUSE_*` / rebuild API) ([ADR 027](adr/027-api-read-path-clickhouse.md)) |
-| Agent non-blocking | Ring buffer loop responsive under load; ingest retries log `warn` on backoff |
-| Backpressure signal | Saturate channel (load test) → `POST /ingest` returns `503` with plain-text body (not `200`) |
-| Schema gate | `schema_version: 1` or `4` → `400`; `2` or `3` → `200` ([ADR 020](adr/020-ingest-schema-version-window.md)) |
-| Stdout fallback | Unset `STATIX_INGEST_URL` → batched JSON on stdout (Phase 2 behavior) |
+| API readiness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ready` → `200` when ClickHouse healthy + mpsc &lt;80% |
+| Prometheus (API) | `curl -s http://127.0.0.1:3000/metrics \| grep statix_api_` → lines present |
+| Prometheus (agent) | `curl -s http://127.0.0.1:9091/metrics \| grep statix_ring_drops` → present |
+| API ingest | `POST /ingest` (no auth when token unset) → `200` |
+| Ingest auth | With `STATIX_API_TOKEN`: missing → `401`; valid Bearer → `200` ([ADR 019](../adr/019-ingest-bearer-token-auth.md)) |
+| ClickHouse rows | `SELECT count() FROM statix.workload_metrics FINAL` → &gt; 0 after traffic |
+| Read API | `GET /api/v1/workloads/summary?hours=24` → `200` + JSON ([ADR 027](../adr/027-api-read-path-clickhouse.md)) |
+| Backpressure | Pause ClickHouse → within `STATIX_CH_INSERT_TIMEOUT_SECS`, `/ingest` and `/ready` → `503` ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| Schema gate | `schema_version` 2 or 3 → `200`; outside range → `400` ([ADR 020](../adr/020-ingest-schema-version-window.md)) |
+| Stdout fallback | Unset `STATIX_INGEST_URL` → batched JSON on stdout |
 
 ## ClickHouse schema check
 
 ```bash
-curl -s -u default:${CLICKHOUSE_PASSWORD} 'http://localhost:8123/?query=SHOW%20TABLES'
-# statix.kafka_telemetry_queue, statix.workload_metrics, statix.telemetry_mv
+curl -s -u default:${CLICKHOUSE_PASSWORD} 'http://localhost:8123/?query=SHOW%20TABLES%20FROM%20statix'
+# Expect: workload_metrics only (Phase 13 — no kafka_telemetry_queue / telemetry_mv)
 ```
 
-If tables are missing or schema changed (partition / ORDER BY / TTL), reset the volume:
+Reset volume after schema change:
 
 ```bash
 docker compose down -v && make compose-up
 ```
 
-See [ADR 007](adr/007-clickhouse-mergetree-tuning.md), [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md), [ADR 011](adr/011-replacingmergetree-dedupe-identity.md).
+See [ADR 007](../adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../adr/011-replacingmergetree-dedupe-identity.md), [ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md).
 
 ```bash
 curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.workload_metrics" | grep -E 'ReplacingMergeTree|ORDER BY'
-# Expect ReplacingMergeTree and ORDER BY (node, window_start_ns, cgroup_id)
-```
-
-```bash
-curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.kafka_telemetry_queue" | grep -E 'skip_broken|num_consumers'
-# Expect kafka_skip_broken_messages = 1000 and kafka_num_consumers = 1 (local)
 ```
 
 ## Local ports
 
 | Service | Port |
 |---------|------|
-| Kafka (host) | 9092 |
-| Kafka UI | 8080 |
 | ClickHouse HTTP | 8123 |
 | statix-gateway | 3000 |
 | Grafana | 3001 |
+| Agent metrics | 9091 |
 
 ## Enterprise checks
 
-See [enterprise-latency.md](enterprise-latency.md): no handler `await` on Kafka; agent uses retry worker + env-tuned `reqwest` — [ADR 006](adr/006-shared-http-client-for-ingest.md).
+See [enterprise-latency.md](enterprise-latency.md): no handler `await` on ClickHouse; agent WAL on `503` ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)).
 
-Tear down: `make compose-down`. Rebuild API after code changes: `docker compose build statix-gateway && docker compose up -d statix-gateway` ([ADR 009](adr/009-statix-gateway-docker-compose.md)).
+Tear down: `make compose-down`. Rebuild gateway: `docker compose build statix-gateway && docker compose up -d statix-gateway`.

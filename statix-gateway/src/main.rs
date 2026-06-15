@@ -1,9 +1,9 @@
-//! statix-gateway — ingest gateway: POST /ingest → mpsc → Kafka; read-path → ClickHouse.
+//! statix-gateway — ingest gateway: POST /ingest → mpsc → ClickHouse; read-path → ClickHouse.
 //! Phases 3–4 + 6 shipped; Target 3: GET `/api/v1/workloads/summary`.
 
+mod clickhouse_writer;
 mod config;
 mod error;
-mod kafka;
 mod routes;
 
 use error::GatewayError;
@@ -22,17 +22,13 @@ use axum::Router;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::sync::mpsc;
 
-/// Ingest mpsc considered under backpressure when more than this percent of slots are in use.
 const READY_CHANNEL_FULL_THRESHOLD_PCT: u8 = 80;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub kafka_tx: mpsc::Sender<kafka::KafkaQueueItem>,
-    /// Configured `mpsc` capacity (`STATIX_KAFKA_CHANNEL_SIZE` at startup).
-    pub kafka_channel_capacity: usize,
-    /// `true` after Kafka broker connect + partition metadata load.
-    pub kafka_ready: Arc<AtomicBool>,
-    /// When set, full `Authorization` header value (`Bearer <token>`) for `POST /ingest`.
+    pub ingest_tx: mpsc::Sender<statix_wire::FlatRow>,
+    pub ingest_channel_capacity: usize,
+    pub ch_healthy: Arc<AtomicBool>,
     pub expected_bearer: Option<String>,
     pub ch_client: clickhouse::Client,
 }
@@ -50,7 +46,6 @@ async fn main() -> Result<(), GatewayError> {
     }
     log::info!("ClickHouse read-path: {}", config.clickhouse_url);
 
-    // Global recorder for `metrics::counter!` / `histogram!` / `gauge!`; Axum serves `/metrics`.
     let prometheus_handle = PrometheusBuilder::new()
         .install_recorder()
         .map_err(|e| GatewayError::PrometheusInstall(e.to_string()))?;
@@ -58,15 +53,18 @@ async fn main() -> Result<(), GatewayError> {
     spawn_prometheus_upkeep(prometheus_handle.clone());
 
     let ch_client = config.clickhouse_client();
-    let producer = kafka::spawn_producer(config.kafka_brokers.clone());
-    let kafka_channel_capacity = producer.channel_capacity;
+    let writer = clickhouse_writer::spawn_writer(
+        ch_client.clone(),
+        clickhouse_writer::ingest_channel_capacity(),
+    );
+    let ingest_channel_capacity = writer.channel_capacity;
     log::info!(
-        "Ingest readiness: /ready fails when mpsc > {READY_CHANNEL_FULL_THRESHOLD_PCT}% full (capacity={kafka_channel_capacity})"
+        "Ingest readiness: /ready fails when mpsc > {READY_CHANNEL_FULL_THRESHOLD_PCT}% full (capacity={ingest_channel_capacity})"
     );
     let state = AppState {
-        kafka_tx: producer.tx.clone(),
-        kafka_channel_capacity,
-        kafka_ready: producer.is_ready.clone(),
+        ingest_tx: writer.tx.clone(),
+        ingest_channel_capacity,
+        ch_healthy: writer.ch_healthy.clone(),
         expected_bearer: config.expected_bearer().map(str::to_string),
         ch_client,
     };
@@ -88,8 +86,8 @@ async fn main() -> Result<(), GatewayError> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     log::info!(
-        "statix-gateway: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; brokers={}",
-        config.kafka_brokers
+        "statix-gateway: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; clickhouse={}",
+        config.clickhouse_url
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -97,9 +95,9 @@ async fn main() -> Result<(), GatewayError> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    log::info!("HTTP server stopped; draining Kafka producer");
-    match tokio::time::timeout(Duration::from_secs(10), producer.shutdown()).await {
-        Ok(_) => log::info!("Kafka producer drained successfully"),
+    log::info!("HTTP server stopped; draining ClickHouse writer");
+    match tokio::time::timeout(Duration::from_secs(10), writer.shutdown()).await {
+        Ok(_) => log::info!("ClickHouse writer drained successfully"),
         Err(_) => {
             let err = GatewayError::DrainTimeout { secs: 10 };
             log::error!("{err}");
@@ -130,27 +128,25 @@ async fn metrics_endpoint(handle: PrometheusHandle) -> impl IntoResponse {
     )
 }
 
-/// Liveness: HTTP server up and producer task has not dropped the ingest channel.
 async fn health_check(State(state): State<AppState>) -> StatusCode {
-    if state.kafka_tx.is_closed() {
+    if state.ingest_tx.is_closed() {
         StatusCode::SERVICE_UNAVAILABLE
     } else {
         StatusCode::OK
     }
 }
 
-/// Readiness: Kafka connected, ingest channel open, and mpsc not under backpressure (&gt;80% full).
 async fn readiness_check(State(state): State<AppState>) -> StatusCode {
-    if state.kafka_tx.is_closed() {
+    if state.ingest_tx.is_closed() {
         return StatusCode::SERVICE_UNAVAILABLE;
     }
 
-    if !state.kafka_ready.load(Ordering::Acquire) {
+    if !state.ch_healthy.load(Ordering::Acquire) {
         return StatusCode::SERVICE_UNAVAILABLE;
     }
 
-    let remaining = state.kafka_tx.capacity();
-    let total = state.kafka_channel_capacity;
+    let remaining = state.ingest_tx.capacity();
+    let total = state.ingest_channel_capacity;
     if ingest_channel_over_threshold(remaining, total, READY_CHANNEL_FULL_THRESHOLD_PCT) {
         let used = total.saturating_sub(remaining);
         let used_pct = if total > 0 {
@@ -167,7 +163,6 @@ async fn readiness_check(State(state): State<AppState>) -> StatusCode {
     StatusCode::OK
 }
 
-/// `true` when fewer than `(100 - threshold_pct)%` of `total` slots remain (channel over threshold full).
 fn ingest_channel_over_threshold(remaining: usize, total: usize, threshold_pct: u8) -> bool {
     if total == 0 {
         return false;
@@ -191,7 +186,6 @@ mod readiness_tests {
     }
 }
 
-/// SIGINT (local) and SIGTERM (ECS/K8s deploy) — stop accept, then drain in-flight ingest.
 async fn shutdown_signal() {
     let ctrl_c = async {
         if tokio::signal::ctrl_c().await.is_ok() {

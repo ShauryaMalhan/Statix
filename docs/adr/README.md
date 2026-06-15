@@ -11,7 +11,9 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [adr/](.) (this directory) | 001–031, 035–048 — foundations through Phase 9 |
 | [phase55/l8/](phase55/l8/) | 032–034 — L8 audit V1 |
 | [phase55/v2/](phase55/v2/) | 038–043 — L8 audit V2 |
-| [v3/](phase55/v3/) | 049–053 — Post-GA V3 waves |
+| [phase55/v3/](phase55/v3/) | 049–053 — Post-GA V3 waves |
+| [phase11/](phase11/) | 054 — Agent WAL spillway |
+| [phase13/](phase13/) | 055+ — Queue-less ingest |
 
 See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.md).
 
@@ -79,3 +81,15 @@ See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.m
 | [051](phase55/v3/051-phase55-v3-wave3-distributed-state.md) | V3 Wave 3 — CH partitions; Kafka consumers; recovery spread | Accepted |
 | [052](phase55/v3/052-phase55-v3-wave4-perf-observability.md) | V3 Wave 4 — bootstrap blocking; ring metrics; body limit; QoS | Accepted |
 | [053](phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md) | V3 Wave 5 — BPF const; alignment; 5ms poll; `Arc<str>` node | Accepted |
+
+## Phase 11 — Agent reliability
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [054](phase11/054-phase11-wal-spillway.md) | Agent WAL spillway + circuit breaker | Accepted |
+
+## Phase 13 — Queue-less ingest
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [055](phase13/055-phase13-part1-kafka-removal-rowbinary.md) | Part 1 — Kafka removal; gateway RowBinary → ClickHouse | Accepted |

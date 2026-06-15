@@ -2,7 +2,7 @@
 name: statix-ebpf-agent
 description: >-
   Enterprise low-latency standards for the Statix eBPF stack:
-  BPF ring buffer, batched agent, HTTP→Kafka→ClickHouse; Phase 5 security focus.
+  BPF ring buffer, batched agent, HTTP→gateway→ClickHouse RowBinary; Phase 13 queue-less ingest.
   Use when editing statix-common, statix-ebpf, statix-wire, statix-infra, statix, statix-gateway; adding probes;
   ingest, Docker infra, or ADRs. Always read this skill first, then build with make,
   and update docs/adr/skills in the same change.
@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** (L8 GA + post-GA — [ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) · **5 partial** (prod CH/Kafka ops — [phase5-production-readiness.md](../../../docs/guides/phase5-production-readiness.md)) · **6 done** · **7 done** · **T1–3 done** ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) · **8 partial** (cgroup→pod mapping open) · **9 partial** (arm64 CI, cgroup v1 — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 Part 1 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md); Part 2 compose strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -20,7 +20,7 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** (L8 GA + post-GA — [ADR 032](.
 2. **For hot-path / performance fixes:** Read [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — contains exact before/after code, dependency order, and pitfalls. Follow the prescribed approach exactly; do not invent alternatives.
 3. Implement using patterns below (do not invent parallel conventions)
 4. `make build && make check` (add `make verify-btf` if BPF/deploy changed)
-5. **ADR** — new file in `docs/adr/` (Phase 5.5 waves → `docs/adr/phase55/v3/`) ([enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
+5. **ADR** — new file in `docs/adr/` (Phase 5.5 → `phase55/`; Phase 13 → `phase13/`) ([enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
 6. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
 7. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
 8. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
@@ -33,7 +33,7 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** (L8 GA + post-GA — [ADR 032](.
 - [ ] Agent: no await on ring-buffer path; `DRAIN_BUDGET=256` ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)); `emit_batch` moves `BatchPayload`; Prometheus `:9091` ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
 - [ ] Aggregator: FxHashMap, double buffer, early flush (never enforce_cap); `clock_offset_ns` ([ADR 016](../../../docs/adr/016-clock-domain-offset.md))
 - [ ] Output: `STATIX_INGEST_URL` → `init_http_client` (+ optional `STATIX_API_TOKEN`) + `init_retry_worker` ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md))
-- [ ] API: `Config::from_env()` first in `main` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); GET /health; GET /ready; POST /ingest `try_send`; read API
+- [ ] API: `Config::from_env()` first in `main` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); GET /health; GET /ready (`ch_healthy` + mpsc &lt;80%); POST /ingest `try_reserve_many`; read API
 - [ ] make build && make check
 - [ ] docs/adr + skills updated
 ```
@@ -46,10 +46,10 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** (L8 GA + post-GA — [ADR 032](.
 | `statix-wire` | host lib | `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)) |
 | `statix-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`STATIX_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `statix` | host | loader, attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
-| `statix-gateway` | host | `Config::from_env()`; `GatewayError` ([ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)); ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)) |
+| `statix-gateway` | host | `Config::from_env()`; `clickhouse_writer` RowBinary coalescer; ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
 | `statix-infra` | lib | `read_env_positive` (via `read_env_u64`/`read_env_usize`), clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md), [048](../../../docs/adr/048-generic-env-positive-parsing.md)) |
 
-**Infra:** `docker-compose.yml` (Kafka, ClickHouse, Grafana `:3001`, API), `deploy/docker/`, `deploy/k8s/` (incl. `gateway-ingress.yaml` ALB TLS), `deploy/clickhouse/01_init.sql`
+**Infra:** `docker-compose.yml` (ClickHouse, Grafana `:3001`, gateway — Kafka removal Part 2), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -67,8 +67,8 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | Ring buffer loop | No `.await` on HTTP ingest or blocking I/O |
 | `emit_batch` | Serialize + `try_send` to retry worker; on full queue, `try_append` to disk WAL spillway (Phase 11, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) then last-resort sync drop-oldest; backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)) |
 | Disk WAL | Hot path `try_append` (non-blocking) → dedicated `statix-wal-writer` thread (`fdatasync` group-commit); never disk I/O on the ring-buffer loop ([PLAYBOOK](PHASE_11_WAL_PLAYBOOK.md)) |
-| `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); `try_send`; `200` or `503` on channel full |
-| Kafka | Background task only |
+| `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); Tier 1 `!ch_healthy`→503; Tier 2 `try_reserve_many`→503; 2MB body limit ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md)) |
+| ClickHouse writer | Background task only — RowBinary micro-batches; sync `insert.end()` ACK ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
@@ -125,18 +125,15 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 | cgroup v2 | `split_once("::")` not `split_once(':')` |
 | Paths | `Path::components()` — no full-path `to_string_lossy()` |
 
-## Ingest pipeline (Phases 3–4 shipped; Phase 5 secures `/ingest`)
+## Ingest pipeline (Phase 13 — queue-less)
 
 | Component | Rule |
 |-----------|------|
-| Agent | `init_http_client` (`STATIX_API_TOKEN` → `default_headers`); `init_retry_worker` queue 60, backoff + jitter; HTTP timeouts via env ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [ADR 019](../../../docs/adr/019-ingest-bearer-token-auth.md)) |
-| API | `GET /health`; `GET /ready` = Kafka ready + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md)); `POST /ingest` `try_send` + 2MB body limit ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md)) + `statix_api_ingest_lag_seconds` ([ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)); read API [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
-| Agent metrics | `http://0.0.0.0:9091/metrics` — ring drops + future counters ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
-| Stack | `make compose-up` / `compose-down` — Kafka, ClickHouse, `statix-gateway` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)) |
-| Storage | ClickHouse Kafka engine — no Rust consumer ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)) |
-| CH Kafka | `kafka_skip_broken_messages`, `kafka_num_consumers` = partition count in prod ([ADR 008](../../../docs/adr/008-clickhouse-kafka-engine-resilience.md)) |
-| CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md), V2-2) |
-| Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
+| Agent | `init_http_client`; `init_retry_worker`; circuit breaker + WAL on 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md), [006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
+| API | `GET /health` (liveness); `GET /ready` = `ch_healthy` + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `POST /ingest` Tier 1/2 503; `statix_api_ingest_lag_seconds` |
+| Writer | `clickhouse_writer.rs` — coalesce `FlatRow` → RowBinary INSERT; `STATIX_CH_*` env; no `async_insert` |
+| CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [026](../../../docs/adr/026-clickhouse-finops-database-init.md)) |
+| Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
 
 Spec: [docs/guides/phase3-ingest-interface.md](../../../docs/guides/phase3-ingest-interface.md)  
 Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validation.md)
@@ -178,6 +175,8 @@ Deferred: [TODO.md](TODO.md)
 **L8 V2 playbook:** [L8_AUDIT_V2_FIXES.md](L8_AUDIT_V2_FIXES.md) — all V2 items shipped for GA ([ADR 038](../../../docs/adr/phase55/v2/038-phase55-v2-wave1-l8-fixes.md)–[042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)).
 
 **L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — all V3 waves shipped ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)).
+
+**Phase 13 playbook:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) — Part 1 shipped ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

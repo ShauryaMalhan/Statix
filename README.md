@@ -7,9 +7,10 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | Phase / target | State | What ships |
 |----------------|--------|------------|
 | **1–4** | Done | eBPF agent, attribution, ingest E2E, scale/reliability (partition routing, dedupe, lineage, bootstrap) |
-| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped ([ADR 023](docs/adr/023-phase5-hot-path-fixes.md), [ADR 043](docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)); prod CH/Kafka ops remain ([guide](docs/guides/phase5-production-readiness.md)) |
-| **5.5 V1/V2** | Done | L8 audit GA hardening ([ADR 032](docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) |
-| **5.5 V3** | **Active** | Post-GA audit — async silent deaths, cache exhaustion, distributed state ([playbook](.cursor/skills/statix-ebpf-agent/L8_POST_GA_FIXES.md), [TODO](.cursor/skills/statix-ebpf-agent/TODO.md)) |
+| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped; Kafka ops cancelled Phase 13 ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| **5.5 V3** | Done | Post-GA audit ([ADR 049](docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) |
+| **11** | Done | Agent WAL + circuit breaker ([ADR 054](docs/adr/phase11/054-phase11-wal-spillway.md)) |
+| **13** | **Part 1 done** | Queue-less ingest — gateway RowBinary → ClickHouse ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); Part 2 compose strip open |
 | **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
 | **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/028-finops-wire-and-agent-rename.md)–[036](docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
 | **8** | Partial | K8s manifests, informer, drain, digest pins shipped; stronger cgroup→pod mapping open |
@@ -25,8 +26,8 @@ Five host crates + BPF + infra:
 - **`statix-wire`** — shared ingest types (`IngestBatch`, `WorkloadRow`, `FlatRow`)
 - **`statix-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/035-phase7-workspace-restructure.md))
 - **`statix`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
-- **`statix-gateway`** — `POST /ingest` → Kafka; `GET /api/v1/workloads/summary` → ClickHouse; `GET /health`, `GET /ready`, `GET /metrics`
-- **`docker-compose.yml`** — Kafka KRaft, Kafka UI, ClickHouse with Kafka engine table
+- **`statix-gateway`** — `POST /ingest` → RowBinary coalescer → ClickHouse; `GET /api/v1/workloads/summary`; probes
+- **`docker-compose.yml`** — ClickHouse, Grafana, gateway *(Kafka removal: Phase 13 Part 2)*
 
 Phase 2 behavior in short:
 
@@ -35,7 +36,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3 adds HTTP ingest, keyed Kafka by `node`, ClickHouse Kafka engine → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). Production packaging: [deploy/](deploy/).
+Phase 3+ ingest: HTTP JSON batches → gateway coalescer → RowBinary INSERT → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). [ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md).
 
 **Enterprise low-latency contract:** [docs/guides/enterprise-latency.md](docs/guides/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
@@ -114,11 +115,10 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_WAL_SEGMENT_BYTES` | `8388608` | WAL segment rotation size (8 MiB) |
 | `STATIX_WAL_FSYNC_FRAMES` | `64` | Max frames between `fdatasync` group-commits |
 | `STATIX_WAL_FSYNC_INTERVAL_MS` | `200` | Max time between `fdatasync` group-commits |
-| `KAFKA_BROKERS` | `localhost:9092` | Gateway → Kafka (`statix-gateway/src/config.rs`) |
-| `STATIX_API_PORT` | `3000` | Gateway listen port (invalid value exits at startup) |
-| `STATIX_KAFKA_CHANNEL_SIZE` | `8192` | Gateway ingest mpsc depth (min 1024) |
-| `STATIX_KAFKA_BATCH_MAX` | `1024` | Gateway Kafka micro-batch size (64–16384) |
-| `STATIX_KAFKA_LINGER_MS` | `50` | Gateway partial-batch linger ms (1–1000) |
+| `STATIX_INGEST_CHANNEL_SIZE` | `8192` | Gateway ingest mpsc depth (min 1024) |
+| `STATIX_CH_BATCH_MAX` | `1024` | Gateway RowBinary micro-batch size (64–16384) |
+| `STATIX_CH_LINGER_MS` | `50` | Gateway coalesce linger ms (1–1000) |
+| `STATIX_CH_INSERT_TIMEOUT_SECS` | `3` | Gateway insert ACK timeout (1–30; &lt; agent HTTP timeout) |
 | `CLICKHOUSE_URL` | `http://localhost:8123` | Gateway read-path HTTP endpoint |
 | `CLICKHOUSE_USER` | `default` | ClickHouse user |
 | `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: set in `.env` — copy from `.env.example`) |

@@ -96,3 +96,8 @@ book/
 # Local Compose overrides (ports, tokens) — never commit
 docker-compose.override.yml
 run_script.md
+
+# Pitch deck / fundraising materials — not for public repo
+docs/pitch/
+# Personal docs / materials — not for public repo
+docs/personal_shaurya/

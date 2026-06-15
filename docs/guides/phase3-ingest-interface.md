@@ -1,26 +1,28 @@
 # Phase 3 ingest interface
 
-Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the same Phase 2 batch JSON; the API denormalizes rows to Kafka; ClickHouse consumes via the Kafka engine table.
+Phase 3 ships **HTTP ingest** (not gRPC): the agent POSTs the Phase 2 batch JSON; the gateway denormalizes rows and writes to ClickHouse via a RowBinary coalescer ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 
-**Enterprise constraints:** [enterprise-latency.md](enterprise-latency.md) · **Validation:** [phase3-validation.md](phase3-validation.md) · **ADR:** [adr/005-non-blocking-ingest-pipeline.md](adr/005-non-blocking-ingest-pipeline.md)
+**Enterprise constraints:** [enterprise-latency.md](enterprise-latency.md) · **Validation:** [phase3-validation.md](phase3-validation.md) · **ADR:** [005](../adr/005-non-blocking-ingest-pipeline.md) (historical Kafka path), [055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md) (current)
 
-## Flow
+## Flow (Phase 13)
 
 ```
-statix  --POST /ingest-->  statix-gateway  --try_send-->  mpsc  --produce-->  Kafka
-                                                                                    |
-ClickHouse  statix.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  statix.workload_metrics
+statix  --POST /ingest-->  statix-gateway  --try_reserve_many-->  mpsc  --RowBinary-->  ClickHouse
+                                                                                              |
+                                                                                    statix.workload_metrics
 ```
+
+Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breaker → WAL ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)).
 
 ## Batch envelope (agent → API)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | u32 | `2` or `3` (gateway accepts both during rolling upgrades — [ADR 020](adr/020-ingest-schema-version-window.md)) |
+| `schema_version` | u32 | `2` or `3` ([ADR 020](../adr/020-ingest-schema-version-window.md)) |
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `STATIX_NODE_NAME` |
-| `batch_id` | string | UUID v4 per flush — audit lineage ([ADR 017](adr/017-batch-lineage-metadata.md)) |
+| `batch_id` | string | UUID v4 per flush ([ADR 017](../adr/017-batch-lineage-metadata.md)) |
 | `agent_version` | string | `statix` crate version at flush time |
 | `workloads` | array | Rolled-up rows (below) |
 
@@ -38,47 +40,17 @@ ClickHouse  statix.kafka_telemetry_queue  <--MATERIALIZED VIEW-->  statix.worklo
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
 
-## Kafka message (one per workload row)
+## Gateway flat row (one per workload)
 
-API stamps envelope fields on each row before `produce`. Matches ClickHouse `JSONEachRow`:
-
-```json
-{
-  "window_start_ns": 0,
-  "window_end_ns": 0,
-  "node": "host",
-  "batch_id": "550e8400-e29b-41d4-a716-446655440000",
-  "agent_version": "0.1.0",
-  "cgroup_id": 1,
-  "namespace": null,
-  "pod": null,
-  "container": null,
-  "k8s_resolved": false,
-  "memory_bytes_max": 0,
-  "memory_bytes_last": 0,
-  "exec_count": 1,
-  "sample_count": 0
-}
-```
-
-Topic: `statix-telemetry` — each row is produced with Kafka **key** = batch `node` (partition `hash(node) % topic_partitions`; see [ADR 010](adr/010-kafka-partition-key-by-node.md)).
-
-## ClickHouse Kafka consumer (`deploy/clickhouse/01_init.sql`)
-
-| Setting | Local dev | Production |
-|---------|-----------|------------|
-| `kafka_skip_broken_messages` | `1000` | same — avoid poison-pill halt |
-| `kafka_num_consumers` | `1` | **match topic partition count** (e.g. `8`) |
-
-See [ADR 008](adr/008-clickhouse-kafka-engine-resilience.md).
+The ingest handler expands each workload into an owned `FlatRow` and enqueues to the coalescer mpsc. RowBinary insert uses gateway-local `MetricRow` matching `statix.workload_metrics` columns.
 
 ## ClickHouse storage (`statix.workload_metrics`)
 
 | Item | Value |
 |------|--------|
 | Engine | `ReplacingMergeTree()` — dedupes on background merge |
-| Sort key | `(node, window_start_ns, cgroup_id)` — **not** `namespace` (mutable; retries must not change identity) |
-| Billing queries | Always `FROM statix.workload_metrics FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md)) |
+| Sort key | `(node, window_start_ns, cgroup_id)` ([ADR 011](../adr/011-replacingmergetree-dedupe-identity.md)) |
+| Billing queries | Always `FROM statix.workload_metrics FINAL` |
 
 Schema change on existing volume: `docker compose down -v && make compose-up`.
 
@@ -86,76 +58,58 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 
 | Route | Method | Response |
 |-------|--------|----------|
-| `/health` | GET | **Liveness:** `200` if ingest `mpsc` sender not closed; `503` if producer task exited |
-| `/ready` | GET | **Readiness:** `200` if Kafka connected + partition metadata loaded and channel open ([ADR 021](adr/021-ingest-ready-probe.md)); else `503` |
-| `/metrics` | GET | Prometheus text exposition ([ADR 012](adr/012-statix-gateway-prometheus-metrics.md)) |
+| `/health` | GET | **Liveness:** `200` if ingest mpsc sender open; `503` if writer task exited |
+| `/ready` | GET | **Readiness:** `200` if `ch_healthy` + mpsc &lt;80% ([ADR 029](../adr/029-ready-channel-depth-gate.md), [055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); else `503` |
+| `/metrics` | GET | Prometheus text ([ADR 012](../adr/012-finops-api-prometheus-metrics.md)) |
 | `/ingest` | POST | See table below |
 
 ## HTTP responses (`POST /ingest`)
 
 | Status | When | Body |
 |--------|------|------|
-| `200 OK` | Every workload row enqueued to the Kafka `mpsc` channel | empty |
-| `401 Unauthorized` | `STATIX_API_TOKEN` set on API and `Authorization` missing or wrong ([ADR 019](adr/019-ingest-bearer-token-auth.md)) | empty |
-| `400 Bad Request` | `schema_version` not in `2..=3` (poison-pill defense — reject before Kafka/ClickHouse) | `Unsupported schema_version=N. Expected 2 or 3.` |
-| `503 Service Unavailable` | First `try_send` fails (channel full / broker backpressure) | `Ingest channel full. Broker backpressure active.` |
+| `200 OK` | Every workload row enqueued to coalescer mpsc | empty |
+| `401 Unauthorized` | `STATIX_API_TOKEN` set and `Authorization` missing/wrong ([ADR 019](../adr/019-ingest-bearer-token-auth.md)) | empty |
+| `400 Bad Request` | `schema_version` not in `2..=3` | plain text |
+| `503 Service Unavailable` | `!ch_healthy` or `try_reserve_many` full | plain text |
 
-Handler uses `impl IntoResponse`; it never awaits Kafka produce. On `503`, the agent retry worker backs off (1s→30s — [ADR 006](adr/006-shared-http-client-for-ingest.md)). Storage dedupe: [ADR 011](adr/011-replacingmergetree-dedupe-identity.md). Partial rows may already be enqueued before `503` until `batch_id` ships ([TODO](../../.cursor/skills/statix-ebpf-agent/TODO.md) 4.6).
+Handler never awaits ClickHouse insert. On `503`, agent circuit opens and WAL captures batches ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)).
 
 ## Environment variables
 
 ### Agent (`statix`)
 
-Wire types: `statix_wire::IngestBatch` ([ADR 028](adr/028-statix-wire-and-agent-rename.md)).
+Wire types: `statix_wire::IngestBatch` ([ADR 028](../adr/028-finops-wire-and-agent-rename.md)).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `STATIX_INGEST_URL` | (unset) | If set, `POST` batch JSON here; else stdout |
-| `STATIX_API_TOKEN` | (unset) | If set, send `Authorization: Bearer <token>` (must match API) |
-| `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (seconds) |
-| `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent pool idle timeout (seconds; &lt; ALB 60s typical) |
-| `STATIX_BACKOFF_INITIAL_SECS` | `1` | Retry worker base backoff (seconds) |
-| `STATIX_BACKOFF_MAX_SECS` | `30` | Retry worker max backoff cap (seconds) |
-| (client) | — | `init_http_client` + `init_retry_worker`; queue 60; **30% jitter** on retry sleep ([ADR 006](adr/006-shared-http-client-for-ingest.md)) |
-| `STATIX_EBF_PATH` | (required) | Path to compiled BPF ELF |
+| `STATIX_API_TOKEN` | (unset) | Bearer token (must match API) |
+| `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` timeout |
+| `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Pool idle timeout |
+| `STATIX_BACKOFF_*` | 1s→30s | Retry worker ([ADR 006](../adr/006-shared-http-client-for-ingest.md)) |
+| `STATIX_EBF_PATH` | (required) | Compiled BPF ELF |
 | `STATIX_WINDOW_SECS` | `10` | Aggregation window |
-| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | cgroup `memory.current` poll interval |
+| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | Memory poll interval |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
-| `STATIX_CGROUP_ROOT` | `/sys/fs/cgroup` | cgroup v2 mount |
-| `STATIX_RAW_EVENTS` | off | Per-event debug JSON |
 
 ### API (`statix-gateway`)
 
-Loaded by `config::Config::from_env()` in `statix-gateway/src/config.rs` ([ADR 030](adr/030-statix-gateway-config-struct.md)).
+Loaded by `config::Config::from_env()` ([ADR 030](../adr/030-finops-api-config-struct.md)). Writer tuning in `clickhouse_writer.rs` ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KAFKA_BROKERS` | `localhost:9092` | Kafka bootstrap (host: `localhost:9092`, in-compose: `kafka:29092`) |
 | `STATIX_API_PORT` | `3000` | HTTP listen port |
-| `STATIX_API_TOKEN` | (unset) | If set, require `Authorization: Bearer <token>` on `POST /ingest` |
-| `STATIX_KAFKA_CHANNEL_SIZE` | `8192` (min 1024) | Ingest → producer `mpsc` depth |
-| `STATIX_KAFKA_BATCH_MAX` | `1024` (64–16384) | Micro-batch / produce chunk size |
-| `STATIX_KAFKA_LINGER_MS` | `50` (1–1000) | Partial batch linger before flush |
-| `CLICKHOUSE_URL` | `http://localhost:8123` | Read-path HTTP endpoint ([ADR 027](adr/027-api-read-path-clickhouse.md)) |
-| `CLICKHOUSE_USER` | `default` | ClickHouse user |
-| `CLICKHOUSE_PASSWORD` | (empty) | Password (Compose: from `.env`, see `.env.example`) |
+| `STATIX_API_TOKEN` | (unset) | Bearer on `POST /ingest` |
+| `STATIX_INGEST_CHANNEL_SIZE` | `8192` (min 1024) | Ingest mpsc depth |
+| `STATIX_CH_BATCH_MAX` | `1024` (64–16384) | RowBinary micro-batch size |
+| `STATIX_CH_LINGER_MS` | `50` (1–1000) | Coalesce linger |
+| `STATIX_CH_INSERT_TIMEOUT_SECS` | `3` (1–30) | Insert ACK timeout; flips `ch_healthy` |
+| `CLICKHOUSE_URL` | `http://localhost:8123` | Read + write client |
+| `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | `default` / empty | Auth |
 
-See [ADR 014](adr/014-kafka-producer-env-tuning.md).
+## Read API
 
-## Read API (Target 3)
-
-`GET /api/v1/workloads/summary?hours=<u64>` — optional lookback (default **24** hours). Returns JSON array of:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `cgroup_id` | u64 | Cgroup inode id |
-| `namespace` | string? | K8s namespace |
-| `pod` | string? | Pod name |
-| `container` | string? | Container name |
-| `peak_memory` | u64 | `MAX(memory_bytes_max)` in window |
-| `total_execs` | u64 | `SUM(exec_count)` in window |
-
-Query uses `statix.workload_metrics FINAL` ([ADR 011](adr/011-replacingmergetree-dedupe-identity.md), [ADR 027](adr/027-api-read-path-clickhouse.md)).
+`GET /api/v1/workloads/summary?hours=<u64>` — default **24** hours. Uses `statix.workload_metrics FINAL` ([ADR 027](../adr/027-api-read-path-clickhouse.md)).
 
 ```bash
 curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
@@ -164,23 +118,10 @@ curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
 ## Local stack
 
 ```bash
-make compose-up   # starts statix-gateway container (KAFKA_BROKERS=kafka:29092) + Kafka + ClickHouse
+make compose-up   # ClickHouse + Grafana + statix-gateway
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/health   # 200
 export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
-sudo -E make run   # agent on host → API in Docker on :3000
+sudo -E make run
 ```
 
-Optional host API instead of container: `make run-api` ([ADR 009](adr/009-statix-gateway-docker-compose.md) — never both on `:3000`).
-
-**ClickHouse HTTP (docker-compose):** user `default`, password from `.env` (`CLICKHOUSE_PASSWORD`). Example:
-
-```bash
-set -a && source .env && set +a
-curl -s -u "default:${CLICKHOUSE_PASSWORD}" 'http://localhost:8123/?query=SELECT%20count()%20FROM%20statix.workload_metrics%20FINAL'
-```
-
-## Deferred
-
-- TLS between agent and API
-- Kafka topic replication / multi-broker production config (set `kafka_num_consumers` when partition count changes)
-- `batch_id` on wire + p99 analyzer (Phase 4 — see [TODO](../../.cursor/skills/statix-ebpf-agent/TODO.md))
+Optional host API: `make run-api` — never both on `:3000` ([ADR 009](../adr/009-finops-api-docker-compose.md)).

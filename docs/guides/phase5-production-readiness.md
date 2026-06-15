@@ -21,10 +21,11 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 
 | Item | Why |
 |------|-----|
-| **`GET /ready`** | **Shipped:** `kafka_ready` + ingest mpsc &lt; 80% full ([ADR 021](adr/021-ingest-ready-probe.md), [ADR 029](adr/029-ready-channel-depth-gate.md)). |
-| **ClickHouse `kafka_num_consumers`** | Match Kafka partition count in prod ([ADR 008](adr/008-clickhouse-kafka-engine-resilience.md)). |
-| **Kafka retention + disk alerts** | Prevent broker fill → throttle → consumer lag. |
-| **Broken-message alerting** | `kafka_skip_broken_messages = 1000` in [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql); monitor `system.kafka_consumers` when skipped > 0. |
+| **`GET /ready`** | **Shipped:** `ch_healthy` + ingest mpsc &lt; 80% ([ADR 021](../adr/021-ingest-ready-probe.md), [ADR 029](../adr/029-ready-channel-depth-gate.md), [ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). |
+| ~~ClickHouse `kafka_num_consumers`~~ | **Cancelled** — Kafka removed Phase 13 ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). |
+| ~~Kafka retention + disk alerts~~ | **Cancelled** — Phase 13. |
+| ~~Broken-message alerting~~ | **Cancelled** — no Kafka engine consumer. |
+| **ClickHouse insert health** | Monitor `statix_api_ch_*` metrics; `/ready` gates on `ch_healthy`. |
 
 ## Deploy artifacts (Targets 1–2)
 
@@ -50,5 +51,5 @@ sudo -E make run
 
 - [enterprise-latency.md](enterprise-latency.md)
 - [phase3-ingest-interface.md](phase3-ingest-interface.md)
-- [ADR 005](adr/005-non-blocking-ingest-pipeline.md), [ADR 012](adr/012-finops-api-prometheus-metrics.md)
+- [ADR 005](adr/005-non-blocking-ingest-pipeline.md), [ADR 012](adr/012-finops-api-prometheus-metrics.md), [ADR 055](adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)
 - [ADR 024](adr/024-agent-production-container.md)–[026](adr/026-clickhouse-finops-database-init.md)

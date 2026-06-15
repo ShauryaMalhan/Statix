@@ -1,17 +1,13 @@
 //! Centralized gateway configuration from environment variables.
 
-const DEFAULT_KAFKA_BROKERS: &str = "localhost:9092";
 const DEFAULT_API_PORT: u16 = 3000;
 const DEFAULT_CLICKHOUSE_URL: &str = "http://localhost:8123";
 const DEFAULT_CLICKHOUSE_USER: &str = "default";
 
-/// Strongly typed `statix-gateway` configuration loaded once at startup.
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub kafka_brokers: String,
     pub api_port: u16,
     pub api_token: Option<String>,
-    /// Precomputed `Authorization` header value (`Bearer {token}`) when `api_token` is set.
     pub expected_bearer: Option<String>,
     pub clickhouse_url: String,
     pub clickhouse_user: String,
@@ -19,7 +15,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from the process environment (defaults when unset).
     pub fn from_env() -> Self {
         let api_token = statix_infra::env::var("STATIX_API_TOKEN").filter(|s| !s.is_empty());
         let expected_bearer = api_token
@@ -27,7 +22,6 @@ impl Config {
             .map(|t| format!("Bearer {t}"));
 
         Self {
-            kafka_brokers: env_string("KAFKA_BROKERS", DEFAULT_KAFKA_BROKERS),
             api_port: env_api_port(),
             api_token,
             expected_bearer,
@@ -37,12 +31,10 @@ impl Config {
         }
     }
 
-    /// Borrow the precomputed full `Authorization` header value for `POST /ingest`.
     pub fn expected_bearer(&self) -> Option<&str> {
         self.expected_bearer.as_deref()
     }
 
-    /// ClickHouse HTTP client for the read path.
     pub fn clickhouse_client(&self) -> clickhouse::Client {
         clickhouse::Client::default()
             .with_url(self.clickhouse_url.clone())
@@ -85,7 +77,6 @@ mod tests {
 
     fn test_config(api_token: Option<String>) -> Config {
         Config {
-            kafka_brokers: String::new(),
             api_port: 3000,
             api_token: api_token.clone(),
             expected_bearer: api_token
