@@ -10,6 +10,7 @@ use axum::Json;
 use statix_wire::IngestBatch;
 use tokio::sync::mpsc;
 
+use crate::clickhouse_writer::MetricRow;
 use crate::AppState;
 
 pub async fn handler(
@@ -68,16 +69,11 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
             .into_response();
     }
 
-    let rows: Vec<statix_wire::FlatRow> = batch
-        .workloads
-        .iter()
-        .map(|w| statix_wire::FlatRow::from_ingest(&batch, w))
-        .collect();
-    if rows.is_empty() {
+    if batch.workloads.is_empty() {
         return StatusCode::OK.into_response();
     }
 
-    let mut permits = match state.ingest_tx.try_reserve_many(rows.len()) {
+    let mut permits = match state.ingest_tx.try_reserve_many(batch.workloads.len()) {
         Ok(p) => p,
         Err(mpsc::error::TrySendError::Full(_)) => {
             metrics::counter!("statix_api_ingest_channel_full_total").increment(1);
@@ -96,11 +92,11 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
         }
     };
 
-    for row in rows {
+    for w in &batch.workloads {
         permits
             .next()
             .expect("try_reserve_many exact capacity")
-            .send(row);
+            .send(MetricRow::from_ingest(&batch, w));
     }
 
     let now_ns = std::time::SystemTime::now()

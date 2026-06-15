@@ -26,7 +26,7 @@ const READY_CHANNEL_FULL_THRESHOLD_PCT: u8 = 80;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub ingest_tx: mpsc::Sender<statix_wire::FlatRow>,
+    pub ingest_tx: mpsc::Sender<clickhouse_writer::MetricRow>,
     pub ingest_channel_capacity: usize,
     pub ch_healthy: Arc<AtomicBool>,
     pub expected_bearer: Option<String>,

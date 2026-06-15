@@ -11,7 +11,7 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → gatew
 |-------|------|
 | Kernel | `sched:sched_process_exec` → `StatixEvent` → `EVENTS` |
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` (overflow → disk WAL `statix/src/wal/`, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
-| Ingest API | `POST /ingest`; `try_reserve_many(FlatRow)` — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md) |
+| Ingest API | `POST /ingest`; `try_reserve_many(MetricRow)` — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md) |
 | Read API | `GET /api/v1/workloads/summary?hours=` → `AppState.ch_client` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://<host>:9091/metrics` — ring drops, WAL, circuit ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
 | Storage | Gateway RowBinary → `statix.workload_metrics` (`ReplacingMergeTree`; billing: `FINAL`) — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md) |
@@ -53,7 +53,7 @@ ring buffer → aggregator → emit_batch
 | 5.5 V1/V2 | Done — L8 GA hardening ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md)–[043](../../../docs/adr/phase55/v2/043-kubernetes-alb-tls-termination.md)) |
 | 5.5 V3 | Done — post-GA audit ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) |
 | 11 | Done — WAL + circuit breaker ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
-| 13 | **Part 1 done** — queue-less ingest ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); Part 2 compose strip open |
+| 13 | **Part 1+2 ingest done** — queue-less RowBinary + single `MetricRow` ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); compose strip open |
 | 6 | Done — mechanical sympathy / hot path ([ADR 018](../../../docs/adr/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | 7 | **Done** — wire, agent, gateway, infra, `Config`, typed errors, read-only labels ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)–[036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
 | T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
@@ -70,7 +70,7 @@ ring buffer → aggregator → emit_batch
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/statix-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `STATIX_EBF_PATH`
 - Agent event loop: `watch_k8s_pods` stream (node-scoped informer — [ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md)); `labels_for_cgroup` read-only; ring drain `DRAIN_BUDGET=256`; memory samples = one `spawn_blocking`/tick; ingest retry = `bytes::Bytes` ([ADR 032](../../../docs/adr/phase55/l8/032-phase55-l8-p0-hot-path-fixes.md), [ADR 033](../../../docs/adr/phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md), [ADR 036](../../../docs/adr/036-phase7-typed-errors-labels-read-path.md), [enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
-- Gateway ingest: owned `FlatRow` → mpsc coalescer → RowBinary ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md))
+- Gateway ingest: `MetricRow::from_ingest` → mpsc coalescer → RowBinary ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md))
 - Startup cgroup bootstrap: `bootstrap_existing_cgroups` (walkdir + dir `ino()` = `cgroup_id`; `STATIX_CGROUP_ROOT`) — [ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)
 - Aggregator clock: global `AtomicU64` offset; `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600) — [ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)
 - Batch lineage: `batch_id` (UUID v4) + `agent_version` on every flush — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md)

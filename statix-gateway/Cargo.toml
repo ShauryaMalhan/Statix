@@ -1,6 +1,6 @@
 [package]
 name = "statix-gateway"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2021"
 # Ingest gateway: POST /ingest → ClickHouse RowBinary; GET read-path → ClickHouse
 

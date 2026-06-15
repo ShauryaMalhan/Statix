@@ -23,9 +23,6 @@ pub enum GatewayError {
 
 impl GatewayError {
     pub fn status_code(&self) -> StatusCode {
-        match self {
-            GatewayError::ClickHouse(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        }
+        StatusCode::INTERNAL_SERVER_ERROR
     }
 }

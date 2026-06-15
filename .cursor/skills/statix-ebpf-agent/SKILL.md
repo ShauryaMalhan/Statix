@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 Part 1 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md); Part 2 compose strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 Part 1+2 ingest done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md); compose strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -43,7 +43,7 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054
 | Crate | Target | Responsibility |
 |-------|--------|----------------|
 | `statix-common` | host + bpf | `StatixEvent`, kind constants, `Pod` via `user` feature |
-| `statix-wire` | host lib | `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)) |
+| `statix-wire` | host lib | `IngestBatch`, `WorkloadRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)) |
 | `statix-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`STATIX_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `statix` | host | loader, attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
 | `statix-gateway` | host | `Config::from_env()`; `clickhouse_writer` RowBinary coalescer; ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
@@ -131,7 +131,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 |-----------|------|
 | Agent | `init_http_client`; `init_retry_worker`; circuit breaker + WAL on 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md), [006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | API | `GET /health` (liveness); `GET /ready` = `ch_healthy` + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `POST /ingest` Tier 1/2 503; `statix_api_ingest_lag_seconds` |
-| Writer | `clickhouse_writer.rs` — coalesce `FlatRow` → RowBinary INSERT; `STATIX_CH_*` env; no `async_insert` |
+| Writer | `clickhouse_writer.rs` — `MetricRow` coalescer → RowBinary INSERT; `MetricRow::from_ingest` in handler ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); `STATIX_CH_*` env; no `async_insert` |
 | CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [026](../../../docs/adr/026-clickhouse-finops-database-init.md)) |
 | Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
 
@@ -176,7 +176,7 @@ Deferred: [TODO.md](TODO.md)
 
 **L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — all V3 waves shipped ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)).
 
-**Phase 13 playbook:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) — Part 1 shipped ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
+**Phase 13 playbooks:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) ingest shipped ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

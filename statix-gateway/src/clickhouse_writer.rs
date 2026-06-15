@@ -5,7 +5,7 @@ use std::time::Duration;
 use clickhouse::{Client, Row};
 use serde::Serialize;
 use statix_infra::env::{read_env_u64, read_env_usize};
-use statix_wire::FlatRow;
+use statix_wire::{IngestBatch, WorkloadRow};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -21,7 +21,7 @@ const INITIAL_BACKOFF_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 2_000;
 
 #[derive(Row, Serialize)]
-struct MetricRow {
+pub struct MetricRow {
     window_start_ns: u64,
     window_end_ns: u64,
     node: String,
@@ -38,29 +38,29 @@ struct MetricRow {
     sample_count: u32,
 }
 
-impl From<FlatRow> for MetricRow {
-    fn from(row: FlatRow) -> Self {
+impl MetricRow {
+    pub fn from_ingest(batch: &IngestBatch, w: &WorkloadRow) -> Self {
         Self {
-            window_start_ns: row.window_start_ns,
-            window_end_ns: row.window_end_ns,
-            node: row.node,
-            batch_id: row.batch_id,
-            agent_version: row.agent_version,
-            cgroup_id: row.cgroup_id,
-            namespace: row.namespace,
-            pod: row.pod,
-            container: row.container,
-            k8s_resolved: row.k8s_resolved,
-            memory_bytes_max: row.memory_bytes_max,
-            memory_bytes_last: row.memory_bytes_last,
-            exec_count: row.exec_count,
-            sample_count: row.sample_count,
+            window_start_ns: batch.window_start_ns,
+            window_end_ns: batch.window_end_ns,
+            node: batch.node.clone(),
+            batch_id: batch.batch_id.clone(),
+            agent_version: batch.agent_version.clone(),
+            cgroup_id: w.cgroup_id,
+            namespace: w.namespace.clone(),
+            pod: w.pod.clone(),
+            container: w.container.clone(),
+            k8s_resolved: w.k8s_resolved,
+            memory_bytes_max: w.memory_bytes_max,
+            memory_bytes_last: w.memory_bytes_last,
+            exec_count: w.exec_count,
+            sample_count: w.sample_count,
         }
     }
 }
 
 pub struct ChWriter {
-    pub tx: mpsc::Sender<FlatRow>,
+    pub tx: mpsc::Sender<MetricRow>,
     pub channel_capacity: usize,
     pub ch_healthy: Arc<AtomicBool>,
     task: JoinHandle<()>,
@@ -85,7 +85,7 @@ fn read_insert_timeout() -> Duration {
 }
 
 pub fn spawn_writer(client: Client, channel_capacity: usize) -> ChWriter {
-    let (tx, mut rx) = mpsc::channel::<FlatRow>(channel_capacity);
+    let (tx, mut rx) = mpsc::channel::<MetricRow>(channel_capacity);
     let ch_healthy = Arc::new(AtomicBool::new(false));
     let flag = ch_healthy.clone();
     let task = tokio::spawn(async move {
@@ -129,10 +129,10 @@ async fn ping_ready(client: &Client, flag: &AtomicBool) {
 }
 
 async fn fill_batch(
-    rx: &mut mpsc::Receiver<FlatRow>,
+    rx: &mut mpsc::Receiver<MetricRow>,
     batch_max: usize,
     linger: Duration,
-) -> Option<Vec<FlatRow>> {
+) -> Option<Vec<MetricRow>> {
     let first = rx.recv().await?;
     let mut batch = Vec::with_capacity(batch_max.min(64));
     batch.push(first);
@@ -157,7 +157,7 @@ async fn fill_batch(
 }
 
 async fn drain_final(
-    rx: &mut mpsc::Receiver<FlatRow>,
+    rx: &mut mpsc::Receiver<MetricRow>,
     client: &Client,
     flag: &Arc<AtomicBool>,
     batch_max: usize,
@@ -204,16 +204,15 @@ async fn flush_batch(
 async fn flush_with_retry(
     client: &Client,
     flag: &Arc<AtomicBool>,
-    batch: Vec<FlatRow>,
+    batch: Vec<MetricRow>,
     ins_to: Duration,
 ) {
-    let metric_rows: Vec<MetricRow> = batch.into_iter().map(MetricRow::from).collect();
-    let row_count = metric_rows.len();
+    let row_count = batch.len();
     let mut backoff_ms = INITIAL_BACKOFF_MS;
     let started = std::time::Instant::now();
 
     for attempt in 0..MAX_INSERT_RETRIES {
-        match flush_batch(client, &metric_rows, ins_to).await {
+        match flush_batch(client, &batch, ins_to).await {
             Ok(()) => {
                 flag.store(true, Ordering::Release);
                 metrics::histogram!("statix_api_ch_insert_duration_seconds")

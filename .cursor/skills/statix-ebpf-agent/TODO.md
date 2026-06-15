@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 13 Part 2** — strip Kafka from compose/K8s, sync docs/env. **Part 1 shipped** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). Playbook: [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md).
+**Current focus:** **Phase 13 Part 2** — strip Kafka from compose/K8s ([TODO](#part-2--project-rule-companions--rollout-active)). **Ingest zero-alloc collapse shipped** ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md), [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md)). Part 1 shipped ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -195,7 +195,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ## Phase 7 — Architecture & developer experience ✅
 
-- [x] **`statix-wire` crate** — `IngestBatch`, `WorkloadRow`, `FlatRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md))
+- [x] **`statix-wire` crate** — `IngestBatch`, `WorkloadRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)); `FlatRow` removed Part 2 ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md))
 - [x] **Centralized `Config` struct** — `statix-gateway/src/config.rs` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md))
 - [x] **Rename agent crate:** `finops-user` → `finops-agent` → `statix` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md), [044](../../../docs/adr/044-statix-agent-rename.md))
 - [x] **Rename gateway crate:** `finops-api` → `statix-gateway` ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md))
@@ -284,6 +284,8 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### Part 2 — Project-rule companions + rollout (ACTIVE)
 
+- [x] **Ingest zero-alloc collapse** — single gateway-local `MetricRow` (drop `FlatRow`→`MetricRow` double-buffer): permit-build in `ingest.rs`, writer re-typed on `MetricRow`, `AppState` channel type, dead `FlatRow` removed from `statix-wire`. Coalescer retained. [ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md). Playbook: [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md).
+
 - [ ] **Strip Kafka from infra** — Remove Kafka/Zookeeper from `docker-compose.yml` and K8s manifests; remove `KAFKA_BROKERS` / `STATIX_KAFKA_*` env from compose/K8s only (docs/skills already updated).
 
 - [x] **ADR + docs + skill sync** — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md); skills/README/run_script/enterprise-latency updated; compose strip remains below
@@ -305,5 +307,6 @@ MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index
 PHASE 11 (shipped):     agent WAL (primary buffer), circuit breaker  — ADR 054
 PHASE 13 (active):      Queue-less ingest
   Part 1 (shipped):     [x] schema drop · CH RowBinary writer · 3-tier 503  — ADR 055
-  Part 2 (active):      [ ] strip Kafka infra/env · compose + docs sync
+  Part 2 (active):      [x] ingest zero-alloc collapse (single MetricRow) — ADR 056
+                        [ ] strip Kafka infra/env · compose + docs sync
 ```

@@ -76,7 +76,7 @@ with `cargo +nightly ... -Z build-std=core --target bpfel-unknown-none` inside
 | Crate | Target | Responsibility |
 |-------|--------|----------------|
 | `statix-common` | host + bpf | `StatixEvent` (64-byte ring record) + kind constants — define event layout ONLY here |
-| `statix-wire` | host | wire/ingest types: `IngestBatch`, `WorkloadRow`, `FlatRow` |
+| `statix-wire` | host | wire/ingest types: `IngestBatch`, `WorkloadRow` |
 | `statix-infra` | host | `read_env_*` helpers, clock-offset utilities |
 | `statix-ebpf` | bpf | tracepoint, `cgroup_id`, ring buffer (size via `STATIX_RING_BUF_BYTES`) |
 | `statix` | host | agent: loader, attribution, aggregator, memory sampler, output; metrics on `:9091` |

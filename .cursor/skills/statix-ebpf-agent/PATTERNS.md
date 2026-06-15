@@ -66,7 +66,7 @@ Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snap
 ## Pattern 5a — Batch lineage (audit)
 
 Each `Aggregator::flush` sets `batch_id = Uuid::new_v4()` and `agent_version = env!("CARGO_PKG_VERSION")`.  
-Propagated through `statix_wire::IngestBatch` → `FlatRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)).
+Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)).
 
 ## Pattern 5b — Aggregator clock domain
 
@@ -124,7 +124,7 @@ limits   = requests × 1.25;
 
 **API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `schema_version` `2..=3`; 2MB body limit.
 
-**Writer:** `clickhouse_writer.rs` — coalesce `FlatRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE`.
+**Writer:** `clickhouse_writer.rs` — coalesce `MetricRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE` ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
 
 **ClickHouse:** `statix.workload_metrics` only (no Kafka engine); `ReplacingMergeTree`; billing `FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
 

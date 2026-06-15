@@ -42,7 +42,7 @@ Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breake
 
 ## Gateway flat row (one per workload)
 
-The ingest handler expands each workload into an owned `FlatRow` and enqueues to the coalescer mpsc. RowBinary insert uses gateway-local `MetricRow` matching `statix.workload_metrics` columns.
+The ingest handler builds gateway-local `MetricRow` via `MetricRow::from_ingest` and enqueues to the coalescer mpsc ([ADR 056](../adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
 
 ## ClickHouse storage (`statix.workload_metrics`)
 

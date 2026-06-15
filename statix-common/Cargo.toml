@@ -1,6 +1,6 @@
 [package]
 name    = "statix-common"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2021"
 
 # This crate must compile in two very different environments:
