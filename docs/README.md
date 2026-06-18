@@ -7,6 +7,7 @@
 | [adr/phase55/](adr/phase55/) | Phase 5.5 L8 audit waves (L8, V2, V3) |
 | [adr/phase11/](adr/phase11/) | Phase 11 — agent WAL spillway |
 | [adr/phase13/](adr/phase13/) | Phase 13 — queue-less ingest (RowBinary, `MetricRow`) |
+| [adr/phase14/](adr/phase14/) | Phase 14 — CPU time tracking (`cpu_usage_usec`) |
 
 **Skills (canonical workflow):** [`.cursor/skills/statix-ebpf-agent/`](../.cursor/skills/statix-ebpf-agent/)
 

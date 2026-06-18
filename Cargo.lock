@@ -2614,6 +2614,7 @@ name = "statix-wire"
 version = "1.0.9"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]

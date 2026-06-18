@@ -39,6 +39,22 @@ pub enum AttributionError {
     #[error("failed to parse memory bytes from {value:?} at {path}")]
     ParseMemoryBytes { path: PathBuf, value: String },
 
+    #[error("empty cpu.stat at {path:?}")]
+    EmptyCpuStat { path: PathBuf },
+
+    #[error("invalid utf-8 in cpu.stat at {path:?}: {source}")]
+    InvalidCpuUtf8 {
+        path: PathBuf,
+        #[source]
+        source: std::str::Utf8Error,
+    },
+
+    #[error("failed to parse cpu usage from {value:?} at {path:?}")]
+    ParseCpuUsage { path: PathBuf, value: String },
+
+    #[error("no usage_usec field in cpu.stat at {path:?}")]
+    NoCpuUsageField { path: PathBuf },
+
     #[error("Kubernetes API list pods failed: {0}")]
     K8sList(#[from] kube::Error),
 }

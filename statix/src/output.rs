@@ -13,7 +13,7 @@ use crate::aggregator::BatchPayload;
 use statix_infra::env::read_env_u64;
 use statix_wire::IngestBatch;
 
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 const RETRY_QUEUE_CAPACITY: usize = 60;
 

@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) · **14 done** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -71,6 +71,7 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | ClickHouse writer | Background task only — `MetricRow` coalescer; RowBinary micro-batches; sync `insert.end()` ACK ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)) |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
+| CPU sample | Same tick: `cpu.stat` cumulative counter → delta in `Sampler.cpu_baseline`; prime first read ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)) |
 
 Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterprise-latency.md)
 
@@ -104,7 +105,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 |-------|-----|
 | `read_to_string` on `memory.current` or `/proc/{pid}/cgroup` | `File::read` into stack buffer (`[u8; 32]` / `[u8; 1024]`) |
 | `PathBuf::join` / `to_path_buf` per sample tick | Precompute `Arc<PathBuf>` on identity; sampler clones `Arc` only |
-| `Vec` of all cgroup IDs per tick | `for_each_memory_current_path` |
+| `Vec` of all cgroup IDs per tick | `for_each_sample_target` (memory + cpu.stat) |
 | `HashMap` for `cgroup_id` | `FxHashMap` ([ADR 001](../../../docs/adr/001-use-rustc-hash-for-latency.md)) |
 
 ### Aggregator
@@ -176,7 +177,9 @@ Deferred: [TODO.md](TODO.md)
 
 **L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — all V3 waves shipped ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)).
 
-**Phase 13 playbooks:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) · [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) — shipped ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)).
+**Phase 13 playbooks:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) · [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md).
+
+**Phase 14 playbook:** [PHASE_14_CPU_PLAYBOOK.md](PHASE_14_CPU_PLAYBOOK.md) — shipped ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

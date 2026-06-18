@@ -36,6 +36,7 @@ pub struct MetricRow {
     memory_bytes_last: u64,
     exec_count: u32,
     sample_count: u32,
+    cpu_usage_usec: u64,
 }
 
 impl MetricRow {
@@ -55,6 +56,7 @@ impl MetricRow {
             memory_bytes_last: w.memory_bytes_last,
             exec_count: w.exec_count,
             sample_count: w.sample_count,
+            cpu_usage_usec: w.cpu_usage_usec,
         }
     }
 }

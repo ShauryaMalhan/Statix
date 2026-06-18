@@ -12,7 +12,8 @@ use crate::AppState;
 const SUMMARY_SQL: &str = r#"
 SELECT cgroup_id, namespace, pod, container,
        argMax(memory_bytes_max, window_start_ns) AS peak_memory,
-       sum(exec_count) AS total_execs
+       sum(exec_count) AS total_execs,
+       sum(cpu_usage_usec) AS total_cpu_usec
 FROM statix.workload_metrics
 WHERE window_start_ns >= {cutoff_ns:UInt64}
 GROUP BY cgroup_id, namespace, pod, container
@@ -34,6 +35,7 @@ pub struct WorkloadSummaryRow {
     pub container: Option<String>,
     pub peak_memory: u64,
     pub total_execs: u64,
+    pub total_cpu_usec: u64,
 }
 
 pub async fn workloads_summary(

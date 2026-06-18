@@ -37,6 +37,7 @@ struct WorkloadStats {
     sample_count: u32,
     memory_bytes_max: u64,
     memory_bytes_last: u64,
+    cpu_usage_usec: u64,
     labels: Arc<WorkloadLabels>,
 }
 
@@ -47,6 +48,7 @@ impl Default for WorkloadStats {
             sample_count: 0,
             memory_bytes_max: 0,
             memory_bytes_last: 0,
+            cpu_usage_usec: 0,
             labels: Arc::clone(&DEFAULT_LABELS),
         }
     }
@@ -143,6 +145,19 @@ impl Aggregator {
         self.try_early_flush(node, cache)
     }
 
+    pub fn ingest_cpu_sample(
+        &mut self,
+        cgroup_id: u64,
+        delta_usec: u64,
+        cache: &AttributionCache,
+        node: &str,
+    ) -> Option<BatchPayload> {
+        let entry = self.active_mut().entry(cgroup_id).or_default();
+        entry.cpu_usage_usec = entry.cpu_usage_usec.saturating_add(delta_usec);
+        entry.labels = cache.labels_for_cgroup(cgroup_id);
+        self.try_early_flush(node, cache)
+    }
+
     fn ingest_memory_sample_inner(
         &mut self,
         _kind: u8,
@@ -198,6 +213,7 @@ impl Aggregator {
                 memory_bytes_last: s.memory_bytes_last,
                 exec_count: s.exec_count,
                 sample_count: s.sample_count,
+                cpu_usage_usec: s.cpu_usage_usec,
             })
             .collect();
 

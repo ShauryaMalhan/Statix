@@ -29,4 +29,45 @@ pub struct WorkloadRow {
     pub memory_bytes_last: u64,
     pub exec_count: u32,
     pub sample_count: u32,
+    /// CPU microseconds consumed during this window (delta of cgroup cpu.stat usage_usec).
+    #[serde(default)]
+    pub cpu_usage_usec: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workload_row_v2_missing_cpu_defaults_to_zero() {
+        let json = r#"{
+            "cgroup_id": 1,
+            "k8s_resolved": false,
+            "memory_bytes_max": 0,
+            "memory_bytes_last": 0,
+            "exec_count": 0,
+            "sample_count": 0
+        }"#;
+        let row: WorkloadRow = serde_json::from_str(json).unwrap();
+        assert_eq!(row.cpu_usage_usec, 0);
+    }
+
+    #[test]
+    fn workload_row_v3_round_trip() {
+        let row = WorkloadRow {
+            cgroup_id: 42,
+            namespace: None,
+            pod: None,
+            container: None,
+            k8s_resolved: false,
+            memory_bytes_max: 100,
+            memory_bytes_last: 50,
+            exec_count: 1,
+            sample_count: 2,
+            cpu_usage_usec: 12345,
+        };
+        let json = serde_json::to_string(&row).unwrap();
+        let parsed: WorkloadRow = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.cpu_usage_usec, 12345);
+    }
 }

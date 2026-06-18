@@ -132,6 +132,18 @@ limits   = requests × 1.25;
 
 ---
 
+## Pattern 6d — CPU sampling (cumulative counter → per-window delta)
+
+`cpu.stat` `usage_usec` is cumulative — store **delta** per window, not the raw counter.
+
+- Baseline map (`Sampler.cpu_baseline`) survives aggregator window flips; **not** in `WorkloadStats`.
+- **Priming:** first read per cgroup sets baseline only (delta 0) — avoids lifetime spike on boot.
+- **Monotonic guard:** `current.saturating_sub(last)` on subsequent samples.
+- Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)).
+- Agent emits schema v3 with `cpu_usage_usec`; gateway accepts v2..=3 (`#[serde(default)]`).
+
+---
+
 ## Pattern 11 — Docker / Makefile (Phase 3 dev)
 
 ```bash

@@ -13,6 +13,7 @@ Point-in-time notes on **why** we chose something—not polished docs. When code
 | [phase55/v2/](phase55/v2/) | 038–043 — L8 audit V2 |
 | [phase55/v3/](phase55/v3/) | 049–053 — Post-GA V3 waves |
 | [phase11/](phase11/) | 054 — Agent WAL spillway |
+| [phase14/](phase14/) | 058 — CPU time tracking |
 | [phase13/](phase13/) | 055+ — Queue-less ingest |
 
 See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.md).
@@ -95,3 +96,9 @@ See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.m
 | [055](phase13/055-phase13-part1-kafka-removal-rowbinary.md) | Part 1 — Kafka removal; gateway RowBinary → ClickHouse | Accepted |
 | [056](phase13/056-phase13-part2-ingest-zero-alloc.md) | Part 2 — single `MetricRow`; ingest zero-alloc collapse | Accepted |
 | [057](phase13/057-phase13-part2-infra-kafka-strip.md) | Part 2 — strip Kafka from compose/K8s/deploy docs | Accepted |
+
+## Phase 14 — CPU time tracking
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| [058](phase14/058-phase14-cpu-usage-tracking.md) | `cpu_usage_usec` — cgroupfs delta, schema v3 | Accepted |

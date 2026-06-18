@@ -94,6 +94,8 @@ async fn main() -> anyhow::Result<()> {
         output::emit_batch(batch);
     }
 
+    let mut sampler = memory_sampler::Sampler::new();
+
     let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
         .expect("failed to install SIGTERM handler");
 
@@ -134,9 +136,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             _ = sample_interval.tick() => {
-                for batch in
-                    memory_sampler::sample_tracked_cgroups(&cache, &mut agg, &node).await
-                {
+                for batch in sampler.tick(&cache, &mut agg, &node).await {
                     output::emit_batch(batch);
                 }
             }

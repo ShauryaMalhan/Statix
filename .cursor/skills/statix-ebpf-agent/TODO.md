@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 13 complete** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md), [057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)). Next: Phase 5 prod ops, Phase 8/9 partial items.
+**Current focus:** **Phase 14 shipped** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md), [PHASE_14_CPU_PLAYBOOK.md](PHASE_14_CPU_PLAYBOOK.md)). P14-10 docs pending. Also open: Phase 5 prod ops, Phase 8/9 partial items.
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -292,6 +292,37 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
+## Phase 14 — CPU Time Tracking (`cpu_usage_usec`) ✅
+
+> **Playbook:** [PHASE_14_CPU_PLAYBOOK.md](PHASE_14_CPU_PLAYBOOK.md). **ADR:** [058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md).
+
+### P0 — Plumb CPU through the stack (in dependency order)
+
+- [x] **P14-1 (wire):** `cpu_usage_usec` on `WorkloadRow` — `statix-wire/src/lib.rs`
+- [x] **P14-2 (attribution):** `cpu.stat` paths + `for_each_sample_target` + `read_cpu_usage_usec_at` — `statix/src/attribution/{mod,error}.rs`
+- [x] **P14-3 (aggregator):** `ingest_cpu_sample` + flush emit — `statix/src/aggregator.rs`
+- [x] **P14-4 (sampler):** stateful `Sampler`, prime-aware delta, one `spawn_blocking` — `statix/src/memory_sampler.rs`
+- [x] **P14-5 (wiring):** lifetime `Sampler` in `main` — `statix/src/main.rs`
+- [x] **P14-6 (output):** `SCHEMA_VERSION` 3 — `statix/src/output.rs`
+- [x] **P14-7 (gateway):** `MetricRow.cpu_usage_usec` — `statix-gateway/src/clickhouse_writer.rs`
+- [x] **P14-8 (storage):** `cpu_usage_usec UInt64` + ALTER note — `deploy/clickhouse/01_init.sql`
+- [x] **P14-9 (read API):** `total_cpu_usec` summary — `statix-gateway/src/routes/query.rs`
+
+### Correctness gates (E2E verify)
+
+- [ ] **Priming:** first window of bootstrapped busy cgroup — small delta, not lifetime total
+- [ ] **Conservation:** per-window deltas sum to cgroup `usage_usec` span
+- [ ] **Soft miss:** no cpu controller → memory still sampled, CPU skipped
+- [x] **Backward compat:** v2 JSON → `cpu_usage_usec = 0` (wire unit test)
+
+### P14-10 — Project-rule companions
+
+- [x] **ADR** [058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)
+- [ ] **Docs** — `phase3-ingest-interface.md`, README (deferred)
+- [x] **Skills** — SKILL/REFERENCE/PATTERNS/playbook sync (partial; full docs deferred)
+
+---
+
 ## Execution Summary
 
 ```
@@ -309,4 +340,9 @@ PHASE 13 (shipped):      Queue-less ingest — ADR 055/056/057
   Part 1:               [x] schema drop · CH RowBinary writer · 3-tier 503
   Part 2 ingest:        [x] zero-alloc collapse (single MetricRow)
   Part 2 infra:         [x] strip Kafka from compose/K8s/deploy READMEs
+PHASE 14 (shipped):      CPU time tracking — ADR 058
+  Plumb:                [x] P14-1…9 wire→attribution→aggregator→sampler→main
+                            →output(v3)→MetricRow→CH schema→read API
+  E2E gates:            [ ] priming · conservation · soft miss (manual)
+  Companions:           [x] ADR 058 + skills · [ ] full docs (P14-10)
 ```

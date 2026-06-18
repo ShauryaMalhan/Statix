@@ -6,3 +6,6 @@ description = "Shared ingest wire types (batch envelope and workload rows)"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0"

@@ -34,6 +34,7 @@ pub static DEFAULT_LABELS: LazyLock<Arc<WorkloadLabels>> =
 struct CacheState {
     cgroup_paths: FxHashMap<u64, PathBuf>,
     memory_current_paths: FxHashMap<u64, Arc<PathBuf>>,
+    cpu_stat_paths: FxHashMap<u64, Arc<PathBuf>>,
     cgroup_labels: FxHashMap<u64, Arc<WorkloadLabels>>,
     pod_by_uid: FxHashMap<String, Arc<WorkloadLabels>>,
 }
@@ -67,20 +68,28 @@ impl AttributionCache {
         }
         if let Some(rel_path) = rel_path {
             let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+            let cpu_stat = precompute_cpu_stat(&self.cgroup_root, &rel_path);
             state.cgroup_paths.insert(event.cgroup_id, rel_path);
             state
                 .memory_current_paths
                 .insert(event.cgroup_id, Arc::new(memory_current));
+            state
+                .cpu_stat_paths
+                .insert(event.cgroup_id, Arc::new(cpu_stat));
         }
         let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&event.cgroup_id)));
         state.cgroup_labels.insert(event.cgroup_id, labels);
     }
 
-    /// Yields `Arc<PathBuf>` — refcount clone only (no per-tick path string alloc).
-    pub fn for_each_memory_current_path(&self, mut f: impl FnMut(u64, Arc<PathBuf>)) {
+    pub fn for_each_sample_target(
+        &self,
+        mut f: impl FnMut(u64, Arc<PathBuf>, Arc<PathBuf>),
+    ) {
         let state = self.state.read();
-        for (cgroup_id, path) in state.memory_current_paths.iter() {
-            f(*cgroup_id, Arc::clone(path));
+        for (cgroup_id, mem_path) in state.memory_current_paths.iter() {
+            if let Some(cpu_path) = state.cpu_stat_paths.get(cgroup_id) {
+                f(*cgroup_id, Arc::clone(mem_path), Arc::clone(cpu_path));
+            }
         }
     }
 
@@ -102,10 +111,14 @@ impl AttributionCache {
     pub fn register_cgroup_directory(&self, cgroup_id: u64, rel_path: PathBuf) {
         let mut state = self.state.write();
         let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+        let cpu_stat = precompute_cpu_stat(&self.cgroup_root, &rel_path);
         state.cgroup_paths.insert(cgroup_id, rel_path);
         state
             .memory_current_paths
             .insert(cgroup_id, Arc::new(memory_current));
+        state
+            .cpu_stat_paths
+            .insert(cgroup_id, Arc::new(cpu_stat));
         let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)));
         state.cgroup_labels.insert(cgroup_id, labels);
     }
@@ -128,6 +141,7 @@ impl AttributionCache {
         for id in &stale_ids {
             state.cgroup_paths.remove(id);
             state.memory_current_paths.remove(id);
+            state.cpu_stat_paths.remove(id);
             state.cgroup_labels.remove(id);
         }
         stale_ids.len()
@@ -213,6 +227,13 @@ fn cgroup_v2_mount() -> PathBuf {
     statix_infra::env::var("STATIX_CGROUP_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/sys/fs/cgroup"))
+}
+
+fn precompute_cpu_stat(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
+    let rel = rel_path
+        .strip_prefix(Path::new("/"))
+        .unwrap_or(rel_path);
+    cgroup_root.join(rel).join("cpu.stat")
 }
 
 fn precompute_memory_current(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
@@ -305,6 +326,46 @@ pub fn read_memory_current_at(path: &Path) -> Result<u64, AttributionError> {
     raw_str.parse::<u64>().map_err(|_| AttributionError::ParseMemoryBytes {
         path: path.to_path_buf(),
         value: raw_str.to_string(),
+    })
+}
+
+pub fn read_cpu_usage_usec_at(path: &Path) -> Result<u64, AttributionError> {
+    let path_buf = path.to_path_buf();
+    let mut file = File::open(path).map_err(|source| AttributionError::OpenFile {
+        path: path.display().to_string(),
+        source,
+    })?;
+
+    let mut buf = [0u8; 256];
+    let n = file.read(&mut buf).map_err(|source| AttributionError::OpenFile {
+        path: path.display().to_string(),
+        source,
+    })?;
+    if n == 0 {
+        return Err(AttributionError::EmptyCpuStat { path: path_buf });
+    }
+
+    let contents = std::str::from_utf8(&buf[..n]).map_err(|source| {
+        AttributionError::InvalidCpuUtf8 {
+            path: path_buf.clone(),
+            source,
+        }
+    })?;
+    let first_line = contents
+        .lines()
+        .next()
+        .ok_or(AttributionError::NoCpuUsageField {
+            path: path_buf.clone(),
+        })?;
+    let value = first_line
+        .strip_prefix("usage_usec ")
+        .ok_or(AttributionError::NoCpuUsageField {
+            path: path_buf.clone(),
+        })?
+        .trim();
+    value.parse::<u64>().map_err(|_| AttributionError::ParseCpuUsage {
+        path: path_buf,
+        value: value.to_string(),
     })
 }
 
