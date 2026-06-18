@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf enterprise-check wal-test wal-faultfs
+.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf verify-phase14-cpu enterprise-check wal-test wal-faultfs
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -96,9 +96,9 @@ run-gateway: build-gateway
 		echo "ERROR: port 3000 is in use. Run: make stop-gateway"; \
 		exit 1; \
 	fi
-	@echo "==> Starting statix-gateway on host (KAFKA_BROKERS=localhost:9092)..."
+	@echo "==> Starting statix-gateway on host..."
 	@echo "    Prefer Docker stack: make compose-up"
-	RUST_LOG=info KAFKA_BROKERS=localhost:9092 \
+	RUST_LOG=info \
 		$(WORKSPACE_ROOT)/target/release/statix-gateway
 
 # Back-compat aliases.
@@ -136,7 +136,7 @@ compose-up: stop-api
 		echo "  sudo systemctl start docker"; \
 		exit 127; \
 	)
-	@echo "==> Starting Kafka + ClickHouse + statix-gateway (statix-net)..."
+	@echo "==> Starting ClickHouse + statix-gateway (statix-net)..."
 	$(COMPOSE) up -d
 	@sleep 2
 	@if ! curl -sf -o /dev/null http://127.0.0.1:3000/health 2>/dev/null; then \
@@ -169,6 +169,10 @@ wal-test:
 # Phase 11 — WAL disk-degradation (ENOSPC) test on a size-limited tmpfs (root).
 wal-faultfs:
 	sudo $(WORKSPACE_ROOT)/scripts/wal-faultfs.sh
+
+# Phase 14 — CPU priming, conservation, soft miss (unit) + optional E2E (STATIX_PHASE14_E2E=1).
+verify-phase14-cpu:
+	$(WORKSPACE_ROOT)/scripts/verify-phase14-cpu.sh
 
 verify: build-ebpf
 	@echo "==> BPF program sections:"

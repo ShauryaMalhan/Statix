@@ -103,7 +103,7 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_EBF_PATH` | (auto) | Override path to BPF ELF; else CPU-tier pick from `STATIX_BPF_DIR` (`target/bpf`) |
 | `STATIX_BPF_DIR` | `target/bpf` | Directory with `statix-ebpf-{small,large,xlarge}` |
 | `STATIX_WINDOW_SECS` | `10` | Aggregation flush interval (must be &gt; 0; invalid → default) |
-| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | `memory.current` poll interval (must be &gt; 0; invalid → default) |
+| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | cgroupfs poll interval for `memory.current` and `cpu.stat` (must be &gt; 0; invalid → default) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 | `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
@@ -128,11 +128,15 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 ```bash
 make check
 make verify-btf
+make verify-phase14-cpu   # Phase 14 CPU gates (priming, conservation, soft miss)
+# Optional live stack drill: STATIX_PHASE14_E2E=1 make verify-phase14-cpu
 # Optional local verifier (KVM + virtme-ng): see scripts/verify-ebpf-kernel.sh
 ```
 
 - Phase 2: [docs/guides/phase2-validation.md](docs/guides/phase2-validation.md)
 - Phase 3: [docs/guides/phase3-validation.md](docs/guides/phase3-validation.md)
+
+**Phase 14 CPU:** agent emits `schema_version: 3` with per-window `cpu_usage_usec` (microseconds of CPU time, not lifetime total). Gateway accepts schema 2 or 3; ClickHouse column `cpu_usage_usec UInt64` on `statix.workload_metrics`. See [ADR 058](docs/adr/phase14/058-phase14-cpu-usage-tracking.md).
 
 ## Production deploy
 
@@ -159,6 +163,7 @@ Statix/
 ├── Dockerfile.gateway   # dev Compose gateway only
 ├── .github/workflows/ebpf-ci.yml
 ├── scripts/verify-ebpf-kernel.sh
+├── scripts/verify-phase14-cpu.sh
 ├── docs/
 ├── Makefile
 └── README.md

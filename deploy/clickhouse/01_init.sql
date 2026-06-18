@@ -24,9 +24,12 @@ CREATE TABLE IF NOT EXISTS statix.workload_metrics
     memory_bytes_last UInt64,
     exec_count UInt32,
     sample_count UInt32,
-    cpu_usage_usec UInt64
+    cpu_usage_usec UInt64,
+    -- FinOps read-path: minmax skip index lets cgroup-filtered queries skip granules
+    -- whose cgroup_id range cannot match (billing drill-down, workload lookup).
+    INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4
 )
-ENGINE = ReplacingMergeTree(window_end_ns)-- Hour-aligned partitions: reduces midnight UTC boundary merge storms (V3-11 / ADR 051)
+ENGINE = ReplacingMergeTree(window_end_ns)
 PARTITION BY toStartOfHour(toDateTime(intDiv(window_start_ns, 1000000000)))
 ORDER BY (node, window_start_ns, cgroup_id)
 TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
@@ -36,10 +39,14 @@ TTL toDateTime(intDiv(window_start_ns, 1000000000)) + INTERVAL 30 DAY;
 DROP VIEW  IF EXISTS statix.telemetry_mv          SYNC;
 DROP TABLE IF EXISTS statix.kafka_telemetry_queue SYNC;
 
--- statix.workload_metrics (defined above) is UNCHANGED:
+-- statix.workload_metrics (defined above):
 --   ReplacingMergeTree(window_end_ns) natively absorbs batched HTTP inserts;
---   ReplacingMergeTree + FINAL dedups at-least-once WAL replays.
+--   ReplacingMergeTree + FINAL dedups at-least-once WAL replays;
+--   cgroup_idx minmax skip index (Phase 10 / ADR 059).
 -- Do NOT add async_insert: the synchronous insert ACK is the stall-detection primitive.
 --
 -- Existing volume (Phase 14): ALTER TABLE statix.workload_metrics
 --   ADD COLUMN IF NOT EXISTS cpu_usage_usec UInt64 DEFAULT 0 AFTER sample_count;
+--
+-- Existing volume (Phase 10): ALTER TABLE statix.workload_metrics
+--   ADD INDEX IF NOT EXISTS cgroup_idx cgroup_id TYPE minmax GRANULARITY 4;

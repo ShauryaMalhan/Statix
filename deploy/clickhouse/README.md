@@ -6,7 +6,7 @@ Creates:
 
 | Object | Purpose |
 |--------|---------|
-| `statix.workload_metrics` | `ReplacingMergeTree` storage (dedupe key: `node`, `window_start_ns`, `cgroup_id`) |
+| `statix.workload_metrics` | `ReplacingMergeTree` storage (dedupe key: `node`, `window_start_ns`, `cgroup_id`); minmax skip index on `cgroup_id` ([ADR 059](../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md)) |
 
 Phase 13 removed the Kafka engine table and materialized view. The script includes `DROP` statements for legacy `kafka_telemetry_queue` / `telemetry_mv` on existing volumes ([ADR 055](../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 

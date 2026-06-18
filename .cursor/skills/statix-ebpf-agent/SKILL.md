@@ -92,7 +92,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 
 ## User-space (Phase 2)
 
-- Batched JSON `schema_version: 2`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md))
+- Batched JSON `schema_version: 3` (agent emit); gateway accepts `2..=3`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [020](../../../docs/adr/020-ingest-schema-version-window.md), [058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md))
 - `STATIX_RAW_EVENTS=1` debug only
 - K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md))
@@ -133,7 +133,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 | Agent | `init_http_client`; `init_retry_worker`; circuit breaker + WAL on 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md), [006](../../../docs/adr/006-shared-http-client-for-ingest.md)) |
 | API | `GET /health` (liveness); `GET /ready` = `ch_healthy` + mpsc &lt;80% ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `POST /ingest` Tier 1/2 503; `statix_api_ingest_lag_seconds` |
 | Writer | `clickhouse_writer.rs` — `MetricRow` coalescer → RowBinary INSERT; `MetricRow::from_ingest` in handler ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); `STATIX_CH_*` env; no `async_insert` |
-| CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [026](../../../docs/adr/026-clickhouse-finops-database-init.md)) |
+| CH storage | `statix.workload_metrics`; `ReplacingMergeTree(window_end_ns)`; `INDEX cgroup_idx` minmax on `cgroup_id`; billing `FINAL`; init [deploy/clickhouse/01_init.sql](../../../deploy/clickhouse/01_init.sql) ([ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [026](../../../docs/adr/026-clickhouse-finops-database-init.md), [059](../../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md)) |
 | Prod deploy | `deploy/docker/Dockerfile.{gateway,agent}`; `deploy/k8s/*.yaml` ([ADR 024](../../../docs/adr/024-agent-production-container.md), [025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)) |
 
 Spec: [docs/guides/phase3-ingest-interface.md](../../../docs/guides/phase3-ingest-interface.md)  
@@ -145,6 +145,7 @@ Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validat
 make deps          # first time
 make build         # ebpf + statix + statix-gateway
 make check
+make verify-phase14-cpu   # Phase 14 CPU gates
 make verify-btf    # when BPF / kernel portability touched
 # CI parity (needs KVM + virtme-ng): scripts/verify-ebpf-kernel.sh 5.15 statix-ebpf/target/.../statix-ebpf target/release/statix-ebpf-verify
 make compose-up    # Dev stack (API in Docker on :3000); Phase 5: add STATIX_API_TOKEN in prod

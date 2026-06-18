@@ -76,3 +76,28 @@ curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20C
 See [enterprise-latency.md](enterprise-latency.md): no handler `await` on ClickHouse; agent WAL on `503` ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)).
 
 Tear down: `make compose-down`. Rebuild gateway: `docker compose build statix-gateway && docker compose up -d statix-gateway`.
+
+## Phase 14 — CPU time (`cpu_usage_usec`)
+
+Agent emits schema **v3** with per-window CPU microseconds ([ADR 058](../adr/phase14/058-phase14-cpu-usage-tracking.md)).
+
+```bash
+make verify-phase14-cpu
+# With stack + agent running:
+# STATIX_PHASE14_E2E=1 make verify-phase14-cpu
+```
+
+| Gate | Pass |
+|------|------|
+| Priming | First sample per cgroup primes baseline only — unit test rejects lifetime spike on first billable delta |
+| Conservation | Sum of per-sample deltas equals `usage_usec` span — unit test |
+| Soft miss | Missing `cpu.stat` → CPU skipped; `memory.current` still parses — unit test |
+| Backward compat | v2 JSON without `cpu_usage_usec` → `0` — `cargo test -p statix-wire` |
+| Live E2E (optional) | `stress-ng --cpu 1` → `SELECT max(cpu_usage_usec) FROM statix.workload_metrics FINAL` &gt; 0; summary API returns `total_cpu_usec` |
+
+Schema check:
+
+```bash
+curl -s -u default:${CLICKHOUSE_PASSWORD} \
+  "http://localhost:8123/?query=DESCRIBE%20TABLE%20statix.workload_metrics" | grep cpu_usage_usec
+```

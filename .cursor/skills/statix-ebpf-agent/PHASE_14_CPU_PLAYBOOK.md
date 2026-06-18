@@ -1,7 +1,7 @@
 # Phase 14 — CPU Time Tracking (`cpu_usage_usec`)
 
 > **Audience:** the Cursor execution engine.
-> **Status:** **Shipped** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)). P14-10 full docs deferred — see [TODO.md](TODO.md).
+> **Status:** **Shipped** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)). P14-10 docs + verify script complete.
 
 ## Topology (current)
 
@@ -37,15 +37,11 @@ cgroup cpu.stat (delta) ── sampler ─────┘       → POST /ingest
 - `make build && make check` — BPF untouched; no `make verify-btf` required.
 - `cargo test -p statix-wire` — v2 missing field → `cpu_usage_usec = 0`; v3 round-trip.
 - `cargo test -p statix-gateway` — existing gateway tests pass.
+- `make verify-phase14-cpu` — priming, conservation, soft miss unit gates + wire/gateway smoke.
+- **Optional E2E:** `STATIX_PHASE14_E2E=1 make verify-phase14-cpu` (stack + agent running).
 - **CH migration:** dev → `docker compose down -v && make compose-up`; prod → `ALTER TABLE statix.workload_metrics ADD COLUMN IF NOT EXISTS cpu_usage_usec UInt64 DEFAULT 0 AFTER sample_count`.
-- **E2E:** `stress-ng --cpu 1 --timeout 30s` → `SELECT cgroup_id, cpu_usage_usec FROM statix.workload_metrics FINAL ORDER BY cpu_usage_usec DESC LIMIT 5` → busy cgroup &gt; 0.
+- **Live drill:** `stress-ng --cpu 1 --timeout 30s` → `SELECT cgroup_id, cpu_usage_usec FROM statix.workload_metrics FINAL ORDER BY cpu_usage_usec DESC LIMIT 5` → busy cgroup &gt; 0.
 - **Read API:** `curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=1' | jq '.[].total_cpu_usec'`.
-- **Priming drill:** agent on host with long-running busy process — first window must show a *small* delta, not lifetime CPU total.
-
-## Part 2 — Open (P14-10)
-
-- [ ] `docs/guides/phase3-ingest-interface.md` — wire field + schema v3
-- [ ] README CPU column note
 
 ## Reference
 

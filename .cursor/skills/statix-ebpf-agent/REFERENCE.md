@@ -14,7 +14,7 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → gatew
 | Ingest API | `POST /ingest`; `try_reserve_many(MetricRow)` — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md) |
 | Read API | `GET /api/v1/workloads/summary?hours=` → `AppState.ch_client` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
 | Agent metrics | `http://<host>:9091/metrics` — ring drops, WAL, circuit ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
-| Storage | Gateway RowBinary → `statix.workload_metrics` (`ReplacingMergeTree`; billing: `FINAL`) — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md) |
+| Storage | Gateway RowBinary → `statix.workload_metrics` (`ReplacingMergeTree`; `cgroup_id` minmax skip index; billing: `FINAL`) — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [059](../../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md) |
 
 ## File map
 
@@ -32,6 +32,7 @@ Statix/
 ├── statix-gateway/ (`src/config.rs`, `clickhouse_writer.rs`, `routes/ingest.rs`)
 ├── .github/workflows/ebpf-ci.yml   # userspace + kernel verifier matrix ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md))
 ├── scripts/verify-ebpf-kernel.sh   # virtme-ng + statix-ebpf-verify per kernel
+├── scripts/verify-phase14-cpu.sh  # Phase 14 CPU gates (make verify-phase14-cpu)
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
 └── .cursor/skills/statix-ebpf-agent/
 ```

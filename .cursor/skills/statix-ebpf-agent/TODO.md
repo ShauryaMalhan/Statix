@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 14 shipped** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md), [PHASE_14_CPU_PLAYBOOK.md](PHASE_14_CPU_PLAYBOOK.md)). P14-10 docs pending. Also open: Phase 5 prod ops, Phase 8/9 partial items.
+**Current focus:** Phase 14 complete ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)). Also open: Phase 5 prod ops, Phase 8/9 partial items.
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -241,7 +241,7 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 - [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - [x] **ClickHouse merge pressure monitoring** — V2-16 ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
-- [ ] **ClickHouse skip index / granularity tuning:** Add `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` for cgroup-filtered queries
+- [x] **ClickHouse skip index / granularity tuning:** `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` — [ADR 059](../../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md); `deploy/clickhouse/01_init.sql`
 - [x] **ClickHouse Kafka engine lag monitoring:** **CANCELLED** — Phase 13 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md))
 
 ---
@@ -310,16 +310,16 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ### Correctness gates (E2E verify)
 
-- [ ] **Priming:** first window of bootstrapped busy cgroup — small delta, not lifetime total
-- [ ] **Conservation:** per-window deltas sum to cgroup `usage_usec` span
-- [ ] **Soft miss:** no cpu controller → memory still sampled, CPU skipped
+- [x] **Priming:** first window of bootstrapped busy cgroup — small delta, not lifetime total (`memory_sampler::cpu_delta` unit tests)
+- [x] **Conservation:** per-window deltas sum to cgroup `usage_usec` span (`memory_sampler` unit test)
+- [x] **Soft miss:** no cpu controller → memory still sampled, CPU skipped (`attribution` unit test + `make verify-phase14-cpu`)
 - [x] **Backward compat:** v2 JSON → `cpu_usage_usec = 0` (wire unit test)
 
 ### P14-10 — Project-rule companions
 
 - [x] **ADR** [058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)
-- [ ] **Docs** — `phase3-ingest-interface.md`, README (deferred)
-- [x] **Skills** — SKILL/REFERENCE/PATTERNS/playbook sync (partial; full docs deferred)
+- [x] **Docs** — `phase3-ingest-interface.md`, `phase3-validation.md`, README CPU note
+- [x] **Skills** — SKILL/REFERENCE/PATTERNS/playbook sync; `make verify-phase14-cpu`
 
 ---
 
@@ -334,7 +334,7 @@ L8/L9 V3 (shipped):     V3-1…18 (Wave 1–5: ADR 049–053)
   Week 3:               [x] V3-11, V3-12, V3-15 (distributed state)
   Week 4:               [x] V3-2, V3-6, V3-10, V3-14, V3-1 (perf + observability)
   Month 2:              [x] V3-16, V3-17, V3-18, V3-3 (micro-architecture polish)
-MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index
+MONTH 3 (P3):           arm64 CI, cgroup v1 detection, [x] CH skip index (ADR 059)
 PHASE 11 (shipped):     agent WAL (primary buffer), circuit breaker  — ADR 054
 PHASE 13 (shipped):      Queue-less ingest — ADR 055/056/057
   Part 1:               [x] schema drop · CH RowBinary writer · 3-tier 503
@@ -343,6 +343,6 @@ PHASE 13 (shipped):      Queue-less ingest — ADR 055/056/057
 PHASE 14 (shipped):      CPU time tracking — ADR 058
   Plumb:                [x] P14-1…9 wire→attribution→aggregator→sampler→main
                             →output(v3)→MetricRow→CH schema→read API
-  E2E gates:            [ ] priming · conservation · soft miss (manual)
-  Companions:           [x] ADR 058 + skills · [ ] full docs (P14-10)
+  E2E gates:            [x] priming · conservation · soft miss (`make verify-phase14-cpu`)
+  Companions:           [x] ADR 058 + docs + skills + verify script
 ```

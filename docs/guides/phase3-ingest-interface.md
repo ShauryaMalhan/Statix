@@ -39,6 +39,7 @@ Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breake
 | `memory_bytes_last` | u64 | Last sample in window |
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
+| `cpu_usage_usec` | u64 | CPU microseconds consumed in window (delta of cgroup `cpu.stat` `usage_usec`; schema v3; omitted in v2 → `0`) ([ADR 058](../adr/phase14/058-phase14-cpu-usage-tracking.md)) |
 
 ## Gateway flat row (one per workload)
 
@@ -89,7 +90,7 @@ Wire types: `statix_wire::IngestBatch` ([ADR 028](../adr/028-finops-wire-and-age
 | `STATIX_BACKOFF_*` | 1s→30s | Retry worker ([ADR 006](../adr/006-shared-http-client-for-ingest.md)) |
 | `STATIX_EBF_PATH` | (required) | Compiled BPF ELF |
 | `STATIX_WINDOW_SECS` | `10` | Aggregation window |
-| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | Memory poll interval |
+| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | cgroupfs poll interval (`memory.current` + `cpu.stat` on same tick) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 
 ### API (`statix-gateway`)
@@ -109,7 +110,9 @@ Loaded by `config::Config::from_env()` ([ADR 030](../adr/030-finops-api-config-s
 
 ## Read API
 
-`GET /api/v1/workloads/summary?hours=<u64>` — default **24** hours. Uses `statix.workload_metrics FINAL` ([ADR 027](../adr/027-api-read-path-clickhouse.md)).
+`GET /api/v1/workloads/summary?hours=<u64>` — default **24** hours. Aggregates over `statix.workload_metrics` (no `FINAL` on summary — same WAL double-count caveat as `total_execs`; billing uses `FINAL` on the table) ([ADR 027](../adr/027-api-read-path-clickhouse.md), [058](../adr/phase14/058-phase14-cpu-usage-tracking.md)).
+
+Response fields include `peak_memory`, `total_execs`, and `total_cpu_usec` (`sum(cpu_usage_usec)`).
 
 ```bash
 curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .

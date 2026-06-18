@@ -596,3 +596,41 @@ fn hostname() -> String {
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "localhost".into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn phase14_read_cpu_usage_usec_at_parses() {
+        let dir = temp_test_dir("statix-cpu-stat");
+        let path = dir.join("cpu.stat");
+        fs::write(&path, b"usage_usec 123456\nnr_periods 10\n").unwrap();
+        assert_eq!(read_cpu_usage_usec_at(&path).unwrap(), 123456);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn phase14_soft_miss_memory_still_works() {
+        let dir = temp_test_dir("statix-soft-miss");
+        let mem_path = dir.join("memory.current");
+        let cpu_path = dir.join("cpu.stat");
+        fs::write(&mem_path, b"4096").unwrap();
+        assert!(read_cpu_usage_usec_at(&cpu_path).is_err());
+        assert_eq!(read_memory_current_at(&mem_path).unwrap(), 4096);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
