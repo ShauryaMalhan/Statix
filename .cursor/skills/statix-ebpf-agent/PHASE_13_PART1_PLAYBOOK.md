@@ -1,7 +1,7 @@
 # Phase 13 — Part 1 Playbook: Kafka Removal → Direct ClickHouse Ingest
 
 > **Audience:** the Cursor execution engine.
-> **Status:** Part 1 **shipped** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). Part 2 (infra + compose) remains open — see [TODO.md](TODO.md).
+> **Status:** Part 1 **shipped** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). Part 2 ingest **shipped** ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); infra strip open — see [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) and [TODO.md](TODO.md).
 
 ## Topology (current)
 
@@ -32,7 +32,7 @@ Backpressure: `ch_healthy` + mpsc 80% gate → `503` → agent circuit breaker �
 
 ## Part 2 — Infra strip (NOT shipped)
 
-- [ ] Remove Kafka/Zookeeper from `docker-compose.yml` and K8s manifests.
-- [x] Update `README.md`, `docs/guides/enterprise-latency.md`, `run_script.md`, skill files ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
+- [ ] Remove Kafka/Zookeeper from `docker-compose.yml` and K8s manifests (`deploy/k8s/gateway.yaml` still sets `KAFKA_BROKERS`).
+- [x] Ingest zero-alloc collapse — [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
+- [x] Update `README.md`, `docs/guides/enterprise-latency.md`, `run_script.md`, skill files.
 - [x] Document env: `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS`, `STATIX_INGEST_CHANNEL_SIZE`.
-- [ ] Remove from compose/K8s: `KAFKA_BROKERS`, `STATIX_KAFKA_*`.

@@ -10,7 +10,7 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped; Kafka ops cancelled Phase 13 ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
 | **5.5 V3** | Done | Post-GA audit ([ADR 049](docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) |
 | **11** | Done | Agent WAL + circuit breaker ([ADR 054](docs/adr/phase11/054-phase11-wal-spillway.md)) |
-| **13** | **Part 1+2 ingest done** | Queue-less RowBinary + single `MetricRow` ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); compose strip open |
+| **13** | **Part 1+2 ingest done** | Queue-less RowBinary + single `MetricRow` ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); **infra strip open** (`docker-compose.yml` still has Kafka) |
 | **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
 | **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/028-finops-wire-and-agent-rename.md)–[036](docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
 | **8** | Partial | K8s manifests, informer, drain, digest pins shipped; stronger cgroup→pod mapping open |
@@ -27,7 +27,7 @@ Five host crates + BPF + infra:
 - **`statix-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/035-phase7-workspace-restructure.md))
 - **`statix`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
 - **`statix-gateway`** — `POST /ingest` → RowBinary coalescer → ClickHouse; `GET /api/v1/workloads/summary`; probes
-- **`docker-compose.yml`** — ClickHouse, Grafana, gateway *(Kafka removal: Phase 13 Part 2)*
+- **`docker-compose.yml`** — ClickHouse, Grafana, gateway *(Kafka services still present — strip tracked in [TODO](.cursor/skills/statix-ebpf-agent/TODO.md))*
 
 Phase 2 behavior in short:
 

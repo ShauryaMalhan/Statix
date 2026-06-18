@@ -37,8 +37,11 @@ Do **not** replace it with a per-request `clickhouse::inserter`.
 
 ## Part 2 — Infra strip (NOT shipped)
 
-- [ ] Remove Kafka/Zookeeper from `docker-compose.yml` and K8s manifests.
-- [ ] Remove from compose/K8s: `KAFKA_BROKERS`, `STATIX_KAFKA_*`.
+`docker-compose.yml` still defines `kafka`, `kafka-ui`, and stale `KAFKA_BROKERS` / `STATIX_KAFKA_*` on `statix-gateway`. Gateway **Rust code** ignores these — queue-less path is live ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
+
+- [ ] Remove Kafka services from `docker-compose.yml`; drop `kafka-data` volume; fix `clickhouse` / gateway `depends_on`.
+- [ ] Remove `KAFKA_BROKERS` from `deploy/k8s/gateway.yaml`; add `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_*`.
+- [ ] Update `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`.
 
 ## Deferred stretch (optional)
 

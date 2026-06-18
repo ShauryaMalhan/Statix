@@ -122,7 +122,7 @@ limits   = requests × 1.25;
 
 **Agent:** `OnceLock<reqwest::Client>`; circuit breaker + WAL on sustained 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)); `init_retry_worker` — `mpsc(60)` + disk spillway.
 
-**API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); `schema_version` `2..=3`; 2MB body limit.
+**API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` builds `MetricRow::from_ingest` inline into permits — Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); `schema_version` `2..=3`; 2MB body limit.
 
 **Writer:** `clickhouse_writer.rs` — coalesce `MetricRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE` ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
 

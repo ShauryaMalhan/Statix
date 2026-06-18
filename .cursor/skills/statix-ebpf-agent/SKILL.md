@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 Part 1+2 ingest done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md); compose strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 ingest done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md); infra strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -46,10 +46,10 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054
 | `statix-wire` | host lib | `IngestBatch`, `WorkloadRow` ([ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)) |
 | `statix-ebpf` | `bpfel-unknown-none` | tracepoint, `cgroup_id`, ring buffer (`STATIX_RING_BUF_BYTES` / [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md)) |
 | `statix` | host | loader, attribution, aggregator, output; **`:9091/metrics`** ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md)) |
-| `statix-gateway` | host | `Config::from_env()`; `clickhouse_writer` RowBinary coalescer; ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| `statix-gateway` | host | `clickhouse_writer` RowBinary coalescer; `MetricRow::from_ingest`; ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)) |
 | `statix-infra` | lib | `read_env_positive` (via `read_env_u64`/`read_env_usize`), clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md), [048](../../../docs/adr/048-generic-env-positive-parsing.md)) |
 
-**Infra:** `docker-compose.yml` (ClickHouse, Grafana `:3001`, gateway — Kafka removal Part 2), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
+**Infra:** `docker-compose.yml` (ClickHouse, Grafana `:3001`, gateway — **Kafka services still in compose; strip open**), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -68,7 +68,7 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | `emit_batch` | Serialize + `try_send` to retry worker; on full queue, `try_append` to disk WAL spillway (Phase 11, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) then last-resort sync drop-oldest; backoff + jitter; 0–5s recovery jitter after outage ([ADR 006](../../../docs/adr/006-shared-http-client-for-ingest.md), [042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md)) |
 | Disk WAL | Hot path `try_append` (non-blocking) → dedicated `statix-wal-writer` thread (`fdatasync` group-commit); never disk I/O on the ring-buffer loop ([PLAYBOOK](PHASE_11_WAL_PLAYBOOK.md)) |
 | `POST /ingest` | `schema_version` 2 or 3 or `400` ([ADR 020](../../../docs/adr/020-ingest-schema-version-window.md)); Tier 1 `!ch_healthy`→503; Tier 2 `try_reserve_many`→503; 2MB body limit ([ADR 052](../../../docs/adr/phase55/v3/052-phase55-v3-wave4-perf-observability.md)) |
-| ClickHouse writer | Background task only — RowBinary micro-batches; sync `insert.end()` ACK ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| ClickHouse writer | Background task only — `MetricRow` coalescer; RowBinary micro-batches; sync `insert.end()` ACK ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)) |
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 
@@ -83,8 +83,8 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 - **CI matrix (BTF-era only):** Linux **5.10, 5.15, 6.1, 6.8** (mainline LTS tips, not `.0`) — [ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md); `.github/workflows/ebpf-ci.yml`; `scripts/verify-ebpf-kernel.sh` + `statix-ebpf-verify`
 - **5.10 memlock:** `bpf_memlock::bump_memlock_rlimit()` before `Ebpf::load()` — pre-5.11 kernels default 64 KiB `RLIMIT_MEMLOCK`; 512 KiB ringbuf needs infinity bump
 - **Attribution hot path (V2):** `on_identity_event` procfs skip when cgroup known; K8s label merge outside write lock ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
-- **Kafka routing (V2):** `FxHasher` partition slot; one key `Vec` per produce chunk ([ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
-- **Kafka durability (V2):** `failed_batches` `VecDeque` (cap 100) on produce `Err`; drain before each batch + metadata tick ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
+- **Kafka routing (V2, historical):** removed with `kafka.rs` ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md); was [ADR 039](../../../docs/adr/phase55/v2/039-phase55-v2-wave2-l8-fixes.md))
+- **Kafka durability (V2, historical):** removed with `kafka.rs` ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md); was [ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
 - **K8s eviction (V2):** agent + gateway `preStop sleep 5` + `terminationGracePeriodSeconds: 30`; gateway PDB `minAvailable: 1` ([ADR 040](../../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md))
 - **K8s labels (V2):** `watch_k8s_pods` — `kube::runtime::watcher` with node field selector; no 30s list poll ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - **K8s deploy (V2):** digest-pinned images; gateway cross-AZ `topologySpreadConstraints` ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
@@ -168,7 +168,7 @@ Deferred: [TODO.md](TODO.md)
 
 **P1-WEEK shipped:** [ADR 033](../../../docs/adr/phase55/l8/033-phase55-l8-p1-week-gateway-fixes.md) — `Bytes` retry body, Kafka producer alloc fixes, cached `kube::Client`, metadata refresh, `argMax` summary query.
 
-**P2-SPRINT shipped:** [ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md) — `Arc<[u8]>` node key + `FlatRowRef` on ingest.
+**P2-SPRINT shipped (historical):** [ADR 034](../../../docs/adr/phase55/l8/034-phase55-l8-p2-ingest-zero-copy.md) — superseded by gateway `MetricRow` path ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
 
 **L8 playbook:** [L8-AUDIT-FIXES.md](L8-AUDIT-FIXES.md) — all fixes shipped (ADR index).
 

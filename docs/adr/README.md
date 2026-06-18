@@ -43,7 +43,7 @@ See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.m
 | [018](018-phase-roadmap-status.md) | Phases 4 & 6 complete; Phase 5 security focus | Accepted |
 | [019](019-ingest-bearer-token-auth.md) | `STATIX_API_TOKEN` bearer on `POST /ingest` | Accepted |
 | [020](020-ingest-schema-version-window.md) | Accept `schema_version` 2 or 3 on ingest | Accepted |
-| [021](021-ingest-ready-probe.md) | `GET /ready` after Kafka connect + metadata | Accepted |
+| [021](021-ingest-ready-probe.md) | `GET /ready` after writer healthy + channel depth | Accepted *(updated Phase 13: `ch_healthy`, not Kafka — [055](phase13/055-phase13-part1-kafka-removal-rowbinary.md))*
 | [022](022-bpf-ring-buffer-drop-counter.md) | `RING_DROPS` per-CPU map + agent poll | Accepted |
 | [023](023-phase5-hot-path-fixes.md) | Attribution lock/label cache; agent `:9091/metrics`; `expected_bearer` | Accepted |
 | [024](024-agent-production-container.md) | `Dockerfile.statix` — BPF bundle + privileged runtime | Accepted |

@@ -20,7 +20,7 @@
 
 ### Gateway state + ingest (`main.rs`, `routes/ingest.rs`)
 
-- `AppState`: `ingest_tx: mpsc::Sender<FlatRow>`, `ch_healthy: Arc<AtomicBool>`.
+- `AppState`: `ingest_tx: mpsc::Sender<MetricRow>`, `ch_healthy: Arc<AtomicBool>`. *(Initial Part 1 shipped with `FlatRow`; collapsed to `MetricRow` in Part 2 — [ADR 056](056-phase13-part2-ingest-zero-alloc.md).)*
 - Tier 1: `!ch_healthy` → instant `503` (`statix_api_ch_unhealthy_reject_total`).
 - Tier 2: `try_reserve_many` → `Full` → `503`.
 - `/ready`: `ch_healthy` + mpsc &lt;80% gate.
@@ -39,11 +39,12 @@
 ## Consequences
 
 - **Positive:** Simpler stack; synchronous stall detection; agent WAL absorbs edge shock; shared CH client pool.
-- **Negative:** Gateway is terminal buffer — must fast-fail `503`; compose/K8s still reference Kafka until Part 2.
+- **Negative:** Gateway is terminal buffer — must fast-fail `503`; `docker-compose.yml`, `deploy/k8s/gateway.yaml`, and deploy READMEs still reference Kafka until Part 2 infra strip ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
 - **Cancelled ops:** Phase 5 `kafka_num_consumers`, Kafka retention, CH Kafka-engine lag alerting.
 
 ## References
 
 - [ADR 005](../005-non-blocking-ingest-pipeline.md) — superseded ingest path (historical)
 - [ADR 054](../phase11/054-phase11-wal-spillway.md) — agent WAL + circuit breaker
+- [ADR 056](056-phase13-part2-ingest-zero-alloc.md) — single `MetricRow`; `FlatRow` removed
 - [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) — Phase 13
