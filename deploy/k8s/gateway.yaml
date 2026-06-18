@@ -46,8 +46,14 @@ spec:
                 secretKeyRef:
                   name: statix-secrets
                   key: api-token
-            - name: KAFKA_BROKERS
-              value: kafka-broker.default.svc.cluster.local:9092
+            - name: STATIX_INGEST_CHANNEL_SIZE
+              value: "8192"
+            - name: STATIX_CH_BATCH_MAX
+              value: "1024"
+            - name: STATIX_CH_LINGER_MS
+              value: "50"
+            - name: STATIX_CH_INSERT_TIMEOUT_SECS
+              value: "3"
             - name: CLICKHOUSE_URL
               value: http://clickhouse.statix-system.svc.cluster.local:8123
             - name: CLICKHOUSE_USER

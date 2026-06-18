@@ -44,7 +44,7 @@ Per-row `String` clone of `node` / `batch_id` / `agent_version` remains (inheren
 - **Positive:** Materializations per batch drop from 3 → 1 (coalescer batch only); no redundant struct pair; `statix-wire` surface reduced to live protocol types (`IngestBatch`, `WorkloadRow`).
 - **Negative:** Envelope strings still cloned once per workload row at ingest (acceptable; `Arc<str>` stretch documented below).
 - **Neutral:** Wire JSON protocol, channel semantics, `/ready` gates, and agent build graph unchanged.
-- **Follow-up:** Compose/K8s infra still references Kafka — tracked separately in [TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md) (not part of this ADR's code scope).
+- **Follow-up:** Infra strip completed in [ADR 057](057-phase13-part2-infra-kafka-strip.md).
 
 ## References
 

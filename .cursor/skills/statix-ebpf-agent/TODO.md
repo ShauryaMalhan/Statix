@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** **Phase 13 Part 2 infra strip** — remove Kafka from `docker-compose.yml` + K8s ([TODO](#part-2--project-rule-companions--rollout-active)). **Ingest path complete:** Part 1 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) + Part 2 zero-alloc ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
+**Current focus:** **Phase 13 complete** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md), [057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)). Next: Phase 5 prod ops, Phase 8/9 partial items.
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -282,13 +282,13 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Gateway: 503 backpressure + state** — `ingest_tx` / `ch_healthy`; Tier 1 unhealthy fast-fail + Tier 2 `try_reserve_many`; `/ready` gates on `ch_healthy` + mpsc 80% ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md))
 
-### Part 2 — Project-rule companions + rollout (ACTIVE)
+### Part 2 — Project-rule companions + rollout ✅
 
 - [x] **Ingest zero-alloc collapse** — single gateway-local `MetricRow` (drop `FlatRow`→`MetricRow` double-buffer): permit-build in `ingest.rs`, writer re-typed on `MetricRow`, `AppState` channel type, dead `FlatRow` removed from `statix-wire`. Coalescer retained. [ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md). Playbook: [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md).
 
-- [ ] **Strip Kafka from infra** — `docker-compose.yml` still ships `kafka`, `kafka-ui`, `KAFKA_BROKERS`, `STATIX_KAFKA_*`; `deploy/k8s/gateway.yaml` still sets `KAFKA_BROKERS`. Remove services/env; update `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`. Gateway **code** is already queue-less ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
+- [x] **Strip Kafka from infra** — removed `kafka`/`kafka-ui` from `docker-compose.yml`; removed `KAFKA_BROKERS`/`STATIX_KAFKA_*`; updated `deploy/k8s/gateway.yaml` + deploy READMEs. [ADR 057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md).
 
-- [x] **ADR + docs + skill sync (ingest)** — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md); skills/README/guides updated; infra strip item above remains open
+- [x] **ADR + docs + skill sync** — ADR 055–057; skills/README/guides/deploy docs updated
 
 ---
 
@@ -305,8 +305,8 @@ L8/L9 V3 (shipped):     V3-1…18 (Wave 1–5: ADR 049–053)
   Month 2:              [x] V3-16, V3-17, V3-18, V3-3 (micro-architecture polish)
 MONTH 3 (P3):           arm64 CI, cgroup v1 detection, CH skip index
 PHASE 11 (shipped):     agent WAL (primary buffer), circuit breaker  — ADR 054
-PHASE 13 (active):      Queue-less ingest
-  Part 1 (shipped):     [x] schema drop · CH RowBinary writer · 3-tier 503  — ADR 055
-  Part 2 ingest:        [x] zero-alloc collapse (single MetricRow) — ADR 056
-  Part 2 infra:         [ ] strip Kafka from compose/K8s/deploy READMEs
+PHASE 13 (shipped):      Queue-less ingest — ADR 055/056/057
+  Part 1:               [x] schema drop · CH RowBinary writer · 3-tier 503
+  Part 2 ingest:        [x] zero-alloc collapse (single MetricRow)
+  Part 2 infra:         [x] strip Kafka from compose/K8s/deploy READMEs
 ```

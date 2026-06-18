@@ -21,12 +21,21 @@ kubectl apply -f deploy/k8s/statix-daemonset.yaml
 kubectl apply -f deploy/k8s/gateway-ingress.yaml
 ```
 
+## Architecture
+
+```
+statix agent (DaemonSet) → POST /ingest → statix-gateway → ClickHouse
+```
+
+No Kafka broker required. Gateway coalesces rows and inserts RowBinary into `statix.workload_metrics` ([ADR 055](../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
+
 ## Verify
 
 ```bash
 kubectl -n statix-system get deploy,ds,svc,ingress,pods
 kubectl -n statix-system rollout status deployment/statix-gateway
 curl -s "http://$(kubectl -n statix-system get svc statix-gateway-svc -o jsonpath='{.spec.clusterIP}'):3000/health"
+curl -s "http://$(kubectl -n statix-system get svc statix-gateway-svc -o jsonpath='{.spec.clusterIP}'):3000/ready"
 ```
 
 ## Images
@@ -38,8 +47,7 @@ Build and push to your registry, then update the `@sha256:...` digests in manife
 
 ## Notes
 
-- **Kafka:** `KAFKA_BROKERS` points at `kafka-broker.default.svc.cluster.local:9092` — adjust for your cluster.
-- **ClickHouse:** `CLICKHOUSE_URL` on gateway — adjust host; password from `statix-secrets` key `clickhouse-password` ([ADR 027](../../docs/adr/027-api-read-path-clickhouse.md)).
+- **ClickHouse:** `CLICKHOUSE_URL` on gateway — adjust host; password from `statix-secrets` key `clickhouse-password` ([ADR 027](../../docs/adr/027-api-read-path-clickhouse.md)). Writer env: `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS` ([ADR 055](../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
 - **Agent:** `privileged: true`, `hostPID: true`, host `/proc` and `/sys/fs/cgroup` mounts ([ADR 024](../../docs/adr/024-agent-production-container.md)).
 - **Metrics:** scrape agent pods on port `9091` (`statix_ring_drops_total`, etc.).
 - **Eviction / drain:** agent DaemonSet and gateway Deployment use `terminationGracePeriodSeconds: 30` and `preStop: sleep 5` so SIGTERM flush keeps a live network path ([ADR 040](../../docs/adr/phase55/v2/040-phase55-v2-wave3-l8-fixes.md)).

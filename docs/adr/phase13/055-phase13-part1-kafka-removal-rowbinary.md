@@ -39,7 +39,7 @@
 ## Consequences
 
 - **Positive:** Simpler stack; synchronous stall detection; agent WAL absorbs edge shock; shared CH client pool.
-- **Negative:** Gateway is terminal buffer — must fast-fail `503`; `docker-compose.yml`, `deploy/k8s/gateway.yaml`, and deploy READMEs still reference Kafka until Part 2 infra strip ([TODO.md](../../.cursor/skills/statix-ebpf-agent/TODO.md)).
+- **Negative:** Gateway is terminal buffer — must fast-fail `503`. Infra strip completed in [ADR 057](057-phase13-part2-infra-kafka-strip.md).
 - **Cancelled ops:** Phase 5 `kafka_num_consumers`, Kafka retention, CH Kafka-engine lag alerting.
 
 ## References

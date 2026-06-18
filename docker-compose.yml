@@ -1,53 +1,7 @@
-# Phase 3 ingest stack: Kafka (KRaft) → ClickHouse Kafka engine → MergeTree
+# Phase 13 ingest stack: agent → gateway → ClickHouse (queue-less)
 # Network: statix-net
 
 services:
-  kafka:
-    image: apache/kafka:3.7.0
-    hostname: kafka
-    networks:
-      - statix-net
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    volumes:
-      - kafka-data:/var/lib/kafka/data
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 >/dev/null 2>&1 || exit 1",
-        ]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    networks:
-      - statix-net
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: statix
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-    depends_on:
-      - kafka
-
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
     networks:
@@ -61,8 +15,12 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./deploy/clickhouse/01_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    depends_on:
-      - kafka
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   grafana:
     image: grafana/grafana:latest
@@ -76,7 +34,8 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
     depends_on:
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
 
   statix-gateway:
     build:
@@ -87,18 +46,18 @@ services:
     ports:
       - "3000:3000"
     environment:
-      KAFKA_BROKERS: kafka:29092
       STATIX_API_PORT: "3000"
-      STATIX_KAFKA_CHANNEL_SIZE: "8192"
-      STATIX_KAFKA_BATCH_MAX: "1024"
-      STATIX_KAFKA_LINGER_MS: "50"
+      STATIX_INGEST_CHANNEL_SIZE: "8192"
+      STATIX_CH_BATCH_MAX: "1024"
+      STATIX_CH_LINGER_MS: "50"
+      STATIX_CH_INSERT_TIMEOUT_SECS: "3"
       CLICKHOUSE_URL: http://clickhouse:8123
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       # STATIX_API_TOKEN: ${STATIX_API_TOKEN}   # set in .env when testing auth
       RUST_LOG: info
     depends_on:
-      kafka:
+      clickhouse:
         condition: service_healthy
 
 networks:
@@ -106,5 +65,4 @@ networks:
     driver: bridge
 
 volumes:
-  kafka-data:
   clickhouse-data:

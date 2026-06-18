@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 ingest done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md); infra strip open) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -49,7 +49,7 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054
 | `statix-gateway` | host | `clickhouse_writer` RowBinary coalescer; `MetricRow::from_ingest`; ingest + read API; probes ([ADR 021](../../../docs/adr/021-ingest-ready-probe.md), [ADR 029](../../../docs/adr/029-ready-channel-depth-gate.md), [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)) |
 | `statix-infra` | lib | `read_env_positive` (via `read_env_u64`/`read_env_usize`), clock helpers ([ADR 035](../../../docs/adr/035-phase7-workspace-restructure.md), [048](../../../docs/adr/048-generic-env-positive-parsing.md)) |
 
-**Infra:** `docker-compose.yml` (ClickHouse, Grafana `:3001`, gateway — **Kafka services still in compose; strip open**), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql`
+**Infra:** `docker-compose.yml` (ClickHouse, Grafana `:3001`, gateway), `deploy/docker/`, `deploy/k8s/`, `deploy/clickhouse/01_init.sql` ([ADR 057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md))
 
 Modules: see [REFERENCE.md](REFERENCE.md).
 
@@ -176,7 +176,7 @@ Deferred: [TODO.md](TODO.md)
 
 **L8/L9 V3 playbook:** [L8_POST_GA_FIXES.md](L8_POST_GA_FIXES.md) — all V3 waves shipped ([ADR 049](../../../docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](../../../docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)).
 
-**Phase 13 playbooks:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)); [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) ingest shipped ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
+**Phase 13 playbooks:** [PHASE_13_PART1_PLAYBOOK.md](PHASE_13_PART1_PLAYBOOK.md) · [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) — shipped ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)).
 
 ## OOM-safe remediation (Phases 4–5)
 

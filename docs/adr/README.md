@@ -94,3 +94,4 @@ See also [phase55/README.md](phase55/README.md) and [docs/README.md](../README.m
 |-----|-------|--------|
 | [055](phase13/055-phase13-part1-kafka-removal-rowbinary.md) | Part 1 — Kafka removal; gateway RowBinary → ClickHouse | Accepted |
 | [056](phase13/056-phase13-part2-ingest-zero-alloc.md) | Part 2 — single `MetricRow`; ingest zero-alloc collapse | Accepted |
+| [057](phase13/057-phase13-part2-infra-kafka-strip.md) | Part 2 — strip Kafka from compose/K8s/deploy docs | Accepted |
