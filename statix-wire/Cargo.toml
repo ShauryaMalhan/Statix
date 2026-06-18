@@ -1,6 +1,6 @@
 [package]
 name = "statix-wire"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 description = "Shared ingest wire types (batch envelope and workload rows)"
 
