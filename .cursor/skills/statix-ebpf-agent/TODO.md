@@ -2,7 +2,7 @@
 
 Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) for decisions.
 
-**Current focus:** Phase 14 complete ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)). Also open: Phase 5 prod ops, Phase 8/9 partial items.
+**Current focus:** Phase 10 Golden-Signal saturation metrics **shipped** ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md), [PHASE_10_SRE_PLAYBOOK.md](PHASE_10_SRE_PLAYBOOK.md)). Also open: Phase 5 prod ops, Phase 8/9 partial items, Phase 10 remainder (flush duration, retry depth, cache size, drain budget hits).
 
 **Completed:** Phases 1–4, **5.5 V1** (L8 P0/P1/P2), **5.5 V2** (L8 V2 distributed hardening), **6**, **7**, **9** (eBPF CI). **Targets 1–3** (packaging, CH init, API read-path).
 
@@ -238,7 +238,11 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 - [x] **Grafana in Compose:** `:3001` + `grafana-clickhouse-datasource` ([ADR 031](../../../docs/adr/031-grafana-clickhouse-compose.md))
 - [x] **Agent `/metrics` baseline:** `:9091` + ring drops ([ADR 023](../../../docs/adr/023-phase5-hot-path-fixes.md))
-- [ ] **Extended agent metrics:** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
+- [x] **Golden-Signal saturation metrics:** `statix_gateway_mpsc_depth`, `statix_api_ingest_503_total`, `statix_wal_bytes_current` startup seed — [ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md), [PHASE_10_SRE_PLAYBOOK.md](PHASE_10_SRE_PLAYBOOK.md), [observability-metrics.md](../../../docs/guides/observability-metrics.md)
+  - [x] `statix_gateway_mpsc_depth` (gauge) — background sampler in `statix-gateway/src/main.rs`
+  - [x] `statix_api_ingest_503_total` (counter) — `record_ingest_metrics` in `statix-gateway/src/routes/ingest.rs`
+  - [x] `statix_wal_bytes_current` (gauge) — startup seed in `output::init_wal`
+- [ ] **Extended agent metrics (remainder):** flush duration, retry depth, cache size, drain budget hits (V2-18 gateway lag shipped — [ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **Cross-AZ data transfer audit** — V2-8 topology spread ([ADR 041](../../../docs/adr/phase55/v2/041-phase55-v2-wave4-l8-fixes.md))
 - [x] **ClickHouse merge pressure monitoring** — V2-16 ([ADR 042](../../../docs/adr/phase55/v2/042-phase55-v2-p2-sprint-l8-fixes.md))
 - [x] **ClickHouse skip index / granularity tuning:** `INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4` — [ADR 059](../../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md); `deploy/clickhouse/01_init.sql`

@@ -50,6 +50,16 @@ async fn main() -> Result<(), GatewayError> {
         .install_recorder()
         .map_err(|e| GatewayError::PrometheusInstall(e.to_string()))?;
 
+    metrics::describe_counter!(
+        "statix_api_ingest_503_total",
+        "Total HTTP 503 responses on POST /ingest (backpressure tripwire)"
+    );
+    metrics::describe_gauge!(
+        "statix_gateway_mpsc_depth",
+        "Occupied slots in the ClickHouse writer ingest mpsc (capacity − free permits)"
+    );
+    metrics::counter!("statix_api_ingest_503_total").increment(0);
+
     spawn_prometheus_upkeep(prometheus_handle.clone());
 
     let ch_client = config.clickhouse_client();
@@ -58,6 +68,7 @@ async fn main() -> Result<(), GatewayError> {
         clickhouse_writer::ingest_channel_capacity(),
     );
     let ingest_channel_capacity = writer.channel_capacity;
+    spawn_mpsc_depth_sampler(writer.tx.clone(), ingest_channel_capacity);
     log::info!(
         "Ingest readiness: /ready fails when mpsc > {READY_CHANNEL_FULL_THRESHOLD_PCT}% full (capacity={ingest_channel_capacity})"
     );
@@ -116,6 +127,20 @@ fn spawn_prometheus_upkeep(handle: PrometheusHandle) {
         loop {
             interval.tick().await;
             handle.run_upkeep();
+        }
+    });
+}
+
+fn spawn_mpsc_depth_sampler(tx: mpsc::Sender<clickhouse_writer::MetricRow>, capacity: usize) {
+    let period_ms = statix_infra::env::read_env_u64("STATIX_MPSC_DEPTH_SAMPLE_MS", 1000);
+    tokio::spawn(async move {
+        metrics::gauge!("statix_gateway_mpsc_depth").set(0.0);
+        let mut interval = tokio::time::interval(Duration::from_millis(period_ms));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let depth = capacity.saturating_sub(tx.capacity());
+            metrics::gauge!("statix_gateway_mpsc_depth").set(depth as f64);
         }
     });
 }

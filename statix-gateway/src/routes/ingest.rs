@@ -112,5 +112,8 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
 fn record_ingest_metrics(status: StatusCode, elapsed: std::time::Duration) {
     let status_label = status.as_u16().to_string();
     metrics::counter!("statix_api_ingest_requests_total", "status" => status_label).increment(1);
+    if status == StatusCode::SERVICE_UNAVAILABLE {
+        metrics::counter!("statix_api_ingest_503_total").increment(1);
+    }
     metrics::histogram!("statix_api_ingest_duration_seconds").record(elapsed.as_secs_f64());
 }

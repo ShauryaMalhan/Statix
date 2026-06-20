@@ -178,6 +178,9 @@ pub fn init_retry_worker(url: String) {
 /// after `init_retry_worker` (the drainer feeds the retry queue). Safe to skip
 /// when `STATIX_WAL_ENABLED=0`.
 pub fn init_wal(node: &str) {
+    metrics::gauge!(crate::wal::M_BYTES_CURRENT).set(0.0);
+    metrics::gauge!(crate::wal::M_SEGMENTS_CURRENT).set(0.0);
+
     let cfg = crate::wal::WalConfig::from_env();
     if !cfg.enabled {
         log::info!("Disk WAL spillway disabled (STATIX_WAL_ENABLED=0); overflow falls back to drop-oldest");

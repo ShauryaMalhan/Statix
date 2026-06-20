@@ -26,10 +26,23 @@ const _: () = assert!(
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    metrics_exporter_prometheus::PrometheusBuilder::new()
+    if let Err(e) = metrics_exporter_prometheus::PrometheusBuilder::new()
         .with_http_listener(([0, 0, 0, 0], 9091))
         .install()
-        .unwrap_or_else(|e| log::warn!("Failed to install prometheus recorder: {e}"));
+    {
+        log::warn!("Failed to install prometheus recorder: {e}");
+    }
+    metrics::describe_gauge!(
+        crate::wal::M_BYTES_CURRENT,
+        "Current on-disk WAL spillway size in bytes"
+    );
+    metrics::describe_gauge!(
+        crate::wal::M_SEGMENTS_CURRENT,
+        "Current number of on-disk WAL segments"
+    );
+    // Seed at startup so /metrics shows idle 0 even before init_wal (stdout-only mode).
+    metrics::gauge!(crate::wal::M_BYTES_CURRENT).set(0.0);
+    metrics::gauge!(crate::wal::M_SEGMENTS_CURRENT).set(0.0);
     log::info!("Agent Prometheus metrics exposed on http://0.0.0.0:9091/metrics");
     output::init_http_client();
     if let Some(url) = statix_infra::env::var("STATIX_INGEST_URL") {

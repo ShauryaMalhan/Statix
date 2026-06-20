@@ -105,6 +105,7 @@ Loaded by `config::Config::from_env()` ([ADR 030](../adr/030-finops-api-config-s
 | `STATIX_CH_BATCH_MAX` | `1024` (64–16384) | RowBinary micro-batch size |
 | `STATIX_CH_LINGER_MS` | `50` (1–1000) | Coalesce linger |
 | `STATIX_CH_INSERT_TIMEOUT_SECS` | `3` (1–30) | Insert ACK timeout; flips `ch_healthy` |
+| `STATIX_MPSC_DEPTH_SAMPLE_MS` | `1000` | Background mpsc depth gauge sampler period ([ADR 060](../adr/phase10/060-phase10-golden-signal-saturation-metrics.md)) |
 | `CLICKHOUSE_URL` | `http://localhost:8123` | Read + write client |
 | `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | `default` / empty | Auth |
 

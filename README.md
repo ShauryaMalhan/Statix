@@ -135,6 +135,7 @@ make verify-phase14-cpu   # Phase 14 CPU gates (priming, conservation, soft miss
 
 - Phase 2: [docs/guides/phase2-validation.md](docs/guides/phase2-validation.md)
 - Phase 3: [docs/guides/phase3-validation.md](docs/guides/phase3-validation.md)
+- Phase 10 metrics: [docs/guides/observability-metrics.md](docs/guides/observability-metrics.md)
 
 **Phase 14 CPU:** agent emits `schema_version: 3` with per-window `cpu_usage_usec` (microseconds of CPU time, not lifetime total). Gateway accepts schema 2 or 3; ClickHouse column `cpu_usage_usec UInt64` on `statix.workload_metrics`. See [ADR 058](docs/adr/phase14/058-phase14-cpu-usage-tracking.md).
 

@@ -13,7 +13,7 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → gatew
 | Agent | AsyncFd → attribution → aggregator → `emit_batch` → retry worker → `POST /ingest` (overflow → disk WAL `statix/src/wal/`, [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
 | Ingest API | `POST /ingest`; `try_reserve_many(MetricRow)` — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md) |
 | Read API | `GET /api/v1/workloads/summary?hours=` → `AppState.ch_client` — [ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md) |
-| Agent metrics | `http://<host>:9091/metrics` — ring drops, WAL, circuit ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) |
+| Agent metrics | `http://<host>:9091/metrics` — ring drops, WAL (`statix_wal_bytes_current`), circuit ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md), [054](../../../docs/adr/phase11/054-phase11-wal-spillway.md), [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)) |
 | Storage | Gateway RowBinary → `statix.workload_metrics` (`ReplacingMergeTree`; `cgroup_id` minmax skip index; billing: `FINAL`) — [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [059](../../../docs/adr/phase10/059-phase10-clickhouse-cgroup-skip-index.md) |
 
 ## File map
@@ -62,14 +62,14 @@ ring buffer → aggregator → emit_batch
 | T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/024-agent-production-container.md)–[027](../../../docs/adr/027-api-read-path-clickhouse.md)) |
 | 8 | Partial — V2 K8s hardening shipped (informer, drain, digest pins); stronger cgroup→pod mapping open |
 | 9 | Partial — eBPF verifier CI shipped ([ADR 037](../../../docs/adr/037-phase9-ebpf-verifier-ci.md)); arm64 / cgroup v1 detection open |
-| 10 | Extended observability (Grafana shipped; agent metrics + CH tuning open) |
+| 10 | Partial — Grafana + CH skip index shipped; Golden-Signal saturation metrics shipped ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)); extended agent metrics remainder open |
 
 ## Operational notes
 
 - Phase 3 stack: `make compose-up` / `make compose-down` ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)); CH schema change → `docker compose down -v` then `make compose-up` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md))
 - Prod: `deploy/docker/README.md`, `deploy/k8s/README.md`, `deploy/clickhouse/README.md`
 - Local ports: ClickHouse `:8123`; API `:3000`; Grafana `:3001`; agent `:9091/metrics`
-- **Gateway env:** `config::Config::from_env()` — `STATIX_API_PORT`, `STATIX_API_TOKEN`, `CLICKHOUSE_*` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); writer tuning in `clickhouse_writer.rs`: `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS` ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md))
+- **Gateway env:** `config::Config::from_env()` — `STATIX_API_PORT`, `STATIX_API_TOKEN`, `CLICKHOUSE_*` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)); writer tuning in `clickhouse_writer.rs`: `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS` ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); saturation sampler: `STATIX_MPSC_DEPTH_SAMPLE_MS` ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md))
 - Agent ingest URL: `http://127.0.0.1:3000/ingest` (not `localhost` — IPv6)
 - eBPF bundle: `target/bpf/statix-ebpf-{small,large,xlarge}`; auto by `num_cpus` — [ADR 013](../../../docs/adr/013-configurable-ring-buffer-size.md); override `STATIX_EBF_PATH`
 - Agent event loop: `watch_k8s_pods` stream; sampler reads `memory.current` + `cpu.stat` in one `spawn_blocking`/tick ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)); ingest retry = `bytes::Bytes`

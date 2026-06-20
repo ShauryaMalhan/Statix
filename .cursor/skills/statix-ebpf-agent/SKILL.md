@@ -12,7 +12,7 @@ description: >-
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
-Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) · **14 done** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
+Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) · **14 done** ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)) · **10 partial** (Golden-Signal saturation [ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
 
 ## Mandatory workflow (every change)
 
@@ -72,6 +72,7 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; BPF timestamp + atomic `clock_offset_ns()` for windows ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 | CPU sample | Same tick: `cpu.stat` cumulative counter → delta in `Sampler.cpu_baseline`; prime first read ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)) |
+| Saturation metrics | Gateway: `statix_gateway_mpsc_depth` (background sampler, `STATIX_MPSC_DEPTH_SAMPLE_MS`), `statix_api_ingest_503_total` (flat 503 counter); agent: `statix_wal_bytes_current` seeded at `init_wal` ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)) |
 
 Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterprise-latency.md)
 
@@ -157,8 +158,12 @@ make compose-down  # tear down stack
 # After CH schema change: docker compose down -v && make compose-up
 # Billing check: SELECT count() FROM statix.workload_metrics FINAL
 curl -s http://127.0.0.1:3000/metrics | grep statix_api_
+curl -s http://127.0.0.1:3000/metrics | grep -E 'statix_gateway_mpsc_depth|statix_api_ingest_503_total'
 curl -s http://127.0.0.1:9091/metrics | grep statix_ring_drops   # agent (root)
+curl -s http://127.0.0.1:9091/metrics | grep statix_wal_bytes_current
 ```
+
+Observability: [docs/guides/observability-metrics.md](../../../docs/guides/observability-metrics.md) · Phase 10 playbook: [PHASE_10_SRE_PLAYBOOK.md](PHASE_10_SRE_PLAYBOOK.md)
 
 Phase 2 validation: [docs/guides/phase2-validation.md](../../../docs/guides/phase2-validation.md)  
 ADRs: [docs/adr/](../../../docs/adr/)  

@@ -144,6 +144,23 @@ limits   = requests × 1.25;
 
 ---
 
+## Pattern 17 — Background gauge sampler + startup metric seed (Phase 10)
+
+**When:** a gauge must reflect async state (mpsc depth, WAL bytes) without touching the hot path.
+
+**Sampler (gateway mpsc):**
+- Dedicated `tokio::spawn` loop; period from `STATIX_MPSC_DEPTH_SAMPLE_MS` via `read_env_u64` (Pattern 16).
+- Depth = `channel_capacity − tx.capacity()` (same math as `/ready`).
+- Seed gauge to `0.0` before the first tick.
+
+**Startup seed:**
+- `metrics` series absent from `/metrics` until first touch — seed counters with `increment(0)` and gauges with `set(0.0)` at startup so idle `0` is visible.
+- Optional `describe_gauge!` / `describe_counter!` once at startup for HELP text ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)).
+
+**503 flat counter:** increment in the shared response recorder (`record_ingest_metrics`), not per rejection branch.
+
+---
+
 ## Pattern 11 — Docker / Makefile (Phase 3 dev)
 
 ```bash

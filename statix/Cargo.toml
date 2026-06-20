@@ -3,6 +3,14 @@ name = "statix"
 version = "1.1.0"
 edition = "2021"
 
+[lib]
+name = "statix_bpf"
+path = "src/lib.rs"
+
+[[bin]]
+name = "statix"
+path = "src/main.rs"
+
 [[bin]]
 name = "statix-ebpf-verify"
 path = "src/bin/verify_ebpf.rs"
@@ -33,7 +41,7 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 metrics  = "0.24"
-metrics-exporter-prometheus = "0.12"
+metrics-exporter-prometheus = "0.17"
 libc       = "0.2"
 num_cpus   = "1"
 walkdir    = "2"

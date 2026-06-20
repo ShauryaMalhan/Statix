@@ -6,7 +6,7 @@
 use std::{fs, process};
 
 use aya::Ebpf;
-use statix::bpf_memlock::bump_memlock_rlimit;
+use statix_bpf::bpf_memlock::bump_memlock_rlimit;
 
 fn main() {
     if let Err(e) = run() {

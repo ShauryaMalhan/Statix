@@ -54,7 +54,7 @@ build-user: build-agent
 
 build-agent:
 	@echo "==> [2/3] Compiling statix..."
-	cd $(WORKSPACE_ROOT) && cargo build -p statix --release
+	cd $(WORKSPACE_ROOT) && cargo build -p statix --release --bins
 	@echo "==> Agent build complete."
 
 build-gateway:
@@ -82,7 +82,8 @@ run: build
 	fi
 	@echo "==> Starting agent (Ctrl+C to stop)..."
 	@echo "==> eBPF bundle: $(BPF_BUNDLE_DIR) (auto-pick by CPU count; override: STATIX_EBF_PATH)"
-	RUST_LOG=info STATIX_BPF_DIR=$(BPF_BUNDLE_DIR) \
+	@echo "==> Ingest: $(STATIX_INGEST_URL) (stdout-only: STATIX_INGEST_URL= make run)"
+	RUST_LOG=info STATIX_BPF_DIR=$(BPF_BUNDLE_DIR) STATIX_INGEST_URL=$(STATIX_INGEST_URL) \
 		$(WORKSPACE_ROOT)/target/release/statix
 
 run-gateway: build-gateway

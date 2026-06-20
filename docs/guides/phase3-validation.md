@@ -34,6 +34,7 @@ Trigger workload activity. Wait one flush window.
 | API liveness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health` → `200` |
 | API readiness | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/ready` → `200` when ClickHouse healthy + mpsc &lt;80% |
 | Prometheus (API) | `curl -s http://127.0.0.1:3000/metrics \| grep statix_api_` → lines present |
+| Phase 10 saturation | `grep -E 'statix_gateway_mpsc_depth\|statix_api_ingest_503_total'` on gateway metrics; `statix_wal_bytes_current` on agent `:9091` ([observability-metrics.md](observability-metrics.md)) |
 | Prometheus (agent) | `curl -s http://127.0.0.1:9091/metrics \| grep statix_ring_drops` → present |
 | API ingest | `POST /ingest` (no auth when token unset) → `200` |
 | Ingest auth | With `STATIX_API_TOKEN`: missing → `401`; valid Bearer → `200` ([ADR 019](../adr/019-ingest-bearer-token-auth.md)) |
