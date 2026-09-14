@@ -29,7 +29,8 @@ Statix/
 ├── deploy/clickhouse/01_init.sql
 ├── infra/clickhouse/README.md
 ├── statix-ebpf/, statix-common/, statix-wire/, statix-infra/, statix/
-├── statix-gateway/ (`src/config.rs`, `clickhouse_writer.rs`, `routes/ingest.rs`)
+├── statix-gateway/ (`src/config.rs`, `clickhouse_writer.rs`, `routes/ingest.rs`,
+│                   `routes/query.rs`, `routes/dashboard/{mod,sql,cache}.rs`, `assets/dashboard.html`)
 ├── .github/workflows/ebpf-ci.yml   # userspace + kernel verifier matrix ([ADR 037](../../../docs/adr/ebpf/037-phase9-ebpf-verifier-ci.md))
 ├── scripts/verify-ebpf-kernel.sh   # virtme-ng + statix-ebpf-verify per kernel
 ├── scripts/verify-phase14-cpu.sh  # Phase 14 CPU gates (make verify-phase14-cpu)

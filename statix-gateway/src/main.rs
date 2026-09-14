@@ -31,6 +31,7 @@ pub struct AppState {
     pub ch_healthy: Arc<AtomicBool>,
     pub expected_bearer: Option<String>,
     pub ch_client: clickhouse::Client,
+    pub dashboard: Arc<routes::dashboard::Dashboard>,
 }
 
 #[tokio::main]
@@ -72,12 +73,21 @@ async fn main() -> Result<(), GatewayError> {
     log::info!(
         "Ingest readiness: /ready fails when mpsc > {READY_CHANNEL_FULL_THRESHOLD_PCT}% full (capacity={ingest_channel_capacity})"
     );
+    let dashboard_config = routes::dashboard::DashboardConfig::from_env();
+    match (&dashboard_config.enabled, &dashboard_config.dir) {
+        (false, _) => log::info!("Dashboard: DISABLED (STATIX_DASHBOARD_ENABLED)"),
+        (true, Some(dir)) => log::info!("Dashboard: enabled, serving from disk {dir:?} (dev hot reload)"),
+        (true, None) => log::info!("Dashboard: enabled, serving embedded page"),
+    }
+    let dashboard = Arc::new(routes::dashboard::Dashboard::new(dashboard_config));
+
     let state = AppState {
         ingest_tx: writer.tx.clone(),
         ingest_channel_capacity,
         ch_healthy: writer.ch_healthy.clone(),
         expected_bearer: config.expected_bearer().map(str::to_string),
         ch_client,
+        dashboard,
     };
 
     let metrics_handle = prometheus_handle.clone();
@@ -93,11 +103,21 @@ async fn main() -> Result<(), GatewayError> {
             "/api/v1/workloads/summary",
             get(routes::query::workloads_summary),
         )
+        .route("/", get(routes::dashboard::page_handler))
+        .route("/dashboard", get(routes::dashboard::page_handler))
+        .route(
+            "/api/v1/dashboard/state",
+            get(routes::dashboard::state_handler),
+        )
+        .route(
+            "/api/v1/dashboard/health",
+            get(routes::dashboard::health_handler),
+        )
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     log::info!(
-        "statix-gateway: http://{addr} — /health, /ready, /ingest, /api/v1/workloads/summary; clickhouse={}",
+        "statix-gateway: http://{addr} — /, /dashboard, /health, /ready, /ingest, /api/v1/workloads/summary, /api/v1/dashboard/{{state,health}}; clickhouse={}",
         config.clickhouse_url
     );
 

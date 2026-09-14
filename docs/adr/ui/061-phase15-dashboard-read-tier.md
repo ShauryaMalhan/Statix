@@ -58,7 +58,15 @@
 - Mitigations are input bounding and rate limiting, not authentication:
   - `q` clamped to 64 chars and normalized (trim + lowercase) before it becomes a cache key.
   - The default/unfiltered view is protected from eviction by arbitrary filters.
-  - Per-IP rate limit on both dashboard routes.
+  - Rate limit on both dashboard routes. **Implemented as a global fixed-window
+    cap, not per-IP** (revised during implementation): in Compose the gateway
+    sees the Docker bridge address for every request, and behind the ALB
+    ([ADR 043](../deploy/043-kubernetes-alb-tls-termination.md)) it sees the load
+    balancer — so a `ConnectInfo<SocketAddr>` limiter would read as per-client
+    while silently being global. A genuine per-client limit needs
+    `X-Forwarded-For` plus a trusted-proxy list, which is its own decision.
+    A global cap is honest and still protects ClickHouse, which is the goal.
+    Env: `STATIX_DASHBOARD_RATE_LIMIT_PER_MIN` (default 600).
 - Documented posture: the dashboard is unauthenticated by default and must not be exposed to the internet.
 
 ## Consequences
@@ -69,6 +77,22 @@
 - **Known limit, accepted:** `pod` is a high-cardinality plain `String` with no index ([ADR 007](../storage/007-clickhouse-mergetree-tuning.md) rejected `LowCardinality` for OOM reasons), so text filtering is a scan *within the pruned partition*. Acceptable at current scale; first thing to hurt at large scale.
 - **Operational:** new env — `STATIX_DASHBOARD_ENABLED` (default `true`), `STATIX_DASHBOARD_DIR`, `STATIX_DASHBOARD_CACHE_MS` (`2000`), `STATIX_DASHBOARD_MAX_LIMIT` (`500`).
 - **Deferred:** drill-down time-series charts (v1b); agent-side signals `statix_ring_drops_total` / `statix_wal_bytes_current` (they live on each agent's `:9091` and need a scraper or a new agent→gateway health channel); SSE/WebSocket push; K8s requests/limits and right-sizing; cost attribution; process/`comm` detail (captured in the 64-byte ring record but dropped at the aggregator); rollup tables for long ranges.
+
+## Implementation notes (added on delivery)
+
+- **Aggregate aliases must not shadow source columns.** `max(window_start_ns) AS
+  window_start_ns` makes ClickHouse resolve the inner `WHERE window_start_ns >= …`
+  to the aggregate and fail with `ILLEGAL_AGGREGATION` (code 184). The inner
+  query therefore aliases to `w_start` / `w_end` / `ns` / `pod_name` / …, and the
+  outer projection renames back to the API names. Caught by running the SQL
+  before writing the Rust; guarded by a unit test.
+- **`argMax` drops the `LowCardinality` wrapper** — `argMax(namespace, …)` over
+  `LowCardinality(Nullable(String))` returns plain `Nullable(String)`. `node` is
+  selected through `CAST(n AS String)` so the `#[derive(Row)]` structs see plain
+  types and the strict RowBinary deserializer cannot mismatch at runtime.
+- Sort and order are whitelisted enums mapped to SQL literals; every user value
+  (`q`, `node`, `limit`, `cutoff_ns`) is a bound `{name:Type}` parameter. A unit
+  test asserts an injection attempt in `sort` falls back to the default column.
 
 ## References
 

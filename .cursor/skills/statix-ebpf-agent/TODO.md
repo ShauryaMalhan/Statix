@@ -327,6 +327,29 @@ Mark shipped items `[x]` (do not remove). See [docs/adr/](../../../docs/adr/) fo
 
 ---
 
+## Phase 15 — Dashboard read tier
+
+> **ADR:** [061](../../../docs/adr/ui/061-phase15-dashboard-read-tier.md). Read-only serving tier; zero hot-path change.
+
+### v1a — shipped
+
+- [x] **P15-1 (sql):** `routes/dashboard/sql.rs` — latest-window-per-workload inner aggregate, derived `cpu_millicores`, whitelisted sort/order, bound `q`/`node`/`limit`
+- [x] **P15-2 (cache):** `routes/dashboard/cache.rs` — TTL cache keyed on query params (single-tenant), pinned default view, global fixed-window rate limiter
+- [x] **P15-3 (handlers):** `routes/dashboard/mod.rs` — `/api/v1/dashboard/state` + `/health` (always 200), normalized+bounded params
+- [x] **P15-4 (serving):** dual-mode page — `STATIX_DASHBOARD_DIR` (dev) else embedded `include_str!`
+- [x] **P15-5 (ui):** `statix-gateway/assets/dashboard.html` — health strip, 4 tiles, live table, sort/filter/range, adaptive polling (visibility-aware, backoff + jitter)
+- [x] **P15-6 (companions):** ADR 061 + README + SKILL/REFERENCE/TODO
+
+### v1b — next
+
+- [ ] **Drill-down charts** — `GET /api/v1/dashboard/workload/{cgroup_id}/series`; uses the `cgroup_idx` skip index ([ADR 059](../../../docs/adr/storage/059-phase10-clickhouse-cgroup-skip-index.md))
+- [ ] **Single-flight** on cache miss (TTL alone collapses steady state; revisit if measured)
+- [ ] **Agent-side signals in the strip** — `statix_ring_drops_total`, `statix_wal_bytes_current` live on each agent `:9091`; needs a scraper or an agent→gateway health channel
+- [ ] **K8s requests/limits** — the right-sizing view; extends the pod watcher, new wire field + column
+- [ ] **Process/`comm` detail** — captured in the 64-byte ring record, dropped at the aggregator
+
+---
+
 ## Execution Summary
 
 ```

@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Statix — Workloads</title>
+<style>
+  :root{
+    --bg:#fafafa; --card:#fff; --text:#18181b; --muted:#71717a; --border:#e4e4e7;
+    --accent:#2563eb; --ok:#16a34a; --warn:#d97706; --err:#dc2626; --hover:#f4f4f5;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0b0b0d; --card:#141417; --text:#f4f4f5; --muted:#a1a1aa; --border:#27272a;
+      --accent:#60a5fa; --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --hover:#1c1c20;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:1200px;margin:0 auto;padding:20px 16px 48px}
+
+  /* ---------- health strip: the "is data flowing?" answer ---------- */
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+         padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+  .brand{font-weight:650;font-size:16px;letter-spacing:-.01em;margin-right:auto}
+  .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
+  .sig{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .dot.live{animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* ---------- tiles ---------- */
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .tile .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .tile .v{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;
+           letter-spacing:-.02em;margin-top:4px;font-family:var(--mono)}
+  .tile .s{font-size:12px;color:var(--muted);margin-top:2px}
+
+  /* ---------- controls ---------- */
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  input[type=search],select{background:var(--card);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;outline:none}
+  input[type=search]{flex:1;min-width:180px}
+  input[type=search]:focus,select:focus{border-color:var(--accent)}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);
+          cursor:pointer;user-select:none;white-space:nowrap}
+  .count{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap}
+
+  /* ---------- table ---------- */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;white-space:nowrap}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+     font-weight:600;border-bottom:1px solid var(--border);background:var(--card);
+     position:sticky;top:0}
+  th.s{cursor:pointer;user-select:none}
+  th.s:hover{color:var(--text)}
+  th .arrow{opacity:.45;font-size:10px}
+  th.active{color:var(--accent)} th.active .arrow{opacity:1}
+  tbody tr{border-bottom:1px solid var(--border)}
+  tbody tr:last-child{border-bottom:none}
+  tbody tr:hover{background:var(--hover)}
+  .num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .ident{font-weight:500}
+  .ident .ns{color:var(--muted);font-weight:400}
+  .unres{font-family:var(--mono);color:var(--muted)}
+  .badge{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:999px;
+         border:1px solid var(--border);color:var(--warn);margin-left:6px;vertical-align:1px}
+  .empty{padding:44px 20px;text-align:center;color:var(--muted)}
+  .empty b{display:block;color:var(--text);font-size:15px;margin-bottom:6px;font-weight:600}
+  .skel{height:13px;border-radius:4px;background:var(--border);opacity:.5;
+        animation:pulse 1.4s ease-in-out infinite}
+  footer{margin-top:14px;font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+  .stale{color:var(--warn)}
+  @media (max-width:760px){
+    .tiles{grid-template-columns:repeat(2,1fr)}
+    .count{margin-left:0;width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">Statix <span>workload telemetry</span></div>
+    <div class="sig"><i class="dot" id="d-gw"></i><span id="t-gw">gateway</span></div>
+    <div class="sig"><i class="dot" id="d-ch"></i><span id="t-ch">clickhouse</span></div>
+    <div class="sig"><i class="dot" id="d-fr"></i><span id="t-fr">—</span></div>
+    <div class="sig"><i class="dot" id="d-nd"></i><span id="t-nd">—</span></div>
+  </header>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Active workloads</div><div class="v" id="v-count">—</div><div class="s" id="s-count">&nbsp;</div></div>
+    <div class="tile"><div class="k">CPU</div><div class="v" id="v-cpu">—</div><div class="s" id="s-cpu">&nbsp;</div></div>
+    <div class="tile"><div class="k">Memory</div><div class="v" id="v-mem">—</div><div class="s" id="s-mem">&nbsp;</div></div>
+    <div class="tile"><div class="k">Exec rate</div><div class="v" id="v-exec">—</div><div class="s" id="s-exec">&nbsp;</div></div>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Filter namespace, pod or container…" maxlength="64" autocomplete="off">
+    <select id="range">
+      <option value="60">Last 1 min</option>
+      <option value="300" selected>Last 5 min</option>
+      <option value="900">Last 15 min</option>
+      <option value="3600">Last 1 hour</option>
+    </select>
+    <label class="toggle"><input type="checkbox" id="unattr"> Unattributed only</label>
+    <span class="count" id="count">&nbsp;</span>
+  </div>
+
+  <div class="card">
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Workload</th>
+          <th>Node</th>
+          <th class="s num" data-sort="cpu">CPU <span class="arrow"></span></th>
+          <th class="s num" data-sort="mem">Memory <span class="arrow"></span></th>
+          <th class="s num" data-sort="mem_peak">Peak <span class="arrow"></span></th>
+          <th class="s num" data-sort="execs">Execs <span class="arrow"></span></th>
+          <th class="s num" data-sort="last_seen">Age <span class="arrow"></span></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty" hidden></div>
+  </div>
+
+  <footer>
+    <span id="f-upd">—</span>
+    <span id="f-cache"></span>
+    <span id="f-poll"></span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Statix dashboard (ADR 061). Read-only, polls two endpoints.
+//   /api/v1/dashboard/state   tiles + table   — allowed to fail
+//   /api/v1/dashboard/health  the strip       — always 200, reports status
+// The API sends raw numbers; everything below turns them into text.
+// ---------------------------------------------------------------------------
+
+const STATE_MS = 3000, HEALTH_MS = 5000, MAX_BACKOFF = 30000;
+
+const params = { range_secs: 300, sort: "cpu", order: "desc", q: "", unattributed: false, limit: 100 };
+let firstPaint = true;          // spinner belongs to unknown state, not refresh
+let backoff = 0;                // grows on error, resets on success
+let stateTimer = null, healthTimer = null;
+const $ = id => document.getElementById(id);
+
+// ---------- formatting (raw numbers -> human text, done at the edge) --------
+const fmtBytes = n => {
+  if (!n) return "0 B";
+  const u = ["B","KiB","MiB","GiB","TiB"]; let i = 0, v = n;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
+};
+// 1000m == one saturated core; multi-core workloads legitimately exceed it.
+const fmtMilli = m => m >= 1000 ? `${(m/1000).toFixed(2)} cores` : `${Math.round(m)}m`;
+const fmtAge = s => s < 1 ? "just now" : s < 60 ? `${Math.round(s)}s`
+                  : s < 3600 ? `${Math.floor(s/60)}m` : `${Math.floor(s/3600)}h`;
+
+// ---------- health strip ---------------------------------------------------
+function paintHealth(h) {
+  const set = (dot, txt, cls, label) => {
+    $(dot).className = "dot " + cls;
+    $(txt).textContent = label;
+  };
+  set("d-gw","t-gw", h.gateway.ready ? "ok" : "err",
+      h.gateway.ready ? "gateway ready" : "gateway degraded");
+  set("d-ch","t-ch", h.clickhouse.healthy ? "ok" : "err",
+      h.clickhouse.healthy ? "clickhouse ok" : "clickhouse down");
+
+  // "no data at all" and "data went stale" are different problems.
+  if (!h.freshness.has_data)      set("d-fr","t-fr","warn","no data yet");
+  else if (h.freshness.stale)     set("d-fr","t-fr","warn",`stale ${fmtAge(h.freshness.age_secs)}`);
+  else if (h.freshness.age_secs < 1) set("d-fr","t-fr","ok live","data is live");
+  else                            set("d-fr","t-fr","ok live",`data ${fmtAge(h.freshness.age_secs)} old`);
+
+  const live = h.nodes.filter(n => !n.stale).length;
+  set("d-nd","t-nd", h.nodes.length === 0 ? "warn" : live ? "ok" : "warn",
+      h.nodes.length === 0 ? "no nodes reporting"
+        : `${live}/${h.nodes.length} node${h.nodes.length>1?"s":""} reporting`);
+}
+function healthUnreachable() {
+  for (const [d,t,l] of [["d-gw","t-gw","gateway unreachable"],["d-ch","t-ch","clickhouse ?"],
+                         ["d-fr","t-fr","—"],["d-nd","t-nd","—"]]) {
+    $(d).className = "dot err"; $(t).textContent = l;
+  }
+}
+
+// ---------- tiles + table --------------------------------------------------
+function paintState(d, cacheHdr) {
+  const t = d.totals;
+  $("v-count").textContent = t.matched_count;
+  $("s-count").textContent = t.unattributed_count
+      ? `${t.unattributed_count} unattributed` : "all attributed";
+  $("v-cpu").textContent  = fmtMilli(t.cpu_millicores);
+  $("s-cpu").textContent  = `${Math.round(t.cpu_millicores)} millicores total`;
+  $("v-mem").textContent  = fmtBytes(t.memory_bytes);
+  $("s-mem").textContent  = "current working set";
+  $("v-exec").textContent = `${t.exec_rate_per_sec.toFixed(2)}/s`;
+  $("s-exec").textContent = `${t.exec_count} execs in window`;
+
+  $("count").textContent = t.matched_count > d.returned
+      ? `showing top ${d.returned} of ${t.matched_count}`
+      : `${t.matched_count} workload${t.matched_count === 1 ? "" : "s"}` +
+        (d.filter_active ? " (filtered)" : "");
+
+  const tbody = $("rows"), empty = $("empty");
+  if (!d.workloads.length) {
+    tbody.innerHTML = "";
+    empty.hidden = false;
+    empty.innerHTML = d.filter_active
+      ? "<b>No workloads match this filter</b>Try a different search or widen the time range."
+      : "<b>No workloads reporting</b>Check the health strip above — if data is flowing, nothing ran in this window.";
+    return;
+  }
+  empty.hidden = true;
+
+  const now = d.generated_at_ns;
+  tbody.innerHTML = d.workloads.map(w => {
+    // age derived from two timestamps in the SAME payload: immune to cache
+    // staleness and to the browser's clock being wrong.
+    const age = Math.max(0, (now - w.window_end_ns) / 1e9);
+    const ident = w.k8s_resolved && w.pod
+      ? `<span class="ident"><span class="ns">${esc(w.namespace ?? "")}/</span>${esc(w.pod)}${
+           w.container ? `<span class="ns"> · ${esc(w.container)}</span>` : ""}</span>`
+      : `<span class="unres">cgroup:${w.cgroup_id}</span><span class="badge">unattributed</span>`;
+    return `<tr>
+      <td>${ident}</td>
+      <td style="color:var(--muted)">${esc(w.node)}</td>
+      <td class="num">${fmtMilli(w.cpu_millicores)}</td>
+      <td class="num">${fmtBytes(w.memory_bytes_last)}</td>
+      <td class="num" style="color:var(--muted)">${fmtBytes(w.memory_bytes_max)}</td>
+      <td class="num">${w.exec_count}</td>
+      <td class="num ${age > 60 ? "stale" : ""}">${fmtAge(age)}</td>
+    </tr>`;
+  }).join("");
+
+  $("f-upd").textContent = "updated " + new Date().toLocaleTimeString();
+  $("f-cache").textContent = cacheHdr === "hit" ? "served from cache" : "";
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function paintSortHeaders() {
+  document.querySelectorAll("th.s").forEach(th => {
+    const on = th.dataset.sort === params.sort;
+    th.classList.toggle("active", on);
+    th.querySelector(".arrow").textContent = on ? (params.order === "desc" ? "▼" : "▲") : "";
+  });
+}
+
+function skeleton() {
+  $("rows").innerHTML = Array.from({length:6}, () =>
+    `<tr>${'<td><div class="skel"></div></td>'.repeat(7)}</tr>`).join("");
+}
+
+// ---------- polling --------------------------------------------------------
+// Adaptive by design: pause when nobody is looking, back off when the gateway
+// is down, jitter so N tabs never synchronise into a stampede. Same physics as
+// the agent's retry policy (ADR 006 / 042) — the dashboard is just a client.
+const jitter = ms => ms * (0.85 + Math.random() * 0.3);
+
+async function pollState() {
+  clearTimeout(stateTimer);
+  if (document.hidden) { stateTimer = setTimeout(pollState, STATE_MS); return; }
+  const qs = new URLSearchParams({
+    range_secs: params.range_secs, sort: params.sort, order: params.order, limit: params.limit,
+  });
+  if (params.q) qs.set("q", params.q);
+  if (params.unattributed) qs.set("unattributed", "true");
+  try {
+    const r = await fetch(`/api/v1/dashboard/state?${qs}`, {headers:{accept:"application/json"}});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    paintState(await r.json(), r.headers.get("x-statix-cache"));
+    firstPaint = false; backoff = 0; $("f-poll").textContent = "";
+  } catch (e) {
+    backoff = backoff ? Math.min(backoff * 2, MAX_BACKOFF) : STATE_MS;
+    $("f-poll").innerHTML = `<span class="stale">retrying in ${Math.round(backoff/1000)}s — ${esc(e.message)}</span>`;
+    if (firstPaint) { $("rows").innerHTML = ""; $("empty").hidden = false;
+      $("empty").innerHTML = "<b>Cannot reach the gateway</b>Is statix-gateway running on this port?"; }
+  }
+  stateTimer = setTimeout(pollState, jitter(backoff || STATE_MS));
+}
+
+async function pollHealth() {
+  clearTimeout(healthTimer);
+  if (document.hidden) { healthTimer = setTimeout(pollHealth, HEALTH_MS); return; }
+  try {
+    const r = await fetch("/api/v1/dashboard/health", {headers:{accept:"application/json"}});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    paintHealth(await r.json());
+  } catch { healthUnreachable(); }
+  healthTimer = setTimeout(pollHealth, jitter(HEALTH_MS));
+}
+
+// ---------- interaction (state survives every refresh) ---------------------
+let debounce;
+$("q").addEventListener("input", e => {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => { params.q = e.target.value.trim(); pollState(); }, 250);
+});
+$("range").addEventListener("change", e => { params.range_secs = +e.target.value; pollState(); });
+$("unattr").addEventListener("change", e => { params.unattributed = e.target.checked; pollState(); });
+document.querySelectorAll("th.s").forEach(th => th.addEventListener("click", () => {
+  const key = th.dataset.sort;
+  if (params.sort === key) params.order = params.order === "desc" ? "asc" : "desc";
+  else { params.sort = key; params.order = "desc"; }
+  paintSortHeaders(); pollState();
+}));
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { pollState(); pollHealth(); }   // catch up immediately
+});
+
+skeleton(); paintSortHeaders(); pollState(); pollHealth();
+</script>
+</body>
+</html>

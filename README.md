@@ -26,7 +26,7 @@ Five host crates + BPF + infra:
 - **`statix-wire`** — shared ingest types (`IngestBatch`, `WorkloadRow`)
 - **`statix-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/meta/035-phase7-workspace-restructure.md))
 - **`statix`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
-- **`statix-gateway`** — `POST /ingest` → RowBinary coalescer → ClickHouse; `GET /api/v1/workloads/summary`; probes
+- **`statix-gateway`** — `POST /ingest` → RowBinary coalescer → ClickHouse; read API; **live dashboard at `/`**; probes
 - **`docker-compose.yml`** — ClickHouse, Grafana, gateway (queue-less stack)
 
 Phase 2 behavior in short:
@@ -119,6 +119,11 @@ Rebuild gateway image: `docker compose build statix-gateway && docker compose up
 | `STATIX_CH_BATCH_MAX` | `1024` | Gateway RowBinary micro-batch size (64–16384) |
 | `STATIX_CH_LINGER_MS` | `50` | Gateway coalesce linger ms (1–1000) |
 | `STATIX_CH_INSERT_TIMEOUT_SECS` | `3` | Gateway insert ACK timeout (1–30; &lt; agent HTTP timeout) |
+| `STATIX_DASHBOARD_ENABLED` | `true` | Serve the dashboard + its read endpoints (`0/false/no/off` disables) |
+| `STATIX_DASHBOARD_DIR` | (unset) | Serve `dashboard.html` from this directory (dev hot reload); unset = embedded copy |
+| `STATIX_DASHBOARD_CACHE_MS` | `2000` | Dashboard response cache TTL, keyed on query params |
+| `STATIX_DASHBOARD_MAX_LIMIT` | `500` | Upper bound on the dashboard `limit` parameter |
+| `STATIX_DASHBOARD_RATE_LIMIT_PER_MIN` | `600` | Global cap on dashboard requests per minute |
 | `CLICKHOUSE_URL` | `http://localhost:8123` | Gateway read-path HTTP endpoint |
 | `CLICKHOUSE_USER` | `default` | ClickHouse user |
 | `CLICKHOUSE_PASSWORD` | (empty) | ClickHouse password (Compose: set in `.env` — copy from `.env.example`) |
@@ -136,6 +141,24 @@ make verify-phase14-cpu   # Phase 14 CPU gates (priming, conservation, soft miss
 - Phase 2: [docs/guides/phase2-validation.md](docs/guides/phase2-validation.md)
 - Phase 3: [docs/guides/phase3-validation.md](docs/guides/phase3-validation.md)
 - Phase 10 metrics: [docs/guides/observability-metrics.md](docs/guides/observability-metrics.md)
+
+## Dashboard (Phase 15)
+
+Open **<http://127.0.0.1:3000/>** once the stack is up — a read-only live view of
+workload CPU (millicores), memory and exec counts, with a health strip that
+separates *"the pipeline is broken"* from *"nothing is running"*.
+
+```
+GET /                              dashboard page
+GET /api/v1/dashboard/state        tiles + table  (range_secs, sort, order, q, node, unattributed, limit)
+GET /api/v1/dashboard/health       status strip   — always 200, reports health rather than failing on it
+```
+
+Responses carry raw numbers; the browser formats them. Identical query
+parameters share one cached ClickHouse round trip (`X-Statix-Cache: hit|miss`).
+The dashboard is **unauthenticated by default** — it honours `STATIX_API_TOKEN`
+when set, but do not expose it to the internet.
+See [ADR 061](docs/adr/ui/061-phase15-dashboard-read-tier.md).
 
 **Phase 14 CPU:** agent emits `schema_version: 3` with per-window `cpu_usage_usec` (microseconds of CPU time, not lifetime total). Gateway accepts schema 2 or 3; ClickHouse column `cpu_usage_usec UInt64` on `statix.workload_metrics`. See [ADR 058](docs/adr/agent/058-phase14-cpu-usage-tracking.md).
 
