@@ -1,7 +1,7 @@
 # Phase 13 — Part 1 Playbook: Kafka Removal → Direct ClickHouse Ingest
 
 > **Audience:** the Cursor execution engine.
-> **Status:** Part 1 **shipped** ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). Part 2 **shipped** ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md), [ADR 057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)).
+> **Status:** Part 1 **shipped** ([ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)). Part 2 **shipped** ([ADR 056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md), [ADR 057](../../../docs/adr/deploy/057-phase13-part2-infra-kafka-strip.md)).
 
 ## Topology (current)
 
@@ -10,7 +10,7 @@ agent → POST /ingest → gateway mpsc(bounded coalescer) → CH insert worker 
         → INSERT INTO statix.workload_metrics
 ```
 
-Backpressure: `ch_healthy` + mpsc 80% gate → `503` → agent circuit breaker → WAL ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)).
+Backpressure: `ch_healthy` + mpsc 80% gate → `503` → agent circuit breaker → WAL ([ADR 054](../../../docs/adr/ingest/054-phase11-wal-spillway.md)).
 
 ---
 
@@ -18,7 +18,7 @@ Backpressure: `ch_healthy` + mpsc 80% gate → `503` → agent circuit breaker �
 
 | Task | ADR | Items |
 |------|-----|-------|
-| Part 1 ✅ | [055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md) | Schema drop Kafka MV/table; `clickhouse_writer.rs`; `AppState` + 3-tier 503; delete `kafka.rs` / `rskafka` |
+| Part 1 ✅ | [055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md) | Schema drop Kafka MV/table; `clickhouse_writer.rs`; `AppState` + 3-tier 503; delete `kafka.rs` / `rskafka` |
 
 ---
 
@@ -32,6 +32,6 @@ Backpressure: `ch_healthy` + mpsc 80% gate → `503` → agent circuit breaker �
 
 ## Part 2 — Shipped ✅
 
-- [x] Ingest zero-alloc collapse — [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
-- [x] Strip Kafka from compose/K8s/deploy docs ([ADR 057](../../../docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)).
+- [x] Ingest zero-alloc collapse — [PHASE_13_PART2_PLAYBOOK.md](PHASE_13_PART2_PLAYBOOK.md) ([ADR 056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md)).
+- [x] Strip Kafka from compose/K8s/deploy docs ([ADR 057](../../../docs/adr/deploy/057-phase13-part2-infra-kafka-strip.md)).
 - [x] Update skills, README, guides; gateway env `STATIX_CH_*` documented.

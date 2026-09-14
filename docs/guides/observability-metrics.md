@@ -1,6 +1,6 @@
 # Observability — Golden-Signal saturation metrics (Phase 10)
 
-SRE dashboards for the queue-less, WAL-backed pipeline. Full decision record: [ADR 060](../adr/phase10/060-phase10-golden-signal-saturation-metrics.md).
+SRE dashboards for the queue-less, WAL-backed pipeline. Full decision record: [ADR 060](../adr/observability/060-phase10-golden-signal-saturation-metrics.md).
 
 ## Endpoints
 

@@ -2,7 +2,7 @@
 
 > Strict instruction manual for AI-assisted implementation.
 > Each item: **What** / **Why** / **How**. Run `cargo check --workspace` after each.
-> One ADR for the wave: [docs/adr/phase11/054-phase11-wal-spillway.md](../../../docs/adr/phase11/054-phase11-wal-spillway.md).
+> One ADR for the wave: [docs/adr/ingest/054-phase11-wal-spillway.md](../../../docs/adr/ingest/054-phase11-wal-spillway.md).
 > Priority: P0 = data loss, P1 = resource exhaustion, P2 = perf/edge-case.
 
 **Status:** Shipped ✅ (ADR 054).

@@ -24,13 +24,16 @@ WAL and replay on recovery (Phase 11).
 Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
-`docs/adr/<phase>/` (numbering is global-sequential — highest is `060`, so the
-next is `061`; recent waves live in `phase13/`, `phase14/`, `phase10/`), update
-README/relevant `docs/guides/*`, and update the skill files (`SKILL.md`/
+`docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
+permanent identity — highest is `061`, so the next is `062`). ADRs are filed by
+topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
+fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
+Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
+README/relevant `docs/guides/*`, and the skill files (`SKILL.md`/
 `REFERENCE.md`/`PATTERNS.md`/`TODO.md`). This is a hard project rule, not a
 suggestion.
 
-Anything Kafka-shaped in `docs/adr/00*`–`04*`, the older skill playbooks, or
+Anything Kafka-shaped in `docs/adr/kafka-legacy/`, the older skill playbooks, or
 `Dockerfile.gateway`'s `KAFKA_BROKERS` env is **historical**. Do not reintroduce it.
 
 ## Build / check / run (always via Makefile)

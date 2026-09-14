@@ -37,11 +37,11 @@ Trigger workload activity. Wait one flush window.
 | Phase 10 saturation | `grep -E 'statix_gateway_mpsc_depth\|statix_api_ingest_503_total'` on gateway metrics; `statix_wal_bytes_current` on agent `:9091` ([observability-metrics.md](observability-metrics.md)) |
 | Prometheus (agent) | `curl -s http://127.0.0.1:9091/metrics \| grep statix_ring_drops` → present |
 | API ingest | `POST /ingest` (no auth when token unset) → `200` |
-| Ingest auth | With `STATIX_API_TOKEN`: missing → `401`; valid Bearer → `200` ([ADR 019](../adr/019-ingest-bearer-token-auth.md)) |
+| Ingest auth | With `STATIX_API_TOKEN`: missing → `401`; valid Bearer → `200` ([ADR 019](../adr/gateway/019-ingest-bearer-token-auth.md)) |
 | ClickHouse rows | `SELECT count() FROM statix.workload_metrics FINAL` → &gt; 0 after traffic |
-| Read API | `GET /api/v1/workloads/summary?hours=24` → `200` + JSON ([ADR 027](../adr/027-api-read-path-clickhouse.md)) |
-| Backpressure | Pause ClickHouse → within `STATIX_CH_INSERT_TIMEOUT_SECS`, `/ingest` and `/ready` → `503` ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
-| Schema gate | `schema_version` 2 or 3 → `200`; outside range → `400` ([ADR 020](../adr/020-ingest-schema-version-window.md)) |
+| Read API | `GET /api/v1/workloads/summary?hours=24` → `200` + JSON ([ADR 027](../adr/gateway/027-api-read-path-clickhouse.md)) |
+| Backpressure | Pause ClickHouse → within `STATIX_CH_INSERT_TIMEOUT_SECS`, `/ingest` and `/ready` → `503` ([ADR 055](../adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| Schema gate | `schema_version` 2 or 3 → `200`; outside range → `400` ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md)) |
 | Stdout fallback | Unset `STATIX_INGEST_URL` → batched JSON on stdout |
 
 ## ClickHouse schema check
@@ -57,7 +57,7 @@ Reset volume after schema change:
 docker compose down -v && make compose-up
 ```
 
-See [ADR 007](../adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../adr/011-replacingmergetree-dedupe-identity.md), [ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md).
+See [ADR 007](../adr/storage/007-clickhouse-mergetree-tuning.md), [ADR 011](../adr/storage/011-replacingmergetree-dedupe-identity.md), [ADR 055](../adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md).
 
 ```bash
 curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20CREATE%20TABLE%20statix.workload_metrics" | grep -E 'ReplacingMergeTree|ORDER BY'
@@ -74,13 +74,13 @@ curl -s -u default:${CLICKHOUSE_PASSWORD} "http://localhost:8123/?query=SHOW%20C
 
 ## Enterprise checks
 
-See [enterprise-latency.md](enterprise-latency.md): no handler `await` on ClickHouse; agent WAL on `503` ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)).
+See [enterprise-latency.md](enterprise-latency.md): no handler `await` on ClickHouse; agent WAL on `503` ([ADR 054](../adr/ingest/054-phase11-wal-spillway.md)).
 
 Tear down: `make compose-down`. Rebuild gateway: `docker compose build statix-gateway && docker compose up -d statix-gateway`.
 
 ## Phase 14 — CPU time (`cpu_usage_usec`)
 
-Agent emits schema **v3** with per-window CPU microseconds ([ADR 058](../adr/phase14/058-phase14-cpu-usage-tracking.md)).
+Agent emits schema **v3** with per-window CPU microseconds ([ADR 058](../adr/agent/058-phase14-cpu-usage-tracking.md)).
 
 ```bash
 make verify-phase14-cpu

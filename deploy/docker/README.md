@@ -15,7 +15,7 @@ docker run --rm -p 3000:3000 \
   statix-gateway:latest
 ```
 
-Gateway writes ingest batches to ClickHouse via RowBinary ([ADR 055](../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)). Optional writer tuning: `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS`.
+Gateway writes ingest batches to ClickHouse via RowBinary ([ADR 055](../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)). Optional writer tuning: `STATIX_INGEST_CHANNEL_SIZE`, `STATIX_CH_BATCH_MAX`, `STATIX_CH_LINGER_MS`, `STATIX_CH_INSERT_TIMEOUT_SECS`.
 
 ## eBPF node agent (`statix`)
 

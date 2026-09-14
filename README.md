@@ -7,15 +7,15 @@ Kernel-side workload identity + cgroup memory telemetry, rolled up in user space
 | Phase / target | State | What ships |
 |----------------|--------|------------|
 | **1–4** | Done | eBPF agent, attribution, ingest E2E, scale/reliability (partition routing, dedupe, lineage, bootstrap) |
-| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped; Kafka ops cancelled Phase 13 ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
-| **5.5 V3** | Done | Post-GA audit ([ADR 049](docs/adr/phase55/v3/049-phase55-v3-wave1-silent-deaths.md)–[053](docs/adr/phase55/v3/053-phase55-v3-wave5-micro-arch-polish.md)) |
-| **11** | Done | Agent WAL + circuit breaker ([ADR 054](docs/adr/phase11/054-phase11-wal-spillway.md)) |
-| **13** | **Done** | Queue-less RowBinary + `MetricRow` + infra strip ([ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)–[057](docs/adr/phase13/057-phase13-part2-infra-kafka-strip.md)) |
-| **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/018-phase-roadmap-status.md)) |
-| **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/028-finops-wire-and-agent-rename.md)–[036](docs/adr/036-phase7-typed-errors-labels-read-path.md)) |
+| **5** | **Partial** | P0 security/hot-path + TLS at ALB shipped; Kafka ops cancelled Phase 13 ([ADR 055](docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| **5.5 V3** | Done | Post-GA audit ([ADR 049](docs/adr/fixes/049-phase55-v3-wave1-silent-deaths.md)–[053](docs/adr/fixes/053-phase55-v3-wave5-micro-arch-polish.md)) |
+| **11** | Done | Agent WAL + circuit breaker ([ADR 054](docs/adr/ingest/054-phase11-wal-spillway.md)) |
+| **13** | **Done** | Queue-less RowBinary + `MetricRow` + infra strip ([ADR 055](docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)–[057](docs/adr/deploy/057-phase13-part2-infra-kafka-strip.md)) |
+| **6** | Done | Mechanical sympathy / hot-path micro-opts ([ADR 018](docs/adr/meta/018-phase-roadmap-status.md)) |
+| **7** | Done | `statix-wire`, `statix-infra`, typed errors, read-only labels ([ADR 028](docs/adr/meta/028-finops-wire-and-agent-rename.md)–[036](docs/adr/meta/036-phase7-typed-errors-labels-read-path.md)) |
 | **8** | Partial | K8s manifests, informer, drain, digest pins shipped; stronger cgroup→pod mapping open |
-| **9** | Partial | eBPF verifier CI matrix shipped ([ADR 037](docs/adr/037-phase9-ebpf-verifier-ci.md)); arm64 CI + cgroup v1 detection open |
-| **T1–3** | Done | Prod deploy, CH init, `GET /api/v1/workloads/summary` ([ADR 024](docs/adr/024-agent-production-container.md)–[027](docs/adr/027-api-read-path-clickhouse.md)) |
+| **9** | Partial | eBPF verifier CI matrix shipped ([ADR 037](docs/adr/ebpf/037-phase9-ebpf-verifier-ci.md)); arm64 CI + cgroup v1 detection open |
+| **T1–3** | Done | Prod deploy, CH init, `GET /api/v1/workloads/summary` ([ADR 024](docs/adr/deploy/024-agent-production-container.md)–[027](docs/adr/gateway/027-api-read-path-clickhouse.md)) |
 
 ## What’s in the repo
 
@@ -24,7 +24,7 @@ Five host crates + BPF + infra:
 - **`statix-ebpf`** — BPF program (nightly, `bpfel-unknown-none`)
 - **`statix-common`** — shared event layout (`StatixEvent`, kinds, sizes)
 - **`statix-wire`** — shared ingest types (`IngestBatch`, `WorkloadRow`)
-- **`statix-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/035-phase7-workspace-restructure.md))
+- **`statix-infra`** — shared `read_env_*` and clock utilities ([ADR 035](docs/adr/meta/035-phase7-workspace-restructure.md))
 - **`statix`** — loads BPF, reads ring buffer, attributes cgroups, aggregates, stdout or HTTP ingest
 - **`statix-gateway`** — `POST /ingest` → RowBinary coalescer → ClickHouse; `GET /api/v1/workloads/summary`; probes
 - **`docker-compose.yml`** — ClickHouse, Grafana, gateway (queue-less stack)
@@ -36,7 +36,7 @@ Phase 2 behavior in short:
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
-Phase 3+ ingest: HTTP JSON batches → gateway coalescer → RowBinary INSERT → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). [ADR 055](docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md).
+Phase 3+ ingest: HTTP JSON batches → gateway coalescer → RowBinary INSERT → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). [ADR 055](docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md).
 
 **Enterprise low-latency contract:** [docs/guides/enterprise-latency.md](docs/guides/enterprise-latency.md)  
 Design decisions (ADRs): [docs/adr/](docs/adr/)  
@@ -49,7 +49,7 @@ Contributing: read `.cursor/skills/statix-ebpf-agent/SKILL.md` first; update ADR
 On every push/PR to `main`, [`.github/workflows/ebpf-ci.yml`](.github/workflows/ebpf-ci.yml) runs:
 
 1. **Userspace** — `cargo check --workspace` + tests for `statix-gateway`, `statix`, `statix-wire`
-2. **eBPF verifier matrix** — kernels **5.10, 5.15, 6.1, 6.8** via virtme-ng + `statix-ebpf-verify` ([ADR 037](docs/adr/037-phase9-ebpf-verifier-ci.md))
+2. **eBPF verifier matrix** — kernels **5.10, 5.15, 6.1, 6.8** via virtme-ng + `statix-ebpf-verify` ([ADR 037](docs/adr/ebpf/037-phase9-ebpf-verifier-ci.md))
 
 Pre-BTF / legacy kernels are **not** supported.
 
@@ -137,7 +137,7 @@ make verify-phase14-cpu   # Phase 14 CPU gates (priming, conservation, soft miss
 - Phase 3: [docs/guides/phase3-validation.md](docs/guides/phase3-validation.md)
 - Phase 10 metrics: [docs/guides/observability-metrics.md](docs/guides/observability-metrics.md)
 
-**Phase 14 CPU:** agent emits `schema_version: 3` with per-window `cpu_usage_usec` (microseconds of CPU time, not lifetime total). Gateway accepts schema 2 or 3; ClickHouse column `cpu_usage_usec UInt64` on `statix.workload_metrics`. See [ADR 058](docs/adr/phase14/058-phase14-cpu-usage-tracking.md).
+**Phase 14 CPU:** agent emits `schema_version: 3` with per-window `cpu_usage_usec` (microseconds of CPU time, not lifetime total). Gateway accepts schema 2 or 3; ClickHouse column `cpu_usage_usec UInt64` on `statix.workload_metrics`. See [ADR 058](docs/adr/agent/058-phase14-cpu-usage-tracking.md).
 
 ## Production deploy
 

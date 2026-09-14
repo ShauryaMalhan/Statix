@@ -1,6 +1,6 @@
 # Phase 10 — SRE Golden-Signal Saturation Metrics
 
-> **Status:** **Shipped** ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)). Golden-Signal saturation series for the queue-less, WAL-backed pipeline.
+> **Status:** **Shipped** ([ADR 060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md)). Golden-Signal saturation series for the queue-less, WAL-backed pipeline.
 
 ## Topology (current)
 
@@ -22,11 +22,11 @@ agent retry/WAL spillway ──► statix_wal_bytes_current (seeded at init_wal)
 
 | Task | ADR | Items |
 |------|-----|-------|
-| P10-1 ✅ | [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md) | `statix_gateway_mpsc_depth` — background sampler in `statix-gateway/src/main.rs` (`capacity − tx.capacity()`) |
-| P10-2 ✅ | [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md) | `statix_api_ingest_503_total` — `record_ingest_metrics` in `statix-gateway/src/routes/ingest.rs` |
-| P10-3 ✅ | [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md) | `statix_wal_bytes_current` startup seed — `output::init_wal` in `statix/src/output.rs` |
-| P10-4 ✅ | [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md) | HELP text (`describe_*`) + startup seeds — gateway/agent `main.rs` |
-| P10-5 ✅ | [060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md) | Docs — [observability-metrics.md](../../../docs/guides/observability-metrics.md); skills/TODO sync |
+| P10-1 ✅ | [060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md) | `statix_gateway_mpsc_depth` — background sampler in `statix-gateway/src/main.rs` (`capacity − tx.capacity()`) |
+| P10-2 ✅ | [060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md) | `statix_api_ingest_503_total` — `record_ingest_metrics` in `statix-gateway/src/routes/ingest.rs` |
+| P10-3 ✅ | [060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md) | `statix_wal_bytes_current` startup seed — `output::init_wal` in `statix/src/output.rs` |
+| P10-4 ✅ | [060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md) | HELP text (`describe_*`) + startup seeds — gateway/agent `main.rs` |
+| P10-5 ✅ | [060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md) | Docs — [observability-metrics.md](../../../docs/guides/observability-metrics.md); skills/TODO sync |
 
 ---
 

@@ -35,7 +35,7 @@ static EVENTS: RingBuf = RingBuf::with_byte_size(RING_BUF_BYTES, 0);
 
 ## Pattern 3 — Tracepoint identity capture (kernel)
 
-`reserve` → fill → `submit(0)`. Never `?` after `reserve`. On `None`, increment `RING_DROPS` key `0` ([ADR 022](../../../docs/adr/022-bpf-ring-buffer-drop-counter.md)); agent polls every 10s.
+`reserve` → fill → `submit(0)`. Never `?` after `reserve`. On `None`, increment `RING_DROPS` key `0` ([ADR 022](../../../docs/adr/ebpf/022-bpf-ring-buffer-drop-counter.md)); agent polls every 10s.
 
 ---
 
@@ -66,7 +66,7 @@ Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snap
 ## Pattern 5a — Batch lineage (audit)
 
 Each `Aggregator::flush` sets `batch_id = Uuid::new_v4()` and `agent_version = env!("CARGO_PKG_VERSION")`.  
-Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/028-finops-wire-and-agent-rename.md)).
+Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickHouse (not in `ORDER BY` — [ADR 017](../../../docs/adr/ingest/017-batch-lineage-metadata.md), [ADR 028](../../../docs/adr/meta/028-finops-wire-and-agent-rename.md)).
 
 ## Pattern 5b — Aggregator clock domain
 
@@ -74,14 +74,14 @@ Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickH
 Hot path: `clock_offset_ns()` (`Relaxed` load) — `wall = mono + offset` in `on_statix_event`.  
 Background: `spawn_clock_recalibration_task` every `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600).  
 `window_start_ns` / `window_end_ns` use `mono_now + offset` (not `SystemTime` per event).  
-Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/016-clock-domain-offset.md), [047](../../../docs/adr/047-atomic-clock-offset-recalibration.md)).
+Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/agent/016-clock-domain-offset.md), [047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md)).
 
 ## Pattern 6b — Attribution cache
 
 `AttributionCache`: one `Arc<RwLock<CacheState>>` with `FxHashMap` for paths, labels (`Arc<WorkloadLabels>`), and `pod_by_uid`.  
 `labels_for_cgroup`: single `.read()` — no quadruple-lock herd; K8s/path misses cache under write lock; `DEFAULT_LABELS` `LazyLock` for unknown cgroups. `on_identity_event`: procfs read **before** `state.write()`. K8s refresh in background task.  
 `cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
-Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/015-cgroup-v2-bootstrap-on-startup.md)).  
+Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md)).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
 
 ---
@@ -120,15 +120,15 @@ limits   = requests × 1.25;
 
 ## Pattern 10 — Phase 13 queue-less ingest
 
-**Agent:** `OnceLock<reqwest::Client>`; circuit breaker + WAL on sustained 503 ([ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md)); `init_retry_worker` — `mpsc(60)` + disk spillway.
+**Agent:** `OnceLock<reqwest::Client>`; circuit breaker + WAL on sustained 503 ([ADR 054](../../../docs/adr/ingest/054-phase11-wal-spillway.md)); `init_retry_worker` — `mpsc(60)` + disk spillway.
 
-**API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` builds `MetricRow::from_ingest` inline into permits — Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)); `schema_version` `2..=3`; 2MB body limit.
+**API:** `GET /health` (writer channel open); `GET /ready` (`ch_healthy` + mpsc &lt;80%); `POST /ingest` builds `MetricRow::from_ingest` inline into permits — Tier 1 `!ch_healthy`→503, Tier 2 `try_reserve_many`→503 ([ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md)); `schema_version` `2..=3`; 2MB body limit.
 
-**Writer:** `clickhouse_writer.rs` — coalesce `MetricRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE` ([ADR 056](../../../docs/adr/phase13/056-phase13-part2-ingest-zero-alloc.md)).
+**Writer:** `clickhouse_writer.rs` — coalesce `MetricRow`; RowBinary INSERT; sync `insert.end()` timeout; env `STATIX_CH_*`, `STATIX_INGEST_CHANNEL_SIZE` ([ADR 056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md)).
 
-**ClickHouse:** `statix.workload_metrics` only (no Kafka engine); `ReplacingMergeTree`; billing `FINAL` — [ADR 007](../../../docs/adr/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/011-replacingmergetree-dedupe-identity.md).
+**ClickHouse:** `statix.workload_metrics` only (no Kafka engine); `ReplacingMergeTree`; billing `FINAL` — [ADR 007](../../../docs/adr/storage/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/storage/011-replacingmergetree-dedupe-identity.md).
 
-*(Historical Kafka path: [ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md), [ADR 010](../../../docs/adr/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/014-kafka-producer-env-tuning.md).)*
+*(Historical Kafka path: [ADR 005](../../../docs/adr/ingest/005-non-blocking-ingest-pipeline.md), [ADR 010](../../../docs/adr/kafka-legacy/010-kafka-partition-key-by-node.md), [ADR 014](../../../docs/adr/kafka-legacy/014-kafka-producer-env-tuning.md).)*
 
 ---
 
@@ -139,7 +139,7 @@ limits   = requests × 1.25;
 - Baseline map (`Sampler.cpu_baseline`) survives aggregator window flips; **not** in `WorkloadStats`.
 - **Priming:** first read per cgroup sets baseline only (delta 0) — avoids lifetime spike on boot.
 - **Monotonic guard:** `current.saturating_sub(last)` on subsequent samples.
-- Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/phase14/058-phase14-cpu-usage-tracking.md)).
+- Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).
 - Agent emits schema v3 with `cpu_usage_usec`; gateway accepts v2..=3 (`#[serde(default)]`).
 
 ---
@@ -155,7 +155,7 @@ limits   = requests × 1.25;
 
 **Startup seed:**
 - `metrics` series absent from `/metrics` until first touch — seed counters with `increment(0)` and gauges with `set(0.0)` at startup so idle `0` is visible.
-- Optional `describe_gauge!` / `describe_counter!` once at startup for HELP text ([ADR 060](../../../docs/adr/phase10/060-phase10-golden-signal-saturation-metrics.md)).
+- Optional `describe_gauge!` / `describe_counter!` once at startup for HELP text ([ADR 060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md)).
 
 **503 flat counter:** increment in the shared response recorder (`record_ingest_metrics`), not per rejection branch.
 
@@ -173,7 +173,7 @@ make compose-down
 ```
 
 - **Do not** `make run-api` while compose `statix-gateway` is on `:3000`.
-- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)).
+- **Do not** `fuser -k 3000` — breaks Docker port-forward ([ADR 009](../../../docs/adr/deploy/009-finops-api-docker-compose.md)).
 
 Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validation.md).
 
@@ -184,14 +184,14 @@ docker build -f deploy/docker/Dockerfile.gateway -t statix-gateway:latest .
 docker build -f deploy/docker/Dockerfile.statix -t statix:latest .
 ```
 
-Gateway: non-root `statix` user ([ADR 009](../../../docs/adr/009-finops-api-docker-compose.md)). Agent: root/privileged, `STATIX_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/024-agent-production-container.md)).
+Gateway: non-root `statix` user ([ADR 009](../../../docs/adr/deploy/009-finops-api-docker-compose.md)). Agent: root/privileged, `STATIX_BPF_DIR=/app/bpf` ([ADR 024](../../../docs/adr/deploy/024-agent-production-container.md)).
 
 ```bash
 kubectl apply -f deploy/k8s/gateway.yaml
 kubectl apply -f deploy/k8s/statix-daemonset.yaml
 ```
 
-See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../docs/adr/025-kubernetes-gateway-and-agent.md)).
+See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../docs/adr/deploy/025-kubernetes-gateway-and-agent.md)).
 
 ## Pattern 13 — ClickHouse Target 2 (`statix` database)
 
@@ -199,13 +199,13 @@ See [deploy/k8s/README.md](../../../deploy/k8s/README.md) ([ADR 025](../../../do
 clickhouse-client --multiquery < deploy/clickhouse/01_init.sql
 ```
 
-`statix.workload_metrics` only; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/026-clickhouse-finops-database-init.md), [ADR 055](../../../docs/adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)).
+`statix.workload_metrics` only; billing `FINAL` on `(node, window_start_ns, cgroup_id)` ([ADR 026](../../../docs/adr/storage/026-clickhouse-finops-database-init.md), [ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)).
 
-**API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/005-non-blocking-ingest-pipeline.md)).
+**API shutdown (container or host):** `with_graceful_shutdown` → drain mpsc → 10s cap ([ADR 005](../../../docs/adr/ingest/005-non-blocking-ingest-pipeline.md)).
 
 ## Pattern 15 — Gateway `Config` (Phase 7)
 
-All `statix-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/030-finops-api-config-struct.md)).
+All `statix-gateway` startup env is loaded once via `config::Config::from_env()` at the top of `main()` ([ADR 030](../../../docs/adr/gateway/030-finops-api-config-struct.md)).
 
 | Env | `Config` field / module | Default |
 |-----|-------------------------|---------|
@@ -227,13 +227,13 @@ Do not add new `std::env::var` calls in `main.rs` — extend `config.rs` instead
 curl -s 'http://127.0.0.1:3000/api/v1/workloads/summary?hours=24' | jq .
 ```
 
-- Env: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` ([ADR 027](../../../docs/adr/027-api-read-path-clickhouse.md)).
+- Env: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` ([ADR 027](../../../docs/adr/gateway/027-api-read-path-clickhouse.md)).
 - SQL uses `statix.workload_metrics FINAL`; default lookback 24h.
 - Rebuild API after changes: `docker compose build statix-gateway && docker compose up -d statix-gateway`.
 
 ## Pattern 16 — Positive-bounded numeric env (`statix-infra::env`)
 
-All numeric tuning env vars that feed timers, intervals, or channel depths must use `read_env_u64` / `read_env_usize` — never raw `parse()` in callers ([ADR 048](../../../docs/adr/048-generic-env-positive-parsing.md)).
+All numeric tuning env vars that feed timers, intervals, or channel depths must use `read_env_u64` / `read_env_usize` — never raw `parse()` in callers ([ADR 048](../../../docs/adr/meta/048-generic-env-positive-parsing.md)).
 
 ```rust
 // statix-infra/src/env.rs — internal generic; public wrappers unchanged
@@ -265,7 +265,7 @@ pub fn read_env_u64(name: &str, default: u64) -> u64 {
 
 When the in-memory retry queue saturates or the gateway is down, batches spill to
 a bounded segmented append-only log on disk instead of being dropped — preserving
-FinOps zero-data-loss. Full spec: [PHASE_11_WAL_PLAYBOOK.md](PHASE_11_WAL_PLAYBOOK.md), [ADR 054](../../../docs/adr/phase11/054-phase11-wal-spillway.md).
+FinOps zero-data-loss. Full spec: [PHASE_11_WAL_PLAYBOOK.md](PHASE_11_WAL_PLAYBOOK.md), [ADR 054](../../../docs/adr/ingest/054-phase11-wal-spillway.md).
 
 ```rust
 // statix/src/output.rs — enqueue_batch_json Full branch (hot path)

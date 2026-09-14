@@ -7,20 +7,20 @@ FinOps telemetry is **billing-adjacent**: dropped samples or blocked kernel drai
 | Principle | Implementation |
 |-----------|----------------|
 | **Never block the ring buffer** | Agent `emit_batch` enqueues to retry worker (`try_send`); no `.await` on HTTP from the event loop |
-| **Never block the ingest handler** | API uses `try_reserve_many`; ClickHouse RowBinary insert only in background writer ([ADR 055](../adr/phase13/055-phase13-part1-kafka-removal-rowbinary.md)) |
+| **Never block the ingest handler** | API uses `try_reserve_many`; ClickHouse RowBinary insert only in background writer ([ADR 055](../adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)) |
 | **Explicit backpressure** | `!ch_healthy` → instant 503; mpsc full → 503; tune `STATIX_INGEST_CHANNEL_SIZE` |
-| **No telemetry loss on outage** | Agent WAL + circuit breaker on 503 ([ADR 054](../adr/phase11/054-phase11-wal-spillway.md)) |
+| **No telemetry loss on outage** | Agent WAL + circuit breaker on 503 ([ADR 054](../adr/ingest/054-phase11-wal-spillway.md)) |
 | **Raw bytes on the wire** | Agent JSON envelope; gateway RowBinary to ClickHouse (no ORM) |
 | **Shared I/O pools** | One `reqwest::Client` (agent); one `clickhouse::Client` (gateway read + write) |
-| **Storage dedupe** | `ReplacingMergeTree`; billing `FINAL` ([ADR 011](../adr/011-replacingmergetree-dedupe-identity.md)) |
-| **API metrics** | `GET /metrics`; `statix_api_ch_*` insert health ([ADR 012](../adr/012-finops-api-prometheus-metrics.md)) |
+| **Storage dedupe** | `ReplacingMergeTree`; billing `FINAL` ([ADR 011](../adr/storage/011-replacingmergetree-dedupe-identity.md)) |
+| **API metrics** | `GET /metrics`; `statix_api_ch_*` insert health ([ADR 012](../adr/gateway/012-finops-api-prometheus-metrics.md)) |
 | **Synchronous insert ACK** | No `async_insert` — `insert.end()` timeout flips `ch_healthy` for honest backpressure |
 
 ## Latency budget (targets)
 
 | Stage | Target | Notes |
 |-------|--------|-------|
-| BPF → ring buffer | μs | `reserve` / `submit` only; no printk; map size tiered by host cores ([ADR 013](adr/013-configurable-ring-buffer-size.md)) |
+| BPF → ring buffer | μs | `reserve` / `submit` only; no printk; map size tiered by host cores ([ADR 013](../adr/ebpf/013-configurable-ring-buffer-size.md)) |
 | Agent event drain | μs per event | `on_statix_event` + map insert; flush work off hot path where possible |
 | cgroup `memory.current` sample | async | Path snapshot + per-file `spawn_blocking` — never sync `File::open` on the runtime worker |
 | `emit_batch` (HTTP path) | &lt; 1 ms on caller | Serialize + `try_send` to retry queue only |
@@ -56,4 +56,4 @@ Every feature or optimization must:
 
 - [docs/adr/](../adr/) — point-in-time decisions
 - [docs/guides/phase3-ingest-interface.md](phase3-ingest-interface.md) — HTTP ingest contract
-- [.cursor/skills/statix-ebpf-agent/](../.cursor/skills/statix-ebpf-agent/) — agent coding standards
+- [.cursor/skills/statix-ebpf-agent/](../../.cursor/skills/statix-ebpf-agent/) — agent coding standards
