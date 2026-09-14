@@ -99,11 +99,22 @@ jobs:
             ${{ runner.os }}-cargo-ebpf-
             ${{ runner.os }}-cargo-userspace-
 
+      # Pin deliberately. bpf-linker 0.11.0 (2026-08-12) dropped
+      # `aya-rustc-llvm-proxy`, so it can no longer build against rustc's bundled
+      # LLVM and instead needs a system LLVM 21+ (llvm-sys 211/221/231). The
+      # runner image ships LLVM 18, so an unpinned `cargo install` fails.
+      # 0.10.4 is the last release that uses rustc's own LLVM.
+      # Reinstall whenever the cached binary is not exactly the pinned version —
+      # the previous `command -v` guard let a stale cached binary mask the pin,
+      # which is why this only surfaced once the CI cache expired.
       - name: Install bpf-linker
+        env:
+          BPF_LINKER_VERSION: "0.10.4"
         run: |
-          if ! command -v bpf-linker &>/dev/null; then
-            cargo install bpf-linker --locked
+          if [ "$(bpf-linker --version 2>/dev/null | awk '{print $2}')" != "$BPF_LINKER_VERSION" ]; then
+            cargo install bpf-linker --locked --version "$BPF_LINKER_VERSION" --force
           fi
+          bpf-linker --version
 
       - name: Build eBPF ELF
         working-directory: statix-ebpf
