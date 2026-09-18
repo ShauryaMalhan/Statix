@@ -25,6 +25,14 @@ production image build.
       dev box gets 0.11.x and cannot build the agent at all.
 - [ ] **`.github/workflows/ebpf-ci.yml:69`** — `pip install --break-system-packages virtme-ng`,
       unpinned. Same shape, different ecosystem.
+- [ ] **Enable Dependabot** — `.github/dependabot.yml` for `cargo`, `github-actions` and
+      `docker`. Pinning stops things moving silently; Dependabot is what makes the pins
+      *maintainable* — it opens one PR per bump and CI judges it, so upgrades arrive as a
+      reviewable green/red signal instead of a surprise on an unrelated push. Without it,
+      pins go stale invisibly and nothing ever tells us a security fix is available.
+- [ ] **Add `cargo audit` to CI** — fails the build on a known RustSec advisory in any
+      dependency. Cheap, and it is the only thing that currently would tell us a
+      vulnerable crate is in the tree ([ADR 062](../../../docs/adr/meta/062-pin-build-toolchain-versions.md)).
 
 > **Rule learned:** `--locked` pins the dependency *tree*, not the *version* of the crate
 > being installed. And a pinned dependency sitting behind a cache isn't pinned — it's a

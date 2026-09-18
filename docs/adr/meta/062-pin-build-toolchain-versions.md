@@ -6,7 +6,17 @@
 
 ## What broke
 
-`cargo install bpf-linker` was unpinned. On 2026-08-12 bpf-linker 0.11.0 dropped `aya-rustc-llvm-proxy`, the shim that let it build against **rustc's bundled LLVM**. From 0.11 it requires a **system LLVM 21+** (`llvm-sys` 211/221/231), which neither the CI runner (LLVM 18) nor the Debian bookworm builder image provides.
+`cargo install bpf-linker` was unpinned. On 2026-08-12 bpf-linker 0.11.0 dropped `aya-rustc-llvm-proxy`, the shim that let it build against **rustc's bundled LLVM**. From 0.11 it requires a **system LLVM 21+** (`llvm-sys` 211/221/231).
+
+Measured in the builder image on 2026-09-19:
+
+| LLVM available | Version |
+|----------------|---------|
+| Bundled inside `rustc` (`rust:1.97.1-bookworm`) | **22.1.6** |
+| System, via `apt-get install llvm` on Debian bookworm | **14.0** |
+| Required by bpf-linker 0.11+ | **21+** |
+
+The irony is worth recording: the image *does* contain a new enough LLVM (22.1.6) — it is just inside rustc, not exposed as a system library. `aya-rustc-llvm-proxy` existed precisely to reach it. Removing the shim sent bpf-linker looking for a system LLVM, where it found 14.0 and stopped. The CI runner (Ubuntu 24.04, LLVM 18) is likewise below 21.
 
 Two properties turned a routine upstream release into a broken release artifact:
 
