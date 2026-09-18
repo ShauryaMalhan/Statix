@@ -3,7 +3,7 @@
 # Build from repo root (statix-core):
 #   docker build -f deploy/docker/Dockerfile.statix -t statix:latest .
 
-FROM rust:1.86-bookworm AS builder
+FROM rust:1.97.1-bookworm AS builder
 
 WORKDIR /usr/src/statix
 
@@ -13,9 +13,18 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # eBPF: nightly + bpf-linker + bpfel-unknown-none (statix-ebpf is outside the workspace)
+#
+# bpf-linker is pinned deliberately. 0.11.0 (2026-08-12) dropped
+# `aya-rustc-llvm-proxy`, so it can no longer build against rustc bundled LLVM and
+# instead requires a system LLVM 21+ (llvm-sys 211/221/231). This image installs
+# Debian bookworm LLVM, so an unpinned install fails the build. 0.10.4 is the last
+# release that uses rustc own LLVM.
+# Keep in sync with .github/workflows/ebpf-ci.yml (BPF_LINKER_VERSION).
+ARG BPF_LINKER_VERSION=0.10.4
 RUN rustup toolchain install nightly --profile minimal \
     && rustup component add rust-src --toolchain nightly \
-    && cargo install bpf-linker
+    && cargo install bpf-linker --locked --version "${BPF_LINKER_VERSION}" \
+    && bpf-linker --version
 
 COPY . .
 
