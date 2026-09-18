@@ -17,10 +17,10 @@ in CI (`9856d7e`) — **but the identical bug is still live in three other place
 was hiding it for months; these will fail the same way, on someone else's machine or in a
 production image build.
 
-- [ ] **Gateway images are pinned to `rust:1.86`** — `deploy/docker/Dockerfile.gateway:6`
-      and `Dockerfile.gateway:4`. They still build today, but 1.86 is already too old for
-      some current dependency trees (it is exactly what broke the agent image), so this is
-      a latent version of the same trap. Bump when convenient; not urgent while they build.
+- [ ] **Two gateway Dockerfiles duplicate each other** — `deploy/docker/Dockerfile.gateway`
+      (production) and `Dockerfile.gateway` (dev compose). Every base-image or dependency
+      change has to be made twice and can silently drift. Collapse to one, or generate the
+      dev one from the prod one.
 - [ ] **`Makefile:31`** — `which bpf-linker || cargo install bpf-linker`, unpinned. A fresh
       dev box gets 0.11.x and cannot build the agent at all.
 - [ ] **`.github/workflows/ebpf-ci.yml:69`** — `pip install --break-system-packages virtme-ng`,
