@@ -141,6 +141,18 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 Spec: [docs/guides/phase3-ingest-interface.md](../../../docs/guides/phase3-ingest-interface.md)  
 Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validation.md)
 
+## Build-tool pinning (non-negotiable)
+
+Every externally-fetched build tool is pinned to an exact version — `cargo install`,
+`pip install`, base images, in CI and Dockerfiles alike ([ADR 062](../../../docs/adr/meta/062-pin-build-toolchain-versions.md)).
+
+- `--locked` pins the dependency *tree*, **not** the version of the crate being installed.
+- Never gate an install on `command -v`; check the exact version and `--force` on mismatch.
+  A pinned tool behind a cache is not pinned — the cache just delays the failure.
+- `bpf-linker` is pinned to **0.10.4** in both `.github/workflows/ebpf-ci.yml` and
+  `deploy/docker/Dockerfile.statix` — **change them together**. 0.11+ needs a system LLVM 21+.
+- All images build on **`rust:1.97.1`**. One workspace `Cargo.lock` means one compiler.
+
 ## Build (always via Makefile)
 
 ```bash

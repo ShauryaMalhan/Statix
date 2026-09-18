@@ -125,6 +125,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [044](meta/044-statix-agent-rename.md) | `finops-agent` → `statix` (company rename) |
 | [045](meta/045-statix-platform-rename.md) | FinOps → Statix platform rename (shared crates & ops surface) |
 | [048](meta/048-generic-env-positive-parsing.md) | Generic positive-bounded env parsing in `statix-infra` |
+| [062](meta/062-pin-build-toolchain-versions.md) | Pin build-toolchain versions |
 
 ## Kafka (historical)
 

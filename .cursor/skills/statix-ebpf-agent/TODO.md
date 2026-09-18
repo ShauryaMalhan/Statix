@@ -25,8 +25,6 @@ production image build.
       dev box gets 0.11.x and cannot build the agent at all.
 - [ ] **`.github/workflows/ebpf-ci.yml:69`** — `pip install --break-system-packages virtme-ng`,
       unpinned. Same shape, different ecosystem.
-- [ ] **Write down the pin policy.** There is no rule anywhere saying tool versions must be
-      pinned, which is why this happened four times. One line in SKILL.md.
 
 > **Rule learned:** `--locked` pins the dependency *tree*, not the *version* of the crate
 > being installed. And a pinned dependency sitting behind a cache isn't pinned — it's a
