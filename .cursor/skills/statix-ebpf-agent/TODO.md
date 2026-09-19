@@ -130,9 +130,50 @@ anyone but you.
 
 ## P6 — Developer experience
 
-- [ ] **`make compose-up` is broken on macOS.** The Makefile uses `docker compose` (the
-      plugin, `Makefile:18`); a Mac with Colima typically has standalone `docker-compose`.
-      Detect which exists and use it, rather than every Mac dev working around it by hand.
+### Run scripts: `dev-up` / `dev-down` / `dev-status`
+
+> **Why this is worth doing properly.** Bringing the stack up is four pieces that must
+> start in dependency order, half on the Mac and half inside the VM, with a health wait in
+> the middle. It was rebuilt by hand on 2026-09-19 and every one of the gotchas below cost
+> real time. `bootstrap.sh` + `make deps` already solve *installing*; this solves *running*.
+>
+> Target: **one command from a cold laptop to a live dashboard.**
+
+- [ ] **`scripts/dev-up.sh`** — start everything, in order, idempotently:
+      1. `colima start` if the VM is not running (reuses saved cpu/memory/disk config)
+      2. ClickHouse via compose, then **wait for `(healthy)`** — not just `Up`
+      3. gateway (background, log to a file), then wait for `/ready` to return 200
+      4. agent under `sudo` (needs `CAP_BPF`), then wait for a row to land
+      5. print the dashboard URL and where the logs are
+      Re-running it while things are already up must be a no-op, not a second copy.
+
+- [ ] **`scripts/dev-down.sh`** — stop agent, then gateway, then optionally ClickHouse.
+      Default keeps ClickHouse (and therefore the data); `--all` stops it too.
+
+- [ ] **`scripts/dev-status.sh`** — one screen: VM up? ClickHouse healthy? gateway `/ready`?
+      agent running? newest row age? unattributed count? Answers "is it working" without
+      remembering any `curl`.
+
+- [ ] **Wire them to the Makefile** — `make dev-up` / `dev-down` / `dev-status`, and fix
+      `make compose-up` at the same time (`Makefile:18` hardcodes `docker compose`).
+
+#### Gotchas the scripts must handle — each of these actually bit
+
+| Gotcha | What happens without it |
+|---|---|
+| **Compose spelling differs per machine.** Mac has `docker-compose`, the VM has `docker compose`. Neither has both. | `command not found`, on whichever machine you are on |
+| **Detect macOS and re-exec inside the VM.** The agent needs Linux; the gateway should sit next to it. | agent cannot load eBPF at all |
+| **Wait for ClickHouse `(healthy)`, not `Up`.** It reports `Up` ~10s before it accepts queries. | gateway starts, fails its ping, `ch_healthy=false`, every ingest 503s |
+| **Read `CLICKHOUSE_PASSWORD` from `.env`.** | auth failures that look like the DB is down |
+| **Never `pkill -f <pattern>` where the pattern matches the ssh command itself.** | kills your own session — `exit status 255`, seen live |
+| **`sudo` strips the environment.** Use `sudo env VAR=… ./binary`. | agent starts with defaults and silently posts nowhere |
+| **Lima forwards VM ports to the Mac automatically.** | people hunt for a forwarding step that does not exist |
+
+#### Done when
+
+Cold laptop → `./scripts/dev-up.sh` → dashboard shows live rows, with no manual step and
+no second copy of anything if run twice. `dev-status.sh` then says so in one screen.
+
 - [ ] **Process/binary detail (`comm`).** The kernel already captures `comm[16]` and `cpu_id`
       in the 64-byte ring record (`statix-common/src/lib.rs`) — the aggregator throws both
       away. Plumbing them through is a 5-crate change; consider cardinality first.
