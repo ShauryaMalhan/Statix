@@ -21,8 +21,6 @@ production image build.
       (production) and `Dockerfile.gateway` (dev compose). Every base-image or dependency
       change has to be made twice and can silently drift. Collapse to one, or generate the
       dev one from the prod one.
-- [ ] **`Makefile:31`** — `which bpf-linker || cargo install bpf-linker`, unpinned. A fresh
-      dev box gets 0.11.x and cannot build the agent at all.
 - [ ] **`.github/workflows/ebpf-ci.yml:69`** — `pip install --break-system-packages virtme-ng`,
       unpinned. Same shape, different ecosystem.
 - [ ] **Enable Dependabot** — `.github/dependabot.yml` for `cargo`, `github-actions` and

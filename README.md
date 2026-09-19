@@ -64,11 +64,29 @@ Pre-BTF / legacy kernels are **not** supported.
 
 ## Install & build
 
+**Fresh Linux machine (or a new Colima VM) — start here:**
+
 ```bash
-cd Statix   # repo root
-make deps
+cd Statix                 # repo root
+./scripts/bootstrap.sh    # installs make, then runs `make deps`
 make build
 ```
+
+`bootstrap.sh` exists because `make` itself ships in `build-essential`, which
+`make deps` installs — so on a genuinely bare machine `make deps` cannot run.
+It is the only entry point that assumes nothing but `bash`, `sudo` and `apt`.
+
+**Already have `make`:**
+
+```bash
+make deps        # idempotent; installs clang/llvm, rust stable+nightly+rust-src,
+                 # rustfmt, and bpf-linker pinned to the version in the Makefile
+make deps-check  # read-only: verifies tools, BTF and cgroup v2
+make build
+```
+
+`make deps` refuses to run on macOS and tells you the `colima ssh` command to use
+instead — the eBPF toolchain only builds on Linux.
 
 Binaries:
 

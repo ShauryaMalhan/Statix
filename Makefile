@@ -13,7 +13,7 @@ EBPF_TARGET    := bpfel-unknown-none
 BPF_BUNDLE_DIR := $(WORKSPACE_ROOT)/target/bpf
 EBPF_RELEASE   := $(EBPF_DIR)/target/$(EBPF_TARGET)/release/$(EBPF_OUT_NAME)
 
-.PHONY: deps build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf verify-phase14-cpu enterprise-check wal-test wal-faultfs
+.PHONY: deps deps-check build-ebpf build-agent build-user build-gateway build-api build run run-gateway run-api stop-gateway stop-api compose-up compose-down phase3-up check clean fmt verify verify-btf verify-phase14-cpu enterprise-check wal-test wal-faultfs
 
 COMPOSE := docker compose -f $(WORKSPACE_ROOT)/docker-compose.yml
 
@@ -22,15 +22,71 @@ enterprise-check: build check
 
 STATIX_INGEST_URL ?= http://127.0.0.1:3000/ingest
 
+# bpf-linker MUST stay pinned. 0.11.0 dropped `aya-rustc-llvm-proxy`, so it can no
+# longer build against rustc's bundled LLVM and needs a system LLVM 21+ (ADR 062).
+# Keep in sync with .github/workflows/ebpf-ci.yml and deploy/docker/Dockerfile.statix.
+BPF_LINKER_VERSION := 0.10.4
+
+# Installs the toolchain from scratch on a clean Linux machine. Idempotent.
 deps:
-	@echo "==> Checking toolchain..."
-	@rustc --version || (echo "Install Rust: https://rustup.rs" && exit 1)
-	@rustup toolchain list | grep -q nightly || rustup toolchain install nightly
-	@rustup component list --toolchain nightly | grep -q "rust-src (installed)" \
+	@echo "==> Statix toolchain setup"
+	@if [ "$$(uname -s)" != "Linux" ]; then \
+		echo "ERROR: the eBPF toolchain only builds on Linux; this is $$(uname -s)."; \
+		echo "       Run it inside the VM instead:"; \
+		echo "         colima ssh -- bash -lc 'cd $(WORKSPACE_ROOT) && make deps'"; \
+		exit 1; \
+	fi
+	@echo "--> [1/3] system packages (needs sudo)"
+	@sudo apt-get update -qq
+	@sudo apt-get install -y --no-install-recommends \
+		clang llvm libelf-dev zlib1g-dev pkg-config build-essential curl ca-certificates
+	@echo "--> [2/3] rust: stable + nightly + rust-src + rustfmt"
+	@command -v rustup >/dev/null 2>&1 || \
+		curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+	@rustup toolchain list | grep -q '^nightly' || rustup toolchain install nightly --profile minimal
+	@rustup component list --toolchain nightly | grep -q 'rust-src (installed)' \
 		|| rustup component add rust-src --toolchain nightly
-	@which bpf-linker || cargo install bpf-linker
-	@clang --version > /dev/null || (echo "Install: apt install clang" && exit 1)
-	@echo "==> All dependencies present"
+	@rustup component list --toolchain nightly | grep -q 'rustfmt.*(installed)' \
+		|| rustup component add rustfmt --toolchain nightly
+	@echo "--> [3/3] bpf-linker, pinned to $(BPF_LINKER_VERSION)"
+	@if [ "$$(bpf-linker --version 2>/dev/null | awk '{print $$2}')" != "$(BPF_LINKER_VERSION)" ]; then \
+		echo "    installing bpf-linker $(BPF_LINKER_VERSION) (compiles, takes a few minutes)"; \
+		cargo install bpf-linker --locked --version $(BPF_LINKER_VERSION) --force; \
+	else \
+		echo "    already at $(BPF_LINKER_VERSION)"; \
+	fi
+	@$(MAKE) --no-print-directory deps-check
+
+# Read-only verification. Also checks the two kernel prerequisites the agent
+# needs at runtime, which nothing else validated before.
+deps-check:
+	@echo "==> Toolchain check"
+	@rc=0; \
+	for tool in rustc cargo clang bpf-linker make gcc; do \
+		if path=$$(command -v $$tool 2>/dev/null); then \
+			printf '    %-12s %s\n' "$$tool" "$$path"; \
+		else \
+			printf '    %-12s MISSING\n' "$$tool"; rc=1; \
+		fi; \
+	done; \
+	ver=$$(bpf-linker --version 2>/dev/null | awk '{print $$2}'); \
+	if [ -n "$$ver" ] && [ "$$ver" != "$(BPF_LINKER_VERSION)" ]; then \
+		printf '    %-12s version %s, expected $(BPF_LINKER_VERSION)\n' "bpf-linker" "$$ver"; rc=1; \
+	fi; \
+	if [ "$$(uname -s)" = "Linux" ]; then \
+		if [ -r /sys/kernel/btf/vmlinux ]; then \
+			printf '    %-12s present\n' "BTF"; \
+		else \
+			printf '    %-12s MISSING (/sys/kernel/btf/vmlinux) - agent cannot load\n' "BTF"; rc=1; \
+		fi; \
+		if [ "$$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" = "cgroup2fs" ]; then \
+			printf '    %-12s unified\n' "cgroup v2"; \
+		else \
+			printf '    %-12s NOT unified - attribution will fail\n' "cgroup v2"; rc=1; \
+		fi; \
+	fi; \
+	if [ $$rc -eq 0 ]; then echo "==> All dependencies present"; \
+	else echo "==> MISSING DEPENDENCIES (see above)"; exit 1; fi
 
 # STATIX_RING_BUF_BYTES at compile time (statix-ebpf/build.rs) → three ELFs in target/bpf/
 build-ebpf:
