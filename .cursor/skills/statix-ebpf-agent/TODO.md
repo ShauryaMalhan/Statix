@@ -111,6 +111,42 @@ anyone but you.
 
 ## P4 — Portability
 
+- [ ] **Clock offset survives a host suspend for up to an hour, stamping every row wrong.**
+      Observed live on 2026-09-20: the agent emitted windows **26 minutes in the past**,
+      advancing at exactly 1.00x real time, with no WAL backlog. Restarting the agent fixed
+      it instantly.
+
+      **Mechanism.** The agent reports `wall = bpf_monotonic_timestamp + clock_offset`, and
+      caches `clock_offset` at startup. When the Mac sleeps, the Virtualization framework
+      *pauses* the VM — the guest sees no suspend event, so `CLOCK_MONOTONIC` and
+      `CLOCK_BOOTTIME` both simply freeze (measured: identical, no suspend recorded). On
+      wake, NTP steps the **wall** clock forward by the sleep duration; monotonic is never
+      corrected. The cached offset is now too small by exactly that duration, and every
+      window is stamped that far in the past until the next recalibration.
+
+      Evidence: VM wall-age 26.7h vs `CLOCK_MONOTONIC` uptime 19.35h — **7.3 hours of wall
+      time the monotonic clock never counted**.
+
+      **Why [ADR 047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md) does
+      not cover it.** That ADR handles NTP *drift* — slow, small, and well served by an
+      hourly tick. A host suspend is a *step*: sudden and large. Hourly recalibration does
+      eventually correct it, but every row written in the meantime is permanently
+      mis-stamped in ClickHouse, and there is no signal that it happened.
+
+      **Not a laptop-only curiosity.** Every developer running the agent on a Mac hits this
+      the first time they open the lid. VM live-migration and hypervisor pauses produce the
+      same shape on servers.
+
+      **Options** (needs an ADR superseding 047, per the project rule — do not edit 047):
+      - recalibrate far more often; it is two clock reads and essentially free
+      - on each recalibration, compare new offset against old and if it jumped beyond a
+        threshold, apply immediately and emit a metric/log rather than absorbing it silently
+      - consider `bpf_ktime_get_boot_ns()` (`CLOCK_BOOTTIME`) instead of
+        `bpf_ktime_get_ns()` — note it does **not** help this case, since a hypervisor pause
+        freezes both, but it does cover a genuine guest suspend
+      - add a `statix_clock_offset_step_seconds` metric so the correction is observable
+
+
 - [ ] **arm64 eBPF in CI.** Verified working by hand on 2026-09-15 — aarch64, Ubuntu 24.04,
       kernel 6.8, `eBPF program loaded and kernel-verified`. The CI matrix is still x86-only,
       so nothing stops an arm64 regression. Required for Graviton and every Apple Silicon
