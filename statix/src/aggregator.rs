@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
-use statix_infra::clock::{clock_offset_ns, mono_now_ns};
+use statix_infra::clock::{clock_offset_ns, mono_now_ns, wall_unix_ns};
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use rustc_hash::FxHashMap;
@@ -64,7 +64,7 @@ pub struct Aggregator {
 
 impl Aggregator {
     pub fn new(_window_secs: u64) -> Self {
-        let window_start_ns = mono_now_ns().saturating_add(clock_offset_ns());
+        let window_start_ns = wall_unix_ns();
 
         Self {
             window_start_ns,
@@ -190,16 +190,16 @@ impl Aggregator {
     pub fn flush(&mut self, node: &str, _cache: &AttributionCache) -> Option<BatchPayload> {
         let flush_idx = self.active;
         if self.buffers[flush_idx].is_empty() {
-            self.reset_window();
+            self.reset_window(wall_unix_ns());
             return None;
         }
 
         let window_start_ns = self.window_start_ns;
-        let window_end_ns = self.wall_now_ns();
+        let window_end_ns = wall_unix_ns();
 
         // Flip first so ingest paths use a fresh buffer while we drain the old one.
         self.active = 1 - self.active;
-        self.reset_window();
+        self.reset_window(window_end_ns);
 
         let workloads: Vec<WorkloadRow> = self.buffers[flush_idx]
             .iter()
@@ -239,8 +239,8 @@ impl Aggregator {
         self.buffers[self.active].len()
     }
 
-    fn reset_window(&mut self) {
-        self.window_start_ns = self.wall_now_ns();
+    fn reset_window(&mut self, window_start_ns: u64) {
+        self.window_start_ns = window_start_ns;
     }
 }
 

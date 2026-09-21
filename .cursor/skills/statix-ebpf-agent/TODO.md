@@ -9,6 +9,53 @@ Roughly priority-ordered. `file:line` refs are the entry point for each item.
 
 ---
 
+## P0a — Clock offset goes stale after a host pause
+
+- [ ] **Clock offset survives a host suspend for up to an hour, stamping every row wrong.**
+      Observed live on 2026-09-20: the agent emitted windows **26 minutes in the past**,
+      advancing at exactly 1.00x real time, with no WAL backlog. Restarting the agent fixed
+      it instantly.
+
+      **Mechanism.** The agent reports `wall = bpf_monotonic_timestamp + clock_offset`, and
+      caches `clock_offset` at startup. When the Mac sleeps, the Virtualization framework
+      *pauses* the VM — the guest sees no suspend event, so `CLOCK_MONOTONIC` and
+      `CLOCK_BOOTTIME` both simply freeze (measured: identical, no suspend recorded). On
+      wake, NTP steps the **wall** clock forward by the sleep duration; monotonic is never
+      corrected. The cached offset is now too small by exactly that duration, and every
+      window is stamped that far in the past until the next recalibration.
+
+      Evidence: VM wall-age 26.7h vs `CLOCK_MONOTONIC` uptime 19.35h — **7.3 hours of wall
+      time the monotonic clock never counted**.
+
+      **Why [ADR 047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md) does
+      not cover it.** That ADR handles NTP *drift* — slow, small, and well served by an
+      hourly tick. A host suspend is a *step*: sudden and large. Hourly recalibration does
+      eventually correct it, but every row written in the meantime is permanently
+      mis-stamped in ClickHouse, and there is no signal that it happened.
+
+      **Not a laptop-only curiosity.** Every developer running the agent on a Mac hits this
+      the first time they open the lid. VM live-migration and hypervisor pauses produce the
+      same shape on servers.
+
+      **Options** (needs an ADR superseding 047, per the project rule — do not edit 047):
+      - recalibrate far more often; it is two clock reads and essentially free
+      - on each recalibration, compare new offset against old and if it jumped beyond a
+        threshold, apply immediately and emit a metric/log rather than absorbing it silently
+      - consider `bpf_ktime_get_boot_ns()` (`CLOCK_BOOTTIME`) instead of
+        `bpf_ktime_get_ns()` — note it does **not** help this case, since a hypervisor pause
+        freezes both, but it does cover a genuine guest suspend
+      - add a `statix_clock_offset_step_seconds` metric so the correction is observable
+
+      **Promoted 2026-09-21.** Hit three times in one day, most recently in the k3s
+      deployment: agent Running with 0 restarts, writing 63 rows/12s, every row stamped
+      **3492s (58 min)** in the past — so every "last 5 minutes" query returned nothing and
+      the dashboard showed 0 workloads on a perfectly healthy pipeline. Same cause each
+      time: the laptop lid.
+
+      Severity is not "annoying in dev". Rows written during the window are **permanently
+      mis-stamped in ClickHouse** and nothing anywhere signals it happened. Billing and
+      cost attribution read those timestamps.
+
 ## P0 — Supply chain: the same bug in three more places
 
 CI run #36 failed because `cargo install bpf-linker` had no version pin: 0.11.0 dropped
@@ -160,41 +207,6 @@ anyone but you.
 ---
 
 ## P4 — Portability
-
-- [ ] **Clock offset survives a host suspend for up to an hour, stamping every row wrong.**
-      Observed live on 2026-09-20: the agent emitted windows **26 minutes in the past**,
-      advancing at exactly 1.00x real time, with no WAL backlog. Restarting the agent fixed
-      it instantly.
-
-      **Mechanism.** The agent reports `wall = bpf_monotonic_timestamp + clock_offset`, and
-      caches `clock_offset` at startup. When the Mac sleeps, the Virtualization framework
-      *pauses* the VM — the guest sees no suspend event, so `CLOCK_MONOTONIC` and
-      `CLOCK_BOOTTIME` both simply freeze (measured: identical, no suspend recorded). On
-      wake, NTP steps the **wall** clock forward by the sleep duration; monotonic is never
-      corrected. The cached offset is now too small by exactly that duration, and every
-      window is stamped that far in the past until the next recalibration.
-
-      Evidence: VM wall-age 26.7h vs `CLOCK_MONOTONIC` uptime 19.35h — **7.3 hours of wall
-      time the monotonic clock never counted**.
-
-      **Why [ADR 047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md) does
-      not cover it.** That ADR handles NTP *drift* — slow, small, and well served by an
-      hourly tick. A host suspend is a *step*: sudden and large. Hourly recalibration does
-      eventually correct it, but every row written in the meantime is permanently
-      mis-stamped in ClickHouse, and there is no signal that it happened.
-
-      **Not a laptop-only curiosity.** Every developer running the agent on a Mac hits this
-      the first time they open the lid. VM live-migration and hypervisor pauses produce the
-      same shape on servers.
-
-      **Options** (needs an ADR superseding 047, per the project rule — do not edit 047):
-      - recalibrate far more often; it is two clock reads and essentially free
-      - on each recalibration, compare new offset against old and if it jumped beyond a
-        threshold, apply immediately and emit a metric/log rather than absorbing it silently
-      - consider `bpf_ktime_get_boot_ns()` (`CLOCK_BOOTTIME`) instead of
-        `bpf_ktime_get_ns()` — note it does **not** help this case, since a hypervisor pause
-        freezes both, but it does cover a genuine guest suspend
-      - add a `statix_clock_offset_step_seconds` metric so the correction is observable
 
 
 - [ ] **arm64 eBPF in CI.** Verified working by hand on 2026-09-15 — aarch64, Ubuntu 24.04,
