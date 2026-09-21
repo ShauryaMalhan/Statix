@@ -76,7 +76,7 @@ ring buffer → aggregator → emit_batch
 - Agent event loop: `watch_k8s_pods` stream; sampler reads `memory.current` + `cpu.stat` in one `spawn_blocking`/tick ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)); ingest retry = `bytes::Bytes`
 - Gateway ingest: `MetricRow::from_ingest` → mpsc coalescer → RowBinary ([ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md))
 - Startup cgroup bootstrap: `bootstrap_existing_cgroups` (walkdir + dir `ino()` = `cgroup_id`; `STATIX_CGROUP_ROOT`) — [ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md)
-- Aggregator clock: global `AtomicU64` offset; `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600) — [ADR 016](../../../docs/adr/agent/016-clock-domain-offset.md), [047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md)
+- Aggregator clock: `wall_unix_ns()` read directly in `flush`, twice per window. No cached offset — it went stale on host pause — [ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md) (supersedes 016, 047)
 - Batch lineage: `batch_id` (UUID v4) + `agent_version` on every flush — [ADR 017](../../../docs/adr/ingest/017-batch-lineage-metadata.md)
 - ClickHouse `ReplacingMergeTree` + `FINAL` billing reads: [ADR 007](../../../docs/adr/storage/007-clickhouse-mergetree-tuning.md), [ADR 011](../../../docs/adr/storage/011-replacingmergetree-dedupe-identity.md)
 - Gateway RowBinary writer + `ch_healthy` backpressure: [ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md), [056](../../../docs/adr/gateway/056-phase13-part2-ingest-zero-alloc.md)

@@ -2419,7 +2419,6 @@ dependencies = [
 name = "statix-infra"
 version = "1.2.0"
 dependencies = [
- "libc",
  "log",
 ]
 

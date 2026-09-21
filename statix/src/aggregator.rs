@@ -3,12 +3,11 @@
 //! - `FxHashMap`: fast `u64` keys (no SipHash DoS resistance needed).
 //! - Double-buffered maps: ping-pong + `.clear()` preserves capacity (no realloc per window).
 //! - Early flush at `max_keys`: never drop telemetry (FinOps correctness).
-//! - Atomic `clock_offset_ns` (statix-infra): maps BPF monotonic timestamps to wall-clock.
 
 use std::cell::RefCell;
 use std::sync::Arc;
 use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
-use statix_infra::clock::{clock_offset_ns, mono_now_ns, wall_unix_ns};
+use statix_infra::clock::wall_unix_ns;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use rustc_hash::FxHashMap;
@@ -77,17 +76,6 @@ impl Aggregator {
         }
     }
 
-    /// Monotonic ns → wall ns via lock-free atomic offset (refreshed in background).
-    #[inline]
-    fn mono_to_wall(&self, mono_ns: u64) -> u64 {
-        mono_ns.saturating_add(clock_offset_ns())
-    }
-
-    /// Current wall time in the same domain as converted BPF event timestamps.
-    fn wall_now_ns(&self) -> u64 {
-        self.mono_to_wall(mono_now_ns())
-    }
-
     /// Returns an early flush payload if `max_keys` was reached (no data dropped).
     pub fn on_statix_event(
         &mut self,
@@ -95,7 +83,6 @@ impl Aggregator {
         cache: &AttributionCache,
         node: &str,
     ) -> Option<BatchPayload> {
-        let wall_timestamp = self.mono_to_wall(event.timestamp);
 
         match event.kind {
             EVENT_KIND_WORKLOAD_IDENTITY => {
@@ -113,14 +100,6 @@ impl Aggregator {
                 );
             }
             _ => log::warn!("Unknown event kind {}", event.kind),
-        }
-
-        if wall_timestamp > 0 {
-            log::trace!(
-                "event kind={} cgroup_id={} wall_timestamp_ns={wall_timestamp}",
-                event.kind,
-                event.cgroup_id
-            );
         }
 
         self.try_early_flush(node, cache)

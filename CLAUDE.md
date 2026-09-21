@@ -25,7 +25,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `062`, so the next is `063`). ADRs are filed by
+permanent identity — highest is `063`, so the next is `064`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -103,7 +103,7 @@ with `cargo +nightly ... -Z build-std=core --target bpfel-unknown-none` inside
 |-------|--------|----------------|
 | `statix-common` | host + bpf | `StatixEvent` (64-byte ring record) + kind constants — define event layout ONLY here; `user` feature adds `aya::Pod` |
 | `statix-wire` | host | wire/ingest types: `IngestBatch`, `WorkloadRow` (`cpu_usage_usec` is `#[serde(default)]` for v2 compat) |
-| `statix-infra` | host | `env::var` (+ legacy `FINOPS_*` fallback), `read_env_u64`/`read_env_usize` (reject ≤ 0), atomic clock-offset utilities |
+| `statix-infra` | host | `env::var` (+ legacy `FINOPS_*` fallback), `read_env_u64`/`read_env_usize` (reject ≤ 0), `clock::wall_unix_ns` |
 | `statix-ebpf` | bpf | tracepoint, `cgroup_id`, ring buffer (size via `STATIX_RING_BUF_BYTES`) |
 | `statix` | host | agent: loader, attribution, aggregator, samplers, WAL, output; metrics on `:9091` |
 | `statix-gateway` | host | `Config::from_env()`, ingest→ClickHouse writer, read path, health/ready/metrics on `:3000` |
@@ -145,7 +145,10 @@ The ring-buffer drain path and `emit_batch` must never block. Concretely:
 - Aggregator uses `rustc_hash::FxHashMap`, double-buffered (flip before drain),
   and **early-flushes at `max_keys`** (4096) — never random/cap eviction.
 - Window times come from the BPF monotonic timestamp + an atomic
-  `clock_offset_ns()` (hourly recalibration), not wall-clock syscalls per event.
+  `wall_unix_ns()` read directly in `flush` — twice per window, off the hot path.
+  The cached monotonic→wall offset was removed in [ADR 063]: it went stale on any
+  host pause (laptop sleep, hypervisor pause, live migration), stamping rows
+  minutes or hours in the past.
 - cgroupfs / procfs reads use stack buffers + precomputed `Arc<PathBuf>` paths,
   via `spawn_blocking` — never `read_to_string` or per-tick `PathBuf::join`.
 - K8s pod labels are watched on a background `tokio::spawn` stream (node field

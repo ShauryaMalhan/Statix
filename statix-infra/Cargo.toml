@@ -5,5 +5,4 @@ edition = "2021"
 description = "Shared env parsing and clock utilities for statix and statix-gateway"
 
 [dependencies]
-libc = "0.2"
 log = "0.4"

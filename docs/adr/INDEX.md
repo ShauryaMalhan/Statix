@@ -37,6 +37,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [015](agent/015-cgroup-v2-bootstrap-on-startup.md) | Bootstrap existing cgroup v2 workloads on agent startup |
 | [016](agent/016-clock-domain-offset.md) | Clock domain offset (BPF monotonic → wall) |
 | [047](agent/047-atomic-clock-offset-recalibration.md) | Atomic background clock-offset recalibration (NTP drift) |
+| [063](agent/063-wall-clock-window-bounds.md) | Read the wall clock for window bounds; remove the cached offset |
 | [058](agent/058-phase14-cpu-usage-tracking.md) | Phase 14 — CPU time tracking (`cpu_usage_usec`) |
 
 ## Ingest & transport

@@ -71,8 +71,9 @@ Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickH
 ## Pattern 5b — Aggregator clock domain
 
 `init_clock_offset()` at agent startup; global `AtomicU64` in `statix-infra::clock`.  
-Hot path: `clock_offset_ns()` (`Relaxed` load) — `wall = mono + offset` in `on_statix_event`.  
-Background: `spawn_clock_recalibration_task` every `STATIX_CLOCK_RECALIBRATE_SECS` (default 3600).  
+Window bounds: `wall_unix_ns()` read directly in `flush` — twice per window, off the hot path.  
+Do **not** reintroduce a cached monotonic→wall offset: it goes stale on any host pause and
+stamps rows minutes or hours in the past ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md)).  
 `window_start_ns` / `window_end_ns` use `mono_now + offset` (not `SystemTime` per event).  
 Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/agent/016-clock-domain-offset.md), [047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md)).
 

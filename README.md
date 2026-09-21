@@ -168,11 +168,11 @@ colima ssh -- tail -f /tmp/statix-agent.log
   The gateway does not.
 - **`docker ps` says `Up` several seconds before ClickHouse can answer a query.**
   Wait for `(healthy)`. `dev-up.sh` already does; anything you write yourself must too.
-- **Closing your laptop lid skews agent timestamps.** The clock offset is cached at
-  startup and recalibrated hourly, so after a host suspend rows can be stamped minutes
-  in the past until it corrects. `dev-status.sh` shows it as a large "newest Ns ago";
-  restarting the agent fixes it immediately. Tracked in
-  [TODO.md](.cursor/skills/statix-ebpf-agent/TODO.md) under P4.
+- **Closing your laptop lid used to skew agent timestamps** — fixed in
+  [ADR 063](docs/adr/agent/063-wall-clock-window-bounds.md). Window bounds now read the
+  system clock directly rather than deriving it from an offset cached at startup, which
+  went stale whenever the host paused. If you ever see `dev-status.sh` report a large
+  "newest Ns ago" while the agent is healthy and writing rows, that class of bug is back.
 
 ### Before you open a PR
 
