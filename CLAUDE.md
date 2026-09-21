@@ -39,7 +39,9 @@ Anything Kafka-shaped in `docs/adr/kafka-legacy/`, the older skill playbooks, or
 ## Build / check / run (always via Makefile)
 
 ```bash
-make deps          # one-time: nightly toolchain, rust-src, bpf-linker, clang
+./scripts/bootstrap.sh  # bare Linux machine: installs make, then runs `make deps`
+make deps          # toolchain: clang/llvm, rust stable+nightly+rust-src, rustfmt, pinned bpf-linker
+make deps-check    # read-only: verifies tools, BTF, cgroup v2
 make build         # ebpf (3 ELF variants) + statix agent + statix-gateway
 make check         # cargo check across all crates incl. nightly BPF check
 make verify-btf    # when BPF or kernel portability is touched

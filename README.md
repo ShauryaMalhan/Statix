@@ -234,6 +234,10 @@ Tear down with `./scripts/dev-down.sh --all`.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `STATIX_INGEST_URL` | (unset) | HTTP ingest URL; unset = stdout |
+| `STATIX_RAW_EVENTS` | (unset) | `1` prints every raw ring-buffer event — debug only, very noisy |
+| `STATIX_CGROUP_ROOT` | `/sys/fs/cgroup` | cgroup v2 mount point the agent walks and samples |
+| `STATIX_API_PORT` | `3000` | Gateway HTTP listen port |
+| `STATIX_MPSC_DEPTH_SAMPLE_MS` | `1000` | How often the gateway samples `statix_gateway_mpsc_depth` |
 | `STATIX_EBF_PATH` | (auto) | Override path to BPF ELF; else CPU-tier pick from `STATIX_BPF_DIR` (`target/bpf`) |
 | `STATIX_BPF_DIR` | `target/bpf` | Directory with `statix-ebpf-{small,large,xlarge}` |
 | `STATIX_WINDOW_SECS` | `10` | Aggregation flush interval (must be &gt; 0; invalid → default) |
@@ -315,11 +319,15 @@ Statix/
 ├── statix-wire/
 ├── statix-infra/
 ├── statix/
-├── statix-gateway/  # `src/config.rs` — gateway env
-├── deploy/          # docker, k8s, clickhouse (prod)
+├── statix-gateway/  # `src/config.rs` — gateway env; `assets/dashboard.html`
+├── deploy/          # docker, k8s (+ `k8s/dev/` local smoke test), clickhouse
 ├── docker-compose.yml
 ├── Dockerfile.gateway   # dev Compose gateway only
 ├── .github/workflows/ebpf-ci.yml
+├── scripts/bootstrap.sh          # bare machine -> make deps
+├── scripts/dev-up.sh             # VM -> ClickHouse -> gateway -> agent
+├── scripts/dev-status.sh         # is it working?
+├── scripts/dev-down.sh           # stop (--all also stops ClickHouse)
 ├── scripts/verify-ebpf-kernel.sh
 ├── scripts/verify-phase14-cpu.sh
 ├── docs/

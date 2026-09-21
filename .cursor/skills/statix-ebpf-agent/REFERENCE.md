@@ -32,6 +32,9 @@ Statix/
 ├── statix-gateway/ (`src/config.rs`, `clickhouse_writer.rs`, `routes/ingest.rs`,
 │                   `routes/query.rs`, `routes/dashboard/{mod,sql,cache}.rs`, `assets/dashboard.html`)
 ├── .github/workflows/ebpf-ci.yml   # userspace + kernel verifier matrix ([ADR 037](../../../docs/adr/ebpf/037-phase9-ebpf-verifier-ci.md))
+├── deploy/k8s/dev/statix-daemonset-dev.yaml  # local k3s smoke test (ADR 063 era)
+├── scripts/bootstrap.sh            # bare machine -> make deps
+├── scripts/dev-{up,status,down}.sh # local stack lifecycle
 ├── scripts/verify-ebpf-kernel.sh   # virtme-ng + statix-ebpf-verify per kernel
 ├── scripts/verify-phase14-cpu.sh  # Phase 14 CPU gates (make verify-phase14-cpu)
 ├── docs/ (enterprise-latency, phase2/3 validation, adr/)
