@@ -94,6 +94,110 @@ Binaries:
 - Agent: `target/release/statix`
 - Gateway: `target/release/statix-gateway`
 
+## Development environment (contributors start here)
+
+**The agent only runs on Linux.** eBPF is a kernel feature; macOS and Windows have
+no equivalent. On a Mac you run everything inside a Linux VM.
+
+### Linux, natively
+
+```bash
+git clone https://github.com/ShauryaMalhan/Statix.git && cd Statix
+cp .env.example .env          # set CLICKHOUSE_PASSWORD; never commit .env
+./scripts/bootstrap.sh        # installs make, then `make deps` does the rest
+make build
+./scripts/dev-up.sh
+```
+
+### macOS (Apple Silicon) with Colima
+
+Colima gives you a Linux VM with Docker inside it. Your repo is visible from the VM
+at the **same path**, so you edit on the Mac and build in the VM.
+
+```bash
+# 1. on the Mac — create the VM (once)
+brew install colima docker docker-compose
+colima start --cpu 6 --memory 8 --disk 128 --vm-type vz --mount-type virtiofs
+
+# 2. on the Mac — repo setup
+git clone https://github.com/ShauryaMalhan/Statix.git && cd Statix
+cp .env.example .env          # set CLICKHOUSE_PASSWORD
+
+# 3. inside the VM — toolchain and build
+colima ssh
+cd /Users/<you>/path/to/Statix
+./scripts/bootstrap.sh        # ~15 min, mostly compiling bpf-linker
+make build
+exit
+
+# 4. back on the Mac — start everything
+./scripts/dev-up.sh
+```
+
+Sizing note: 8 GB is right for a 16 GB Mac — giving the VM 12 GB leaves macOS
+swapping, which makes the VM slower too. `--disk` is sparse, so be generous.
+
+### Daily workflow
+
+Three scripts, runnable from the Mac or the VM, from any directory:
+
+| Command | What it does |
+|---------|--------------|
+| `./scripts/dev-up.sh` | VM → ClickHouse → gateway → agent, waiting for each to be *ready*, not merely *started*. Ends by confirming rows are landing in ClickHouse. |
+| `./scripts/dev-status.sh` | One screen: every component, plus how many workloads are reporting and how stale the newest row is. |
+| `./scripts/dev-down.sh` | Stops agent then gateway. Add `--all` to stop ClickHouse too (kept by default — it holds your data). |
+
+Then open **<http://127.0.0.1:3000/>**. Lima forwards VM ports to the Mac automatically.
+
+Logs for the two background processes live in the VM:
+
+```bash
+colima ssh -- tail -f /tmp/statix-gateway.log
+colima ssh -- tail -f /tmp/statix-agent.log
+```
+
+### Gotchas that cost people time
+
+- **`docker-compose` vs `docker compose`.** Your Mac has the standalone
+  `docker-compose` (hyphen); the VM has the `docker compose` plugin (space).
+  **Neither machine has both**, so the right spelling depends on where you are typing.
+  The scripts handle this for you; only raw `docker` commands need care.
+- **`make deps` refuses to run on macOS** and prints the `colima ssh` command to use
+  instead. That is deliberate, not a bug.
+- **The agent needs `sudo`** — loading a BPF program requires `CAP_BPF` + `CAP_PERFMON`.
+  The gateway does not.
+- **`docker ps` says `Up` several seconds before ClickHouse can answer a query.**
+  Wait for `(healthy)`. `dev-up.sh` already does; anything you write yourself must too.
+- **Closing your laptop lid skews agent timestamps.** The clock offset is cached at
+  startup and recalibrated hourly, so after a host suspend rows can be stamped minutes
+  in the past until it corrects. `dev-status.sh` shows it as a large "newest Ns ago";
+  restarting the agent fixes it immediately. Tracked in
+  [TODO.md](.cursor/skills/statix-ebpf-agent/TODO.md) under P4.
+
+### Before you open a PR
+
+Read [`.cursor/skills/statix-ebpf-agent/SKILL.md`](.cursor/skills/statix-ebpf-agent/SKILL.md)
+first — it is the source of truth for conventions, and it is short.
+
+**Every architectural change ships four things in the same PR:**
+
+1. the code
+2. an **ADR** under `docs/adr/<topic>/` — numbering is global-sequential and the number
+   is permanent; see [docs/adr/INDEX.md](docs/adr/INDEX.md)
+3. README / `docs/guides/*` updates
+4. skill-file updates (`SKILL.md`, `REFERENCE.md`, `PATTERNS.md`, `TODO.md`)
+
+This is a hard rule. ADRs record *why*, including what a decision costs — write down the
+weakness you knowingly accepted, not just the choice.
+
+```bash
+cargo test -p statix-gateway     # also: statix, statix-wire, statix-infra
+make check                       # full workspace; Linux only (nightly BPF leg)
+```
+
+Note `cargo check --workspace` fails on macOS — the `aya` crate needs Linux headers.
+Use `cargo check -p statix-gateway` when iterating on the host.
+
 ## Run
 
 **Phase 2 (stdout only):**
@@ -102,18 +206,30 @@ Binaries:
 sudo RUST_LOG=info make run
 ```
 
-**Ingest pipeline (dev):**
+**Ingest pipeline (dev):** use the scripts — see
+[Development environment](#development-environment-contributors-start-here).
 
 ```bash
-cp .env.example .env   # set CLICKHOUSE_PASSWORD locally (never commit .env)
-make compose-up    # one command — frees :3000, starts stack, recreates API if needed
-export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
-sudo -E make run   # agent only (separate terminal)
+./scripts/dev-up.sh      # VM → ClickHouse → gateway → agent, with readiness waits
+./scripts/dev-status.sh  # is it working?
+./scripts/dev-down.sh    # stop (add --all to stop ClickHouse too)
 ```
 
-Use **`make run-api`** only for host-only API dev (not with `compose-up`). Tear down: `make compose-down`.
+The scripts run the gateway and agent as **plain binaries**, not containers, so a code
+change is `make build` away rather than a Docker image rebuild. Both log to `/tmp` inside
+the VM.
 
-Rebuild gateway image: `docker compose build statix-gateway && docker compose up -d statix-gateway`
+**Manual equivalent**, if you would rather drive it yourself:
+
+```bash
+cp .env.example .env                    # set CLICKHOUSE_PASSWORD; never commit .env
+docker compose up -d clickhouse         # inside the VM; on macOS use `docker-compose`
+# wait for `docker ps` to report (healthy), not just Up
+export STATIX_INGEST_URL=http://127.0.0.1:3000/ingest
+sudo -E make run                        # agent (separate terminal, needs root)
+```
+
+Tear down with `./scripts/dev-down.sh --all`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
