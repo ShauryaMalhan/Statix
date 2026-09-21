@@ -56,6 +56,7 @@ crc32fast = "1"
 
 statix-common = { path = "../statix-common", features = ["user"] }
 
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 bytes   = "1"
 rand    = { version = "0.8", features = ["small_rng"] }

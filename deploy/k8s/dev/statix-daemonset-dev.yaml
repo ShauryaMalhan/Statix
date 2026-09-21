@@ -1,3 +1,15 @@
+# DEV ONLY — attribution smoke test against local k3s.
+#
+# The production manifest is ../statix-daemonset.yaml; this is not a substitute.
+# Differences, all of them local-only shortcuts:
+#   * image statix:dev + imagePullPolicy Never  (imported into containerd by hand)
+#   * no STATIX_API_TOKEN                       (the dev gateway has no token set)
+#   * hostNetwork so 127.0.0.1:3000 reaches the gateway running on the VM host
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: statix-system
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -5,6 +17,8 @@ metadata:
   name: statix-sa
   namespace: statix-system
 ---
+# The pod watcher needs to list and watch pods cluster-wide; this is the
+# permission that makes cgroup -> pod attribution possible at all.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -45,13 +59,14 @@ spec:
     spec:
       terminationGracePeriodSeconds: 30
       hostPID: true
+      hostNetwork: true
       serviceAccountName: statix-sa
       tolerations:
         - operator: Exists
       containers:
         - name: statix
-          image: statix@sha256:f1e2d3c4b5a6978012345678901234567890fedcba1234567890fedcba123456
-          imagePullPolicy: Always
+          image: statix:dev
+          imagePullPolicy: Never
           securityContext:
             privileged: true
           resources:
@@ -61,18 +76,9 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sleep", "5"]
           env:
             - name: STATIX_INGEST_URL
-              value: http://statix-gateway-svc.statix-system.svc.cluster.local:3000/ingest
-            - name: STATIX_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: statix-secrets
-                  key: api-token
+              value: http://127.0.0.1:3000/ingest
             - name: STATIX_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -85,27 +91,15 @@ spec:
             - name: cgroup
               mountPath: /sys/fs/cgroup
               readOnly: true
-            - name: proc
-              mountPath: /proc
-              readOnly: true
-            # Tracepoints are attached through tracefs. Without this the BPF
-            # program loads and verifies, then fails with "tracefs not found"
-            # and the container crash-loops. Verified on k3s 2026-09-21.
+            # Tracepoints are attached via tracefs; without this the BPF program
+            # loads and verifies, then fails with "tracefs not found".
             - name: tracefs
               mountPath: /sys/kernel/tracing
               readOnly: true
-          ports:
-            - name: metrics
-              containerPort: 9091
-              protocol: TCP
       volumes:
         - name: cgroup
           hostPath:
             path: /sys/fs/cgroup
-            type: Directory
-        - name: proc
-          hostPath:
-            path: /proc
             type: Directory
         - name: tracefs
           hostPath:

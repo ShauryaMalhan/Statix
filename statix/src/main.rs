@@ -25,6 +25,10 @@ const _: () = assert!(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // rustls 0.23 refuses to auto-select a crypto provider when both aws-lc-rs
+    // and ring are linked — reqwest pulls one, kube the other. Without this the
+    // K8s pod watcher panics on its first TLS handshake to the API server.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     env_logger::init();
     if let Err(e) = metrics_exporter_prometheus::PrometheusBuilder::new()
         .with_http_listener(([0, 0, 0, 0], 9091))

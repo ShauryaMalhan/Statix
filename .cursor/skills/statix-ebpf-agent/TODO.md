@@ -38,6 +38,56 @@ production image build.
 
 ---
 
+## P0b — cgroup hierarchy is double-counted (found 2026-09-21 in k3s)
+
+> Surfaced the moment attribution started working: the dashboard reported **15 GiB** of
+> memory on a VM with **7.7 GiB** installed and **2.4 GiB** actually in use — roughly 6x over.
+
+- [ ] **Totals sum a tree, so parents and children are both counted.** cgroups are
+      hierarchical and a parent's `memory.current` already includes every descendant.
+      Measured on the node:
+
+      ```
+      /user.slice                       669 MiB
+        /user.slice/user-501.slice      669 MiB   same bytes
+          /.../session-4.scope          664 MiB   same bytes again
+      /docker                          1698 MiB
+        /docker/<clickhouse>           1492 MiB   subset of the above
+      ```
+
+      Every fleet-wide `sum()` — the dashboard tiles, `/api/v1/workloads/summary`'s
+      `total_cpu_usec` — is inflated by an unknown factor that depends on tree depth.
+
+- [ ] **Each Kubernetes pod appears 2-3 times.** A pod has its own cgroup plus one per
+      container, and all of them resolve to the same `namespace/pod/container` labels.
+      Verified for one pod: `8537` (pod slice, 24.5 MB), `9044` (pause sandbox, 0.2 MB),
+      `9609` (the real container, 24.3 MB) — and 24.5 ≈ 0.2 + 24.3.
+
+- [ ] **The `container` label is wrong on sandbox cgroups.** The pause container is
+      labelled with the application container's name, because the name comes from the pod
+      spec rather than from the cgroup path.
+
+### Why no query can fix this
+
+**The aggregator discards the cgroup path.** ClickHouse stores `cgroup_id` (an inode) and
+nothing else — no parent, no depth, no path. The read side therefore *cannot* distinguish
+a pod cgroup from a container cgroup, or a parent from a leaf. This has to be fixed where
+the data is produced, not where it is consumed.
+
+Options, roughly in increasing cost:
+
+- **sample only leaf cgroups** — `bootstrap_existing_cgroups` currently registers every
+  directory it walks; skipping any directory that has child cgroups would remove most of
+  the double-counting, at the cost of losing the "whole slice" rollups
+- **emit a `depth` or `parent_cgroup_id` column** so the read path can filter to leaves —
+  a wire + schema change, but it keeps both views available
+- **for K8s specifically, prefer the container-level cgroup** and drop pod-level rows when
+  a container-level row exists for the same pod
+- **stop showing fleet-wide totals** until one of the above lands — the tiles are actively
+  misleading today
+
+Whichever is chosen needs an ADR; this is a data-model decision, not a bug fix.
+
 ## P1 — Dashboard hardening (Phase 15 follow-up, [ADR 061](../../../docs/adr/ui/061-phase15-dashboard-read-tier.md))
 
 Shipped v1a knowingly deferred these. They are written down because they are real, not

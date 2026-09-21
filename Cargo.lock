@@ -2378,6 +2378,7 @@ dependencies = [
  "rand 0.8.6",
  "reqwest",
  "rustc-hash 1.1.0",
+ "rustls",
  "serde",
  "serde_json",
  "statix-common",
