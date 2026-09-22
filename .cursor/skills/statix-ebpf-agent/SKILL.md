@@ -145,13 +145,19 @@ Validate: [docs/guides/phase3-validation.md](../../../docs/guides/phase3-validat
 
 Every externally-fetched build tool is pinned to an exact version — `cargo install`,
 `pip install`, base images, in CI and Dockerfiles alike ([ADR 062](../../../docs/adr/meta/062-pin-build-toolchain-versions.md)).
+Dependabot proposes the bumps and `cargo audit` fails the build on a known advisory
+([ADR 064](../../../docs/adr/meta/064-dependabot-and-cargo-audit.md)) — pinning stops silent drift,
+those two stop the pins going stale.
 
 - `--locked` pins the dependency *tree*, **not** the version of the crate being installed.
 - Never gate an install on `command -v`; check the exact version and `--force` on mismatch.
   A pinned tool behind a cache is not pinned — the cache just delays the failure.
 - `bpf-linker` is pinned to **0.10.4** in both `.github/workflows/ebpf-ci.yml` and
   `deploy/docker/Dockerfile.statix` — **change them together**. 0.11+ needs a system LLVM 21+.
-- All images build on **`rust:1.97.1`**. One workspace `Cargo.lock` means one compiler.
+- All images build on the **same pinned Rust version** — see `deploy/docker/Dockerfile.*`
+  and the root `Dockerfile.gateway`. One workspace `Cargo.lock` means one compiler; if you
+  bump one image, bump them all in the same change. Verify by building all three, since CI
+  does not build images.
 
 ## Build (always via Makefile)
 
