@@ -42,6 +42,18 @@ jobs:
       - name: cargo test (gateway, agent, wire)
         run: cargo test -p statix-gateway -p statix -p statix-wire
 
+      - name: Install cargo-audit
+        env:
+          CARGO_AUDIT_VERSION: "0.22.2"
+        run: |
+          if [ "$(cargo audit --version 2>/dev/null | awk '{print $2}')" != "$CARGO_AUDIT_VERSION" ]; then
+            cargo install cargo-audit --locked --version "$CARGO_AUDIT_VERSION" --force
+          fi
+          cargo audit --version
+      
+      - name: cargo audit
+        run: cargo audit
+
   ebpf-verifier-matrix:
     name: eBPF verifier (kernel ${{ matrix.kernel }})
     needs: build-and-test-userspace
@@ -66,7 +78,7 @@ jobs:
             libvirt-clients kbd kmod file rsync zstd virtiofsd
 
       - name: Install virtme-ng
-        run: pip install --break-system-packages virtme-ng
+        run: pip install --break-system-packages "virtme-ng==1.41"
 
       - name: Enable KVM
         run: |
