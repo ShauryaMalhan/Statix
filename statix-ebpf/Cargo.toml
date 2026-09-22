@@ -19,7 +19,7 @@ path = "src/main.rs"
 # - Map types (RingBuf, HashMap, etc.)
 # - Program type macros (#[kprobe], #[tracepoint], etc.)
 # - BPF helper function bindings (bpf_get_current_pid_tgid, etc.)
-aya-ebpf = "0.1"
+aya-ebpf = "0.2"
 
 # Our shared memory contract — no std, no features
 # aya-log-ebpf is intentionally omitted: we don't use BPF-side logging
