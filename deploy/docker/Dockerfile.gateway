@@ -3,7 +3,7 @@
 #   docker build -f deploy/docker/Dockerfile.gateway -t statix-gateway:latest .
 
 # Cargo.lock: clickhouse → idna_adapter 1.2.x needs Rust ≥ 1.86 (see Dockerfile.gateway).
-FROM rust:1.97.1-bookworm AS builder
+FROM rust:1.98.1-bookworm AS builder
 
 WORKDIR /usr/src/statix
 
