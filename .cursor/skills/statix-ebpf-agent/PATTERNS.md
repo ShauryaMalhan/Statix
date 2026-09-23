@@ -70,12 +70,13 @@ Propagated through `statix_wire::IngestBatch` → gateway `MetricRow` → ClickH
 
 ## Pattern 5b — Aggregator clock domain
 
-`init_clock_offset()` at agent startup; global `AtomicU64` in `statix-infra::clock`.  
-Window bounds: `wall_unix_ns()` read directly in `flush` — twice per window, off the hot path.  
-Do **not** reintroduce a cached monotonic→wall offset: it goes stale on any host pause and
-stamps rows minutes or hours in the past ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md)).  
-`window_start_ns` / `window_end_ns` use `mono_now + offset` (not `SystemTime` per event).  
-Memory sampler timestamps are already wall — do not re-apply offset ([ADR 016](../../../docs/adr/agent/016-clock-domain-offset.md), [047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md)).
+Window bounds come from `wall_unix_ns()` (`statix-infra::clock`), read directly in `flush`:
+one reading per flush, passed to `reset_window`, so one window ends exactly where the next
+begins. Nothing per-event is converted to wall time.
+
+Do **not** reintroduce a cached monotonic→wall offset. It goes stale on any host pause
+(laptop sleep, hypervisor pause, live migration) and stamps rows minutes or hours in the
+past ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md), supersedes 016 and 047).
 
 ## Pattern 6b — Attribution cache
 

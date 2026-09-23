@@ -117,7 +117,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 | Map | `rustc_hash::FxHashMap` |
 | Buffers | Two maps; flip before drain ([ADR 004](../../../docs/adr/agent/004-swap-buffer-before-drain.md)) |
 | Cap | Early flush — never random eviction ([ADR 003](../../../docs/adr/agent/003-early-flush-instead-of-cap-eviction.md)) |
-| Clock | `AtomicU64` offset in `statix-infra::clock`; hot-path `Relaxed` load; hourly recalibration task ([ADR 016](../../../docs/adr/agent/016-clock-domain-offset.md), [047](../../../docs/adr/agent/047-atomic-clock-offset-recalibration.md)) |
+| Clock | Window bounds read `wall_unix_ns()` (`statix-infra::clock`) directly in `flush`. No cached offset — it went stale on host pause ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md), supersedes 016/047) |
 
 ### Attribution
 
@@ -154,10 +154,12 @@ those two stop the pins going stale.
   A pinned tool behind a cache is not pinned — the cache just delays the failure.
 - `bpf-linker` is pinned to **0.10.4** in both `.github/workflows/ebpf-ci.yml` and
   `deploy/docker/Dockerfile.statix` — **change them together**. 0.11+ needs a system LLVM 21+.
-- All images build on the **same pinned Rust version** — see `deploy/docker/Dockerfile.*`
-  and the root `Dockerfile.gateway`. One workspace `Cargo.lock` means one compiler; if you
-  bump one image, bump them all in the same change. Verify by building all three, since CI
+- All images build on the **same pinned Rust version** — see `deploy/docker/Dockerfile.*`.
+  One workspace `Cargo.lock` means one compiler; if you bump one image, bump them all in the
+  same change. Verify by building both (`Dockerfile.gateway`, `Dockerfile.statix`), since CI
   does not build images.
+- **One gateway Dockerfile.** Compose builds from `deploy/docker/Dockerfile.gateway`; never add
+  a dev copy — dev must run the same non-root image that ships ([ADR 065](../../../docs/adr/deploy/065-single-gateway-dockerfile.md)).
 
 ## Build (always via Makefile)
 

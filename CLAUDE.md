@@ -25,7 +25,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `064`, so the next is `065`). ADRs are filed by
+permanent identity — highest is `065`, so the next is `066`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -33,8 +33,12 @@ README/relevant `docs/guides/*`, and the skill files (`SKILL.md`/
 `REFERENCE.md`/`PATTERNS.md`/`TODO.md`). This is a hard project rule, not a
 suggestion.
 
-Anything Kafka-shaped in `docs/adr/kafka-legacy/`, the older skill playbooks, or
-`Dockerfile.gateway`'s `KAFKA_BROKERS` env is **historical**. Do not reintroduce it.
+Anything Kafka-shaped in `docs/adr/kafka-legacy/` or the older skill playbooks is
+**historical**. Do not reintroduce it.
+
+There is **one** gateway Dockerfile, `deploy/docker/Dockerfile.gateway`; Compose
+builds from it too ([ADR 065](docs/adr/deploy/065-single-gateway-dockerfile.md)).
+Do not add a separate dev copy.
 
 ## Build / check / run (always via Makefile)
 
@@ -146,11 +150,12 @@ The ring-buffer drain path and `emit_batch` must never block. Concretely:
   plus a node-hashed 0–35 s recovery spread to avoid a post-outage stampede.
 - Aggregator uses `rustc_hash::FxHashMap`, double-buffered (flip before drain),
   and **early-flushes at `max_keys`** (4096) — never random/cap eviction.
-- Window times come from the BPF monotonic timestamp + an atomic
-  `wall_unix_ns()` read directly in `flush` — twice per window, off the hot path.
-  The cached monotonic→wall offset was removed in [ADR 063]: it went stale on any
-  host pause (laptop sleep, hypervisor pause, live migration), stamping rows
-  minutes or hours in the past.
+- Window bounds come from `wall_unix_ns()`, read directly in `flush` — one reading
+  per flush, passed to `reset_window`, so one window ends exactly where the next
+  begins. There is no cached monotonic→wall offset: it was removed in
+  [ADR 063](docs/adr/agent/063-wall-clock-window-bounds.md) because it went stale
+  on any host pause (laptop sleep, hypervisor pause, live migration), stamping
+  rows minutes or hours in the past.
 - cgroupfs / procfs reads use stack buffers + precomputed `Arc<PathBuf>` paths,
   via `spawn_blocking` — never `read_to_string` or per-tick `PathBuf::join`.
 - K8s pod labels are watched on a background `tokio::spawn` stream (node field

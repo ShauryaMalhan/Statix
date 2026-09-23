@@ -33,6 +33,6 @@ docker run --rm --privileged \
 - BPF ELFs: `/app/bpf/statix-ebpf-{small,large,xlarge}` (`STATIX_BPF_DIR=/app/bpf`).
 - Metrics: `http://<pod>:9091/metrics`.
 
-Dev Compose uses [`Dockerfile.gateway`](../../Dockerfile.gateway); agent on host: `sudo -E make run`.
+Dev Compose (`make compose-up`) builds the gateway from this same `Dockerfile.gateway` — there is one gateway image, not a dev and a prod one ([ADR 065](../../docs/adr/deploy/065-single-gateway-dockerfile.md)). Agent on host: `sudo -E make run`.
 
 Kubernetes: [../k8s/README.md](../k8s/README.md).

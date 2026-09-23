@@ -1,32 +1,11 @@
 # Statix — Open work
 
 **Only open items live here.** Shipped history was removed on 2026-09-15 and is not lost —
-every decision is in [docs/adr/INDEX.md](../../../docs/adr/INDEX.md) (61 ADRs, grouped by
-topic) and every change is in `git log`. This file answers "what needs doing", not
+every decision is in [docs/adr/INDEX.md](../../../docs/adr/INDEX.md) (grouped by topic)
+and every change is in `git log`. This file answers "what needs doing", not
 "what did we do".
 
 Roughly priority-ordered. `file:line` refs are the entry point for each item.
-
----
-
-
-## P0 — Supply chain: the same bug in three more places
-
-CI run #36 failed because `cargo install bpf-linker` had no version pin: 0.11.0 dropped
-`aya-rustc-llvm-proxy`, so it needs a system LLVM 21+ that the runner doesn't have. Fixed
-in CI (`9856d7e`) — **but the identical bug is still live in three other places.** A cache
-was hiding it for months; these will fail the same way, on someone else's machine or in a
-production image build.
-
-- [ ] **Two gateway Dockerfiles duplicate each other** — `deploy/docker/Dockerfile.gateway`
-      (production) and `Dockerfile.gateway` (dev compose). Every base-image or dependency
-      change has to be made twice and can silently drift. Collapse to one, or generate the
-      dev one from the prod one.
-
-
-> **Rule learned:** `--locked` pins the dependency *tree*, not the *version* of the crate
-> being installed. And a pinned dependency sitting behind a cache isn't pinned — it's a
-> time bomb with a slow fuse.
 
 ---
 

@@ -40,7 +40,7 @@ services:
   statix-gateway:
     build:
       context: .
-      dockerfile: Dockerfile.gateway
+      dockerfile: deploy/docker/Dockerfile.gateway
     networks:
       - statix-net
     ports:

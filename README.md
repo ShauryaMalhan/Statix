@@ -321,8 +321,7 @@ Statix/
 ├── statix/
 ├── statix-gateway/  # `src/config.rs` — gateway env; `assets/dashboard.html`
 ├── deploy/          # docker, k8s (+ `k8s/dev/` local smoke test), clickhouse
-├── docker-compose.yml
-├── Dockerfile.gateway   # dev Compose gateway only
+├── docker-compose.yml  # gateway builds from deploy/docker/Dockerfile.gateway
 ├── .github/workflows/ebpf-ci.yml
 ├── scripts/bootstrap.sh          # bare machine -> make deps
 ├── scripts/dev-up.sh             # VM -> ClickHouse -> gateway -> agent

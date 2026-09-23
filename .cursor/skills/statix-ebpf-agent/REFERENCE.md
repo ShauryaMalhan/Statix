@@ -20,9 +20,8 @@ Enterprise low-latency telemetry: kernel → agent → (stdout | HTTP) → gatew
 
 ```
 Statix/
-├── docker-compose.yml
-├── Dockerfile.gateway
-├── deploy/docker/Dockerfile.gateway
+├── docker-compose.yml               # gateway builds from deploy/docker/Dockerfile.gateway
+├── deploy/docker/Dockerfile.gateway  # the only gateway image (ADR 065)
 ├── deploy/docker/Dockerfile.statix
 ├── deploy/k8s/gateway.yaml
 ├── deploy/k8s/statix-daemonset.yaml

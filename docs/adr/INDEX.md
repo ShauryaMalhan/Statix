@@ -35,8 +35,8 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [003](agent/003-early-flush-instead-of-cap-eviction.md) | Early flush instead of cap eviction |
 | [004](agent/004-swap-buffer-before-drain.md) | Flip active buffer before draining on flush |
 | [015](agent/015-cgroup-v2-bootstrap-on-startup.md) | Bootstrap existing cgroup v2 workloads on agent startup |
-| [016](agent/016-clock-domain-offset.md) | Clock domain offset (BPF monotonic → wall) |
-| [047](agent/047-atomic-clock-offset-recalibration.md) | Atomic background clock-offset recalibration (NTP drift) |
+| [016](agent/016-clock-domain-offset.md) | Clock domain offset (BPF monotonic → wall) — *superseded by 063* |
+| [047](agent/047-atomic-clock-offset-recalibration.md) | Atomic background clock-offset recalibration (NTP drift) — *superseded by 063* |
 | [063](agent/063-wall-clock-window-bounds.md) | Read the wall clock for window bounds; remove the cached offset |
 | [058](agent/058-phase14-cpu-usage-tracking.md) | Phase 14 — CPU time tracking (`cpu_usage_usec`) |
 
@@ -88,13 +88,14 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 
 | ADR | Title |
 |-----|-------|
-| [009](deploy/009-finops-api-docker-compose.md) | Containerized `finops-api` in Docker Compose |
+| [009](deploy/009-finops-api-docker-compose.md) | Containerized `finops-api` in Docker Compose — *dev Dockerfile superseded by 065* |
 | [024](deploy/024-agent-production-container.md) | Production agent container (`Dockerfile.statix`) |
 | [025](deploy/025-kubernetes-gateway-and-agent.md) | Kubernetes gateway Deployment + agent DaemonSet |
 | [031](deploy/031-grafana-clickhouse-compose.md) | Grafana in local Docker Compose (Phase 10) |
 | [043](deploy/043-kubernetes-alb-tls-termination.md) | TLS termination at AWS ALB Ingress |
 | [046](deploy/046-secrets-env-file.md) | Local secrets via `.env` (ClickHouse password) |
 | [057](deploy/057-phase13-part2-infra-kafka-strip.md) | Phase 13 Part 2 — Strip Kafka from compose and K8s manifests |
+| [065](deploy/065-single-gateway-dockerfile.md) | One gateway Dockerfile, not a dev copy and a prod copy |
 
 ## Audit & fix waves
 
