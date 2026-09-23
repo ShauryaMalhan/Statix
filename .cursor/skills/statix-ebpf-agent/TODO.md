@@ -9,55 +9,64 @@ Roughly priority-ordered. `file:line` refs are the entry point for each item.
 
 ---
 
-## P0b — cgroup hierarchy is double-counted (found 2026-09-21 in k3s)
+## P0b — Memory and CPU numbers are wrong in three separate ways (found 2026-09-21)
 
-> Surfaced the moment attribution started working: the dashboard reported **15 GiB** of
-> memory on a VM with **7.7 GiB** installed and **2.4 GiB** actually in use — roughly 6x over.
+> Surfaced the moment K8s attribution started working: the dashboard reported **15 GiB** of
+> memory on a VM with **7.7 GiB** installed. Three independent causes, fixed in this order.
 
-- [ ] **Totals sum a tree, so parents and children are both counted.** cgroups are
-      hierarchical and a parent's `memory.current` already includes every descendant.
-      Measured on the node:
+**1. Double-counting the cgroup tree — fixed ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md)).**
+The sampler now reads leaf cgroups only; parents already include their children. On the dev
+VM that took the total from 15.4 GiB (more than the machine has) to 6.6 GiB. This also
+fixed "each K8s pod appears 2–3 times", since the pod-level cgroup is a parent.
+
+- [ ] **Sample and flush race each other, so some windows get no sample and others get two.**
+      `statix/src/main.rs` runs `flush_interval` and `sample_interval` as two separate
+      10 s timers that fire at the same instant; `tokio::select!` picks a ready branch **at
+      random**. When the sample lands after the flush, that window holds only exec-event
+      rows with **0 memory / 0 CPU**, and the next window holds two samples — **20 s of CPU in
+      a 10 s window**, so millicores read double. The dashboard shows each cgroup's latest
+      window, so tiles visibly drop and recover (seen 2026-09-24: memory 5.5 → 1.8 GiB, CPU
+      300m → 100m, for one window).
+      **Fix:** sample inside the flush step — read, then close the window — so every window
+      gets exactly one sample taken just before it closes. Decide what happens to
+      `STATIX_SAMPLE_INTERVAL_SECS` (remove, or require it to equal the window).
+
+- [ ] **The first window after agent start is all zeros.** `bootstrap_existing_cgroups`
+      adds every cgroup with 0 memory / 0 CPU, and tokio's first `interval.tick()` fires
+      immediately — so the first flush ships those zeros before anything is measured. CPU
+      then lags one more window, because a rate needs two readings (priming, ADR 058).
+      **Fix at the source, not in the UI:**
+      - prime `cpu_baseline` during bootstrap, so the first real window already has a CPU delta
+      - start the flush timer one full window after startup (`interval_at(now + window)`)
+        so the first flush carries a real sample
+      - stop emitting identity rows for **parent** cgroups at bootstrap — they are never
+        sampled (ADR 066) but still show as zero-value workloads for the whole lookback
+      Dashboard side, only a plain "waiting for first window…" state while
+      `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until the
+      2nd flush": the dashboard has no way to know which flush it is (stateless, many
+      nodes, agent restarts), and the zeros would still be stored in ClickHouse for billing.
+
+- [ ] **"Memory" counts page cache, so even leaf-only totals overstate what workloads need.**
+      `memory.current` includes file cache, which the kernel drops whenever programs need
+      the RAM. Measured on the dev VM (2026-09-24, leaves only, summed from `memory.stat`):
 
       ```
-      /user.slice                       669 MiB
-        /user.slice/user-501.slice      669 MiB   same bytes
-          /.../session-4.scope          664 MiB   same bytes again
-      /docker                          1698 MiB
-        /docker/<clickhouse>           1492 MiB   subset of the above
+      free -m  used           2226 MiB
+      leaves   anon           1709 MiB   program memory
+      leaves   file           4547 MiB   page cache — reclaimable
+      leaves   memory.current 6800 MiB   = anon + file + ~540 MiB kernel
       ```
 
-      Every fleet-wide `sum()` — the dashboard tiles, `/api/v1/workloads/summary`'s
-      `total_cpu_usec` — is inflated by an unknown factor that depends on tree depth.
-
-- [ ] **Each Kubernetes pod appears 2-3 times.** A pod has its own cgroup plus one per
-      container, and all of them resolve to the same `namespace/pod/container` labels.
-      Verified for one pod: `8537` (pod slice, 24.5 MB), `9044` (pause sandbox, 0.2 MB),
-      `9609` (the real container, 24.3 MB) — and 24.5 ≈ 0.2 + 24.3.
+      Kubernetes (`kubectl top`, the kubelet's eviction logic) reports **working set** =
+      `memory.current − inactive_file`. Recommended: bill on working set, so Statix matches
+      what users compare it against. New column (read `memory.stat`), needs an ADR.
 
 - [ ] **The `container` label is wrong on sandbox cgroups.** The pause container is
       labelled with the application container's name, because the name comes from the pod
-      spec rather than from the cgroup path.
+      spec rather than from the cgroup path. Its memory is real and small (0.2 MB), and after
+      ADR 066 it is no longer double-counted — only the label is wrong.
 
-### Why no query can fix this
-
-**The aggregator discards the cgroup path.** ClickHouse stores `cgroup_id` (an inode) and
-nothing else — no parent, no depth, no path. The read side therefore *cannot* distinguish
-a pod cgroup from a container cgroup, or a parent from a leaf. This has to be fixed where
-the data is produced, not where it is consumed.
-
-Options, roughly in increasing cost:
-
-- **sample only leaf cgroups** — `bootstrap_existing_cgroups` currently registers every
-  directory it walks; skipping any directory that has child cgroups would remove most of
-  the double-counting, at the cost of losing the "whole slice" rollups
-- **emit a `depth` or `parent_cgroup_id` column** so the read path can filter to leaves —
-  a wire + schema change, but it keeps both views available
-- **for K8s specifically, prefer the container-level cgroup** and drop pod-level rows when
-  a container-level row exists for the same pod
-- **stop showing fleet-wide totals** until one of the above lands — the tiles are actively
-  misleading today
-
-Whichever is chosen needs an ADR; this is a data-model decision, not a bug fix.
+---
 
 ## P1 — Dashboard hardening (Phase 15 follow-up, [ADR 061](../../../docs/adr/ui/061-phase15-dashboard-read-tier.md))
 

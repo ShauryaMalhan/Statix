@@ -1,6 +1,8 @@
 //! Periodic cgroup v2 sampling: `memory.current` (gauge) and `cpu.stat` (counter delta).
 
-use std::path::PathBuf;
+use std::fs;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -33,12 +35,12 @@ impl Sampler {
             targets.push((cgroup_id, mem_path, cpu_path));
         });
 
-        let live: FxHashSet<u64> = targets.iter().map(|(id, _, _)| *id).collect();
-        self.cpu_baseline.retain(|id, _| live.contains(id));
-
         let readings = match tokio::task::spawn_blocking(move || {
             let mut results = Vec::with_capacity(targets.len());
             for (cgroup_id, mem_path, cpu_path) in targets {
+                if !mem_path.parent().is_some_and(is_leaf_cgroup) {
+                    continue;
+                }
                 let memory_bytes = match read_memory_current_at(mem_path.as_path()) {
                     Ok(v) => Some(v),
                     Err(e) => {
@@ -60,7 +62,11 @@ impl Sampler {
         })
         .await
         {
-            Ok(results) => results,
+            Ok(results) => {
+                let live: FxHashSet<u64> = results.iter().map(|(cgroup_id, _, _)| *cgroup_id).collect();
+                self.cpu_baseline.retain(|cgroup_id, _| live.contains(cgroup_id));
+                results
+            },
             Err(e) => {
                 log::error!("Sampler blocking task failed: {e}");
                 metrics::counter!("statix_memory_sampler_errors_total").increment(1);
@@ -96,6 +102,13 @@ impl Sampler {
         }
 
         early_batches
+    }
+}
+
+fn is_leaf_cgroup(dir: &Path) -> bool {
+    match fs::metadata(dir) {
+        Ok(metadata) => metadata.nlink() == 2,
+        Err(_) => false,
     }
 }
 

@@ -98,7 +98,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 - `STATIX_RAW_EVENTS=1` debug only
 - K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/fixes/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md))
-- Memory: precomputed `{CGROUP_ROOT}/…/memory.current`
+- Memory: precomputed `{CGROUP_ROOT}/…/memory.current`; sampler reads **leaf cgroups only** (`nlink == 2`), re-checked every tick ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md))
 - Env: `STATIX_WINDOW_SECS`, `STATIX_SAMPLE_INTERVAL_SECS`, `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
 
 ### Hot-path heap discipline

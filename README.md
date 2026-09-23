@@ -32,7 +32,7 @@ Five host crates + BPF + infra:
 Phase 2 behavior in short:
 
 - Tracepoint on process exec → `cgroup_id` + workload identity events
-- Periodic read of cgroup v2 `memory.current` for tracked cgroups
+- Periodic read of cgroup v2 `memory.current` and `cpu.stat` for **leaf** cgroups only — a parent's numbers already include its children, so reading both would double-count ([ADR 066](docs/adr/agent/066-sample-leaf-cgroups-only.md))
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 

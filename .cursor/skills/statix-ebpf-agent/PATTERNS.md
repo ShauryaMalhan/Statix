@@ -61,6 +61,8 @@ if let Some(batch) = agg.on_statix_event(event, &cache, &node) {
 
 Precompute `memory.current` on identity as `Arc<PathBuf>` in cache; sampler snapshots `Arc::clone` only (no per-tick `PathBuf` alloc). `spawn_blocking` + stack `[u8; 32]` read (not `read_to_string` on the runtime worker).
 
+**Leaves only.** Skip any cgroup with child cgroups — its numbers already include them, so reading it double-counts. Detect with `is_leaf_cgroup`: kernfs sets a directory's `nlink` to 2 + subdirectories, so `nlink == 2` = leaf (one `stat`, inside the same `spawn_blocking`). Check **every tick** — cgroups gain children after boot. Prune `cpu_baseline` against what was actually read, so a cgroup that flips parent→leaf re-primes instead of emitting one huge delta ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md)).
+
 ---
 
 ## Pattern 5a — Batch lineage (audit)
