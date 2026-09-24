@@ -193,7 +193,7 @@ async fn flush_batch(
     batch: &[MetricRow],
     ins_to: Duration,
 ) -> Result<(), clickhouse::error::Error> {
-    let mut insert = client.insert(TABLE)?;
+    let mut insert = client.insert_unescaped::<MetricRow>(TABLE).await?;
     for row in batch {
         insert.write(row).await?;
     }

@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 axum = "0.8"
-clickhouse = "0.13"
+clickhouse = "0.15"
 statix-wire = { path = "../statix-wire" }
 statix-infra = { path = "../statix-infra" }
 tokio = { version = "1", features = ["full"] }
