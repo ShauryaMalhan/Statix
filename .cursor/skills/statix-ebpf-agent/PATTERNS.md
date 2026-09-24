@@ -85,7 +85,7 @@ past ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md), supers
 `AttributionCache`: one `Arc<RwLock<CacheState>>` with `FxHashMap` for paths, labels (`Arc<WorkloadLabels>`), and `pod_by_uid`.  
 `labels_for_cgroup`: single `.read()` — no quadruple-lock herd; K8s/path misses cache under write lock; `DEFAULT_LABELS` `LazyLock` for unknown cgroups. `on_identity_event`: procfs read **before** `state.write()`. K8s refresh in background task.  
 `cgroup_path_from_pid`: stack `[u8; 1024]` read of `/proc/{pid}/cgroup` (no `read_to_string` on exec path).  
-Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md)).  
+Startup: `bootstrap_existing_cgroups` — `walkdir` on cgroup v2 root; dir `ino()` = `cgroup_id` ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md)). **Registers only**: never feed the aggregator a synthetic event from here. The aggregator can't tell it from a real exec (phantom `exec_count`), and parents would get zero rows ([ADR 068](../../../docs/adr/agent/068-bootstrap-registers-only.md)).  
 `parking_lot::RwLock`, cgroup v2 `split_once("::")`, `Path::components()`.
 
 ---

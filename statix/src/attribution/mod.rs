@@ -14,7 +14,7 @@ use std::{
 
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
-use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
+use statix_common::StatixEvent;
 use walkdir::WalkDir;
 
 /// Resolved workload metadata for aggregation and JSON output.
@@ -149,13 +149,12 @@ impl AttributionCache {
     }
 }
 
-/// Walk cgroup v2 hierarchy and seed the aggregator for workloads that started before the agent.
-/// Returns any early-flush batches triggered by `max_keys` during bootstrap (caller should `emit_batch`).
-pub async fn bootstrap_existing_cgroups(
-    cache: &AttributionCache,
-    agg: &mut crate::aggregator::Aggregator,
-    node: &str,
-) -> Vec<crate::aggregator::BatchPayload> {
+/// Walk the cgroup v2 hierarchy and register every existing cgroup, so the
+/// sampler can read workloads that started before the agent from the first tick.
+/// Registers only: it does not feed the aggregator. Leaf cgroups get their row
+/// from the first sample; a fake exec event here only produced zero-value rows
+/// for parents and one phantom exec per cgroup (ADR 068).
+pub async fn bootstrap_existing_cgroups(cache: &AttributionCache) {
     let root = cgroup_v2_mount();
     let walk_root = root.clone();
 
@@ -192,27 +191,8 @@ pub async fn bootstrap_existing_cgroups(
     .unwrap_or_default();
 
     let mut bootstrapped = 0usize;
-    let mut early_flushes = Vec::new();
-
     for (cgroup_id, rel_path) in discovered {
         cache.register_cgroup_directory(cgroup_id, rel_path);
-
-        let event = StatixEvent {
-            kind: EVENT_KIND_WORKLOAD_IDENTITY,
-            _pad: [0u8; 7],
-            pid: 0,
-            tgid: 0,
-            cpu_id: 0,
-            _pad2: 0,
-            cgroup_id,
-            timestamp: 0,
-            memory_bytes: 0,
-            comm: [0u8; 16],
-        };
-
-        if let Some(batch) = agg.on_statix_event(&event, cache, node) {
-            early_flushes.push(batch);
-        }
         bootstrapped += 1;
     }
 
@@ -220,7 +200,6 @@ pub async fn bootstrap_existing_cgroups(
         "Bootstrapped {bootstrapped} existing cgroups from {}",
         root.display()
     );
-    early_flushes
 }
 
 fn cgroup_v2_mount() -> PathBuf {

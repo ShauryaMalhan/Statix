@@ -26,7 +26,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `067`, so the next is `068`). ADRs are filed by
+permanent identity — highest is `068`, so the next is `069`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update

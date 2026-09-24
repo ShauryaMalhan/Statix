@@ -98,7 +98,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 - Batched JSON `schema_version: 3` (agent emit); gateway accepts `2..=3`; `batch_id` + `agent_version` per flush ([ADR 017](../../../docs/adr/ingest/017-batch-lineage-metadata.md), [020](../../../docs/adr/ingest/020-ingest-schema-version-window.md), [058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md))
 - `STATIX_RAW_EVENTS=1` debug only
 - K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/fixes/041-phase55-v2-wave4-l8-fixes.md))
-- Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md))
+- Startup: `bootstrap_existing_cgroups` before event loop, **registers paths only**. No synthetic events into the aggregator, so `exec_count` counts real execs only ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md), [068](../../../docs/adr/agent/068-bootstrap-registers-only.md))
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`; sampler reads **leaf cgroups only** (`nlink == 2`), re-checked every tick ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md))
 - Env: `STATIX_WINDOW_SECS` (also the sampling period — ADR 067), `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
 

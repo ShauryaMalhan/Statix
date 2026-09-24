@@ -9,38 +9,30 @@ Roughly priority-ordered. `file:line` refs are the entry point for each item.
 
 ---
 
-## P0b — Memory and CPU numbers are wrong in several separate ways (found 2026-09-21)
+## P0b — Memory and CPU numbers: remaining accuracy gaps
 
-> Surfaced the moment K8s attribution started working: the dashboard reported **15 GiB** of
-> memory on a VM with **7.7 GiB** installed. Several independent causes, fixed in this order.
+Found while fixing tree double-counting, the sample/flush race and phantom bootstrap execs
+([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md),
+[067](../../../docs/adr/agent/067-sample-inside-flush.md),
+[068](../../../docs/adr/agent/068-bootstrap-registers-only.md)).
 
-**1. Double-counting the cgroup tree — fixed ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md)).**
-The sampler now reads leaf cgroups only; parents already include their children. On the dev
-VM that took the total from 15.4 GiB (more than the machine has) to 6.6 GiB. This also
-fixed "each K8s pod appears 2–3 times", since the pod-level cgroup is a parent.
-
-**2. Sample/flush timer race — fixed ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).**
-Two 10 s timers raced in `select!`, so windows got 0 or 2 samples (zeroed tiles, doubled
-CPU). Sampling now runs inside the flush arm; `STATIX_SAMPLE_INTERVAL_SECS` is gone.
-Verified: every window since restart has exactly one sample, CPU steady at 228–309m.
-The shutdown path (Ctrl-C / SIGTERM) now goes through the same `sample_and_flush`, so the
-last window before a stop is sampled too (verified: shutdown window `samples = 1`).
-
-- [ ] **CPU is 0 in the first window after agent start, and parents show as zero rows.**
-      Since ADR 067 the first window already carries a real memory reading (tokio's first
-      `tick()` fires immediately and now samples before flushing). Still open:
-      - **CPU:** a rate needs two readings; the first only primes `cpu_baseline` (ADR 058).
-        Prime during bootstrap **and** start the flush timer one full window after startup
-        (`interval_at(now + window)`) — priming alone is not enough, because the first
-        immediate tick would divide a real delta by a window only milliseconds long.
-      - **Parents:** `bootstrap_existing_cgroups` still emits an identity row for every
-        cgroup, parents included. Parents are never sampled (ADR 066), so they appear as
-        zero-value workloads for the whole lookback. Skip them at bootstrap. Measured on the
-        dev VM: 18 unsampled rows in the first window after start, 0 in every later one.
+- [ ] **CPU is 0 in the first window after agent start.** A rate needs two readings; the
+      first only primes `cpu_baseline` (ADR 058). Memory is already right in the first
+      window (ADR 067). **Fix:** prime `cpu_baseline` during startup **and** start the flush
+      timer one full window after startup (`interval_at(now + window)`). Priming alone is
+      not enough, because tokio's first `tick()` fires immediately and would divide a real
+      delta by a window only milliseconds long.
       Dashboard side, only a plain "waiting for first window…" state while
       `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until
       the 2nd flush": the dashboard has no way to know which flush it is (stateless, many
       nodes, agent restarts), and the zeros would still be stored in ClickHouse for billing.
+
+- [ ] **Occasionally one row per window has execs but no sample.** Seen 2026-09-24 in three
+      mid-run windows (16:15, 18:29, 19:11; `unsampled_rows = 1`, not restarts). A cgroup
+      exec'd but was not read when the window closed. Unverified guess: a short-lived cgroup
+      (e.g. from `docker exec`) removed before the close, so `is_leaf_cgroup`'s `stat` fails
+      and it is skipped. Check by logging the path of any cgroup that has execs but no sample.
+      If confirmed, it is correct behaviour (nothing left to measure) and only needs a note.
 
 - [ ] **"Memory" counts page cache, so even leaf-only totals overstate what workloads need.**
       `memory.current` includes file cache, which the kernel drops whenever programs need

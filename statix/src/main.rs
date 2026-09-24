@@ -97,9 +97,7 @@ async fn main() -> anyhow::Result<()> {
         output::SCHEMA_VERSION
     );
 
-    for batch in attribution::bootstrap_existing_cgroups(&cache, &mut agg, &node).await {
-        output::emit_batch(batch);
-    }
+    attribution::bootstrap_existing_cgroups(&cache).await;
 
     let mut sampler = memory_sampler::Sampler::new();
 
@@ -248,6 +246,9 @@ fn check_privileges() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Sample, then close the window. Every window gets exactly one reading,
+/// taken just before it closes (ADR 067). Shared by the flush timer and
+/// both shutdown signals, so no path can close a window without sampling it.
 async fn sample_and_flush(
     sampler: &mut memory_sampler::Sampler,
     cache: &attribution::AttributionCache,
