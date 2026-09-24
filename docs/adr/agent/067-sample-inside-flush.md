@@ -60,6 +60,10 @@ On the dev VM after the change: every window since restart had `max(sample_count
   - **The shutdown flush still skips the sample.** The Ctrl-C / SIGTERM arms call `agg.flush` directly, so the last partial window is written unsampled, and exec'ing cgroups end on a 0-memory row until the agent restarts. Fix: share one "sample, then flush" function across all three arms.
   - **CPU is still 0 in the first window after start.** A rate needs two readings; the first one only primes the baseline (ADR 058).
 
+## Follow-up (2026-09-24)
+
+The shutdown gap listed above is closed. "Sample, then flush" now lives in one function, `sample_and_flush` in `statix/src/main.rs`, called by the flush timer **and** both shutdown arms. One function rather than three copies, because three copies is how the gap happened: the timer arm was fixed and the shutdown arms were not. Verified: after `dev-down.sh`, the final window shows `max(sample_count) = 1` and no unsampled rows.
+
 ## References
 
 - [ADR 058](058-phase14-cpu-usage-tracking.md) — CPU delta and baseline priming

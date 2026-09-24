@@ -23,13 +23,8 @@ fixed "each K8s pod appears 2–3 times", since the pod-level cgroup is a parent
 Two 10 s timers raced in `select!`, so windows got 0 or 2 samples (zeroed tiles, doubled
 CPU). Sampling now runs inside the flush arm; `STATIX_SAMPLE_INTERVAL_SECS` is gone.
 Verified: every window since restart has exactly one sample, CPU steady at 228–309m.
-
-- [ ] **Shutdown still closes the last window without sampling it.** The Ctrl-C and SIGTERM
-      arms in `statix/src/main.rs` call `agg.flush` directly, so the final partial window
-      carries exec-event rows with **0 memory / 0 CPU**. Those become each cgroup's latest
-      row on the dashboard until the agent restarts (seen 2026-09-24 as a `samples = 0`
-      window right before a restart). **Fix:** one `async fn sample_and_flush(...)` used by
-      the flush timer and both shutdown arms, so no path can close a window unsampled.
+The shutdown path (Ctrl-C / SIGTERM) now goes through the same `sample_and_flush`, so the
+last window before a stop is sampled too (verified: shutdown window `samples = 1`).
 
 - [ ] **CPU is 0 in the first window after agent start, and parents show as zero rows.**
       Since ADR 067 the first window already carries a real memory reading (tokio's first
@@ -40,7 +35,8 @@ Verified: every window since restart has exactly one sample, CPU steady at 228�
         immediate tick would divide a real delta by a window only milliseconds long.
       - **Parents:** `bootstrap_existing_cgroups` still emits an identity row for every
         cgroup, parents included. Parents are never sampled (ADR 066), so they appear as
-        zero-value workloads for the whole lookback. Skip them at bootstrap.
+        zero-value workloads for the whole lookback. Skip them at bootstrap. Measured on the
+        dev VM: 18 unsampled rows in the first window after start, 0 in every later one.
       Dashboard side, only a plain "waiting for first window…" state while
       `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until
       the 2nd flush": the dashboard has no way to know which flush it is (stateless, many

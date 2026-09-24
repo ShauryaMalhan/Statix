@@ -143,7 +143,7 @@ limits   = requests × 1.25;
 - Baseline map (`Sampler.cpu_baseline`) survives aggregator window flips; **not** in `WorkloadStats`.
 - **Priming:** first read per cgroup sets baseline only (delta 0) — avoids lifetime spike on boot.
 - **Monotonic guard:** `current.saturating_sub(last)` on subsequent samples.
-- **One sample per window:** `sampler.tick` runs in the flush arm, immediately before `agg.flush` — never on its own timer. Two timers with the same period race in `select!` (random pick among ready branches): some windows get no sample (0 memory/CPU), others two (double CPU) ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).
+- **One sample per window:** every window closes through `sample_and_flush` (`main.rs`) — `sampler.tick`, then `agg.flush` — from the flush timer and both shutdown arms. Never call `agg.flush` directly, and never put sampling on its own timer. Two timers with the same period race in `select!` (random pick among ready branches): some windows get no sample (0 memory/CPU), others two (double CPU) ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).
 - Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).
 - Agent emits schema v3 with `cpu_usage_usec`; gateway accepts v2..=3 (`#[serde(default)]`).
 

@@ -2,8 +2,8 @@
 //! Phases 1–4 + 6 shipped; Phase 5 adds ingest auth (`STATIX_API_TOKEN`).
 
 mod aggregator;
-mod bpf_memlock;
 mod attribution;
+mod bpf_memlock;
 mod ebpf_select;
 mod loader;
 mod memory_sampler;
@@ -91,9 +91,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         log::info!("Ingest: stdout (set STATIX_INGEST_URL for HTTP ingest)");
     }
-    log::info!(
-        "Agent ready (window={window_secs}s, node={node})"
-    );
+    log::info!("Agent ready (window={window_secs}s, node={node})");
     println!(
         r#"{{"status":"ready","probe":"sched:sched_process_exec","schema_version":{}}}"#,
         output::SCHEMA_VERSION
@@ -139,12 +137,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             _ = flush_interval.tick() => {
-                for batch in sampler.tick(&cache, &mut agg, &node).await {
-                    output::emit_batch(batch);
-                }
-                if let Some(batch) = agg.flush(&node, &cache) {
-                    output::emit_batch(batch);
-                }
+                sample_and_flush(&mut sampler, &cache, &mut agg, &node).await;
             }
 
             _ = eviction_interval.tick() => {
@@ -202,18 +195,14 @@ async fn main() -> anyhow::Result<()> {
 
             _ = signal::ctrl_c() => {
                 log::info!("SIGINT received — flushing partial window");
-                if let Some(batch) = agg.flush(&node, &cache) {
-                    output::emit_batch(batch);
-                }
+                sample_and_flush(&mut sampler, &cache, &mut agg, &node).await;
                 println!(r#"{{"status":"shutdown","signal":"SIGINT"}}"#);
                 break;
             }
 
             _ = sigterm.recv() => {
                 log::info!("SIGTERM received — flushing partial window for graceful shutdown");
-                if let Some(batch) = agg.flush(&node, &cache) {
-                    output::emit_batch(batch);
-                }
+                sample_and_flush(&mut sampler, &cache, &mut agg, &node).await;
                 println!(r#"{{"status":"shutdown","signal":"SIGTERM"}}"#);
                 break;
             }
@@ -257,4 +246,18 @@ fn check_privileges() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+async fn sample_and_flush(
+    sampler: &mut memory_sampler::Sampler,
+    cache: &attribution::AttributionCache,
+    agg: &mut aggregator::Aggregator,
+    node: &str,
+) {
+    for batch in sampler.tick(cache, agg, node).await {
+        output::emit_batch(batch);
+    }
+    if let Some(batch) = agg.flush(node, cache) {
+        output::emit_batch(batch);
+    }
 }

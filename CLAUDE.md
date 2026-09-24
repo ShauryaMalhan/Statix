@@ -159,9 +159,11 @@ The ring-buffer drain path and `emit_batch` must never block. Concretely:
   rows minutes or hours in the past.
 - cgroupfs / procfs reads use stack buffers + precomputed `Arc<PathBuf>` paths,
   via `spawn_blocking` — never `read_to_string` or per-tick `PathBuf::join`.
-- cgroup sampling runs **inside the flush arm**, immediately before `flush` — one
-  reading per window. Never give it its own timer: two ready branches in
-  `select!` are picked at random, so windows got 0 or 2 samples
+- Every window is closed through `sample_and_flush` (`statix/src/main.rs`) —
+  cgroup sampling immediately before `flush`, one reading per window. The flush
+  timer and both shutdown arms use it; never call `agg.flush` directly, and never
+  give sampling its own timer: two ready branches in `select!` are picked at
+  random, so windows got 0 or 2 samples
   ([ADR 067](docs/adr/agent/067-sample-inside-flush.md)).
 - K8s pod labels are watched on a background `tokio::spawn` stream (node field
   selector) — never `await` the kube API inside the main `select!`.
