@@ -142,6 +142,7 @@ limits   = requests × 1.25;
 
 - Baseline map (`Sampler.cpu_baseline`) survives aggregator window flips; **not** in `WorkloadStats`.
 - **Priming:** first read per cgroup sets baseline only (delta 0) — avoids lifetime spike on boot.
+- **Startup:** `sampler.prime(&cache)` right after bootstrap reads every leaf's `cpu.stat` as the baseline, and the flush timer starts with `interval_at(now + window, window)`, so the first window is full-length **and** has CPU. Both halves are needed: priming with an immediate first tick divides a real delta by a window only milliseconds long ([ADR 069](../../../docs/adr/agent/069-prime-cpu-and-full-first-window.md)).
 - **Monotonic guard:** `current.saturating_sub(last)` on subsequent samples.
 - **One sample per window:** every window closes through `sample_and_flush` (`main.rs`) — `sampler.tick`, then `agg.flush` — from the flush timer and both shutdown arms. Never call `agg.flush` directly, and never put sampling on its own timer. Two timers with the same period race in `select!` (random pick among ready branches): some windows get no sample (0 memory/CPU), others two (double CPU) ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).
 - Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).

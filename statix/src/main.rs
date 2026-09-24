@@ -75,7 +75,11 @@ async fn main() -> anyhow::Result<()> {
     let cache = attribution::AttributionCache::new();
     let mut agg = aggregator::Aggregator::new(window_secs);
 
-    let mut flush_interval = time::interval(Duration::from_secs(window_secs));
+    // First flush one full window after startup, not immediately: a first
+    // window only milliseconds long would divide a real CPU delta by almost
+    // nothing. Paired with `sampler.prime` below.
+    let window = Duration::from_secs(window_secs);
+    let mut flush_interval = time::interval_at(time::Instant::now() + window, window);
     flush_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
     let mut eviction_interval = time::interval(Duration::from_secs(60));
@@ -100,6 +104,7 @@ async fn main() -> anyhow::Result<()> {
     attribution::bootstrap_existing_cgroups(&cache).await;
 
     let mut sampler = memory_sampler::Sampler::new();
+    sampler.prime(&cache).await;
 
     let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
         .expect("failed to install SIGTERM handler");

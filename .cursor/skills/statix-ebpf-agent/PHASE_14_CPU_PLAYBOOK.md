@@ -12,7 +12,7 @@ cgroup cpu.stat (delta) ── sampler ─────┘       → POST /ingest
         → statix.workload_metrics.cpu_usage_usec
 ```
 
-**Physics:** `cpu.stat` `usage_usec` is cumulative — store per-window **delta**, baseline in `Sampler.cpu_baseline` (survives flushes). **Priming:** first read per cgroup sets baseline only (delta 0). **No BPF surface** — user-space cgroupfs only ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).
+**Physics:** `cpu.stat` `usage_usec` is cumulative — store per-window **delta**, baseline in `Sampler.cpu_baseline` (survives flushes). **Priming:** first read per cgroup sets baseline only (delta 0). At agent startup, `Sampler::prime` does that read up front and the first flush waits one full window, so the first window has CPU ([ADR 069](../../../docs/adr/agent/069-prime-cpu-and-full-first-window.md)). **No BPF surface** — user-space cgroupfs only ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).
 
 ---
 

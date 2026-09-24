@@ -22,6 +22,36 @@ impl Sampler {
         }
     }
 
+    /// Read every leaf cgroup's `cpu.stat` once and store it as the CPU
+    /// baseline, without adding anything to the window. Called once at
+    /// startup so the first window already has a CPU delta: a rate needs
+    /// two readings, and without this the first one only primes.
+    pub async fn prime(&mut self, cache: &AttributionCache) {
+        let mut targets: Vec<(u64, Arc<PathBuf>)> = Vec::new();
+        cache.for_each_sample_target(|cgroup_id, _mem_path, cpu_path| {
+            targets.push((cgroup_id, cpu_path));
+        });
+
+        let readings = tokio::task::spawn_blocking(move || {
+            let mut results = Vec::with_capacity(targets.len());
+            for (cgroup_id, cpu_path) in targets {
+                if !cpu_path.parent().is_some_and(is_leaf_cgroup) {
+                    continue;
+                }
+                if let Ok(usage_usec) = read_cpu_usage_usec_at(cpu_path.as_path()) {
+                    results.push((cgroup_id, usage_usec));
+                }
+            }
+            results
+        })
+        .await
+        .unwrap_or_default();
+
+        for (cgroup_id, usage_usec) in readings {
+            self.cpu_baseline.insert(cgroup_id, usage_usec);
+        }
+    }
+    
     pub async fn tick(
         &mut self,
         cache: &AttributionCache,

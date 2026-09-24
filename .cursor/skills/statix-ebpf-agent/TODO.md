@@ -11,21 +11,11 @@ Roughly priority-ordered. `file:line` refs are the entry point for each item.
 
 ## P0b — Memory and CPU numbers: remaining accuracy gaps
 
-Found while fixing tree double-counting, the sample/flush race and phantom bootstrap execs
-([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md),
+Found while fixing tree double-counting, the sample/flush race, phantom bootstrap execs and
+the zero-CPU first window ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md),
 [067](../../../docs/adr/agent/067-sample-inside-flush.md),
-[068](../../../docs/adr/agent/068-bootstrap-registers-only.md)).
-
-- [ ] **CPU is 0 in the first window after agent start.** A rate needs two readings; the
-      first only primes `cpu_baseline` (ADR 058). Memory is already right in the first
-      window (ADR 067). **Fix:** prime `cpu_baseline` during startup **and** start the flush
-      timer one full window after startup (`interval_at(now + window)`). Priming alone is
-      not enough, because tokio's first `tick()` fires immediately and would divide a real
-      delta by a window only milliseconds long.
-      Dashboard side, only a plain "waiting for first window…" state while
-      `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until
-      the 2nd flush": the dashboard has no way to know which flush it is (stateless, many
-      nodes, agent restarts), and the zeros would still be stored in ClickHouse for billing.
+[068](../../../docs/adr/agent/068-bootstrap-registers-only.md),
+[069](../../../docs/adr/agent/069-prime-cpu-and-full-first-window.md)).
 
 - [ ] **Occasionally one row per window has execs but no sample.** Seen 2026-09-24 in three
       mid-run windows (16:15, 18:29, 19:11; `unsampled_rows = 1`, not restarts). A cgroup
@@ -158,6 +148,12 @@ anyone but you.
 
 - [ ] **Wire them to the Makefile** — `make dev-up` / `dev-down` / `dev-status`, and fix
       `make compose-up` at the same time (`Makefile:18` hardcodes `docker compose`).
+- [ ] **`dev-up.sh`'s "agent is reporting" check can pass on the previous run's data.** It
+      counts rows whose window started in the last **60 s**, not rows written by **this**
+      agent. After a quick restart, the old agent's last windows satisfy it, so a new agent
+      that is broken still prints "agent is reporting". Fix: record the start time before
+      launching the agent and count only rows with `window_start_ns` after it (or filter on
+      the `batch_id` / `agent_version` of this run).
 
 #### Gotchas the scripts must handle — each of these actually bit
 

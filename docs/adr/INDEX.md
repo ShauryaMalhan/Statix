@@ -42,6 +42,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [066](agent/066-sample-leaf-cgroups-only.md) | Sample leaf cgroups only (parents already include their children) |
 | [067](agent/067-sample-inside-flush.md) | Sample inside the flush step — one reading per window |
 | [068](agent/068-bootstrap-registers-only.md) | Bootstrap registers cgroups only — no synthetic exec events |
+| [069](agent/069-prime-cpu-and-full-first-window.md) | Prime the CPU baseline at startup; first window is a full window |
 
 ## Ingest & transport
 
