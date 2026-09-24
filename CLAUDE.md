@@ -26,7 +26,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `066`, so the next is `067`). ADRs are filed by
+permanent identity — highest is `067`, so the next is `068`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -159,6 +159,10 @@ The ring-buffer drain path and `emit_batch` must never block. Concretely:
   rows minutes or hours in the past.
 - cgroupfs / procfs reads use stack buffers + precomputed `Arc<PathBuf>` paths,
   via `spawn_blocking` — never `read_to_string` or per-tick `PathBuf::join`.
+- cgroup sampling runs **inside the flush arm**, immediately before `flush` — one
+  reading per window. Never give it its own timer: two ready branches in
+  `select!` are picked at random, so windows got 0 or 2 samples
+  ([ADR 067](docs/adr/agent/067-sample-inside-flush.md)).
 - K8s pod labels are watched on a background `tokio::spawn` stream (node field
   selector) — never `await` the kube API inside the main `select!`.
 

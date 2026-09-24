@@ -12,7 +12,7 @@
 ```bash
 cd finops-core
 make build
-sudo RUST_LOG=info STATIX_WINDOW_SECS=5 STATIX_SAMPLE_INTERVAL_SECS=5 make run
+sudo RUST_LOG=info STATIX_WINDOW_SECS=5 make run
 ```
 
 In another terminal, trigger exec events:

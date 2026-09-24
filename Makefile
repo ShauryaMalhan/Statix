@@ -155,7 +155,7 @@ run-gateway: build-gateway
 	fi
 	@echo "==> Starting statix-gateway on host..."
 	@echo "    Prefer Docker stack: make compose-up"
-	RUST_LOG=info \
+	RUST_LOG=info,clickhouse=warn \
 		$(WORKSPACE_ROOT)/target/release/statix-gateway
 
 # Back-compat aliases.

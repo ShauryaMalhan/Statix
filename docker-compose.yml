@@ -55,7 +55,7 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       # STATIX_API_TOKEN: ${STATIX_API_TOKEN}   # set in .env when testing auth
-      RUST_LOG: info
+      RUST_LOG: "info,clickhouse=warn"
     depends_on:
       clickhouse:
         condition: service_healthy

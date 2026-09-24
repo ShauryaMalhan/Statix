@@ -9,41 +9,41 @@ Roughly priority-ordered. `file:line` refs are the entry point for each item.
 
 ---
 
-## P0b — Memory and CPU numbers are wrong in three separate ways (found 2026-09-21)
+## P0b — Memory and CPU numbers are wrong in several separate ways (found 2026-09-21)
 
 > Surfaced the moment K8s attribution started working: the dashboard reported **15 GiB** of
-> memory on a VM with **7.7 GiB** installed. Three independent causes, fixed in this order.
+> memory on a VM with **7.7 GiB** installed. Several independent causes, fixed in this order.
 
 **1. Double-counting the cgroup tree — fixed ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md)).**
 The sampler now reads leaf cgroups only; parents already include their children. On the dev
 VM that took the total from 15.4 GiB (more than the machine has) to 6.6 GiB. This also
 fixed "each K8s pod appears 2–3 times", since the pod-level cgroup is a parent.
 
-- [ ] **Sample and flush race each other, so some windows get no sample and others get two.**
-      `statix/src/main.rs` runs `flush_interval` and `sample_interval` as two separate
-      10 s timers that fire at the same instant; `tokio::select!` picks a ready branch **at
-      random**. When the sample lands after the flush, that window holds only exec-event
-      rows with **0 memory / 0 CPU**, and the next window holds two samples — **20 s of CPU in
-      a 10 s window**, so millicores read double. The dashboard shows each cgroup's latest
-      window, so tiles visibly drop and recover (seen 2026-09-24: memory 5.5 → 1.8 GiB, CPU
-      300m → 100m, for one window).
-      **Fix:** sample inside the flush step — read, then close the window — so every window
-      gets exactly one sample taken just before it closes. Decide what happens to
-      `STATIX_SAMPLE_INTERVAL_SECS` (remove, or require it to equal the window).
+**2. Sample/flush timer race — fixed ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).**
+Two 10 s timers raced in `select!`, so windows got 0 or 2 samples (zeroed tiles, doubled
+CPU). Sampling now runs inside the flush arm; `STATIX_SAMPLE_INTERVAL_SECS` is gone.
+Verified: every window since restart has exactly one sample, CPU steady at 228–309m.
 
-- [ ] **The first window after agent start is all zeros.** `bootstrap_existing_cgroups`
-      adds every cgroup with 0 memory / 0 CPU, and tokio's first `interval.tick()` fires
-      immediately — so the first flush ships those zeros before anything is measured. CPU
-      then lags one more window, because a rate needs two readings (priming, ADR 058).
-      **Fix at the source, not in the UI:**
-      - prime `cpu_baseline` during bootstrap, so the first real window already has a CPU delta
-      - start the flush timer one full window after startup (`interval_at(now + window)`)
-        so the first flush carries a real sample
-      - stop emitting identity rows for **parent** cgroups at bootstrap — they are never
-        sampled (ADR 066) but still show as zero-value workloads for the whole lookback
+- [ ] **Shutdown still closes the last window without sampling it.** The Ctrl-C and SIGTERM
+      arms in `statix/src/main.rs` call `agg.flush` directly, so the final partial window
+      carries exec-event rows with **0 memory / 0 CPU**. Those become each cgroup's latest
+      row on the dashboard until the agent restarts (seen 2026-09-24 as a `samples = 0`
+      window right before a restart). **Fix:** one `async fn sample_and_flush(...)` used by
+      the flush timer and both shutdown arms, so no path can close a window unsampled.
+
+- [ ] **CPU is 0 in the first window after agent start, and parents show as zero rows.**
+      Since ADR 067 the first window already carries a real memory reading (tokio's first
+      `tick()` fires immediately and now samples before flushing). Still open:
+      - **CPU:** a rate needs two readings; the first only primes `cpu_baseline` (ADR 058).
+        Prime during bootstrap **and** start the flush timer one full window after startup
+        (`interval_at(now + window)`) — priming alone is not enough, because the first
+        immediate tick would divide a real delta by a window only milliseconds long.
+      - **Parents:** `bootstrap_existing_cgroups` still emits an identity row for every
+        cgroup, parents included. Parents are never sampled (ADR 066), so they appear as
+        zero-value workloads for the whole lookback. Skip them at bootstrap.
       Dashboard side, only a plain "waiting for first window…" state while
-      `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until the
-      2nd flush": the dashboard has no way to know which flush it is (stateless, many
+      `/api/v1/dashboard/state` returns no workloads. Do **not** hide rows client-side "until
+      the 2nd flush": the dashboard has no way to know which flush it is (stateless, many
       nodes, agent restarts), and the zeros would still be stored in ClickHouse for billing.
 
 - [ ] **"Memory" counts page cache, so even leaf-only totals overstate what workloads need.**

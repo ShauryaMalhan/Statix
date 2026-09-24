@@ -72,6 +72,7 @@ Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 | Aggregator | Early flush at `max_keys`; flip buffer before drain; window bounds read `wall_unix_ns()` directly in `flush` (one reading, passed to `reset_window`, so windows tile). Never cache a monotonic→wall offset — it goes stale on host pause ([ADR 063](../../../docs/adr/agent/063-wall-clock-window-bounds.md), supersedes 016/047) |
 | Memory sample | Async sampler; cgroupfs via `spawn_blocking` + stack `[u8; 32]`; precomputed paths |
 | CPU sample | Same tick: `cpu.stat` cumulative counter → delta in `Sampler.cpu_baseline`; prime first read ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)) |
+| Sample timing | Inside the flush arm, right before `flush` — exactly one reading per window. Never a separate timer: `select!` picks ready branches at random → windows with 0 or 2 samples ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)) |
 | Dashboard read tier | Additive, read-only — never touches ingest. Two endpoints split by failure domain: `/api/v1/dashboard/state` (may fail) and `/api/v1/dashboard/health` (**always 200**). Derived values (`cpu_millicores`) in SQL because `ORDER BY` needs them; formatting in the browser. Response cache keyed on **query params, never the caller** (single-tenant). Inner aggregate aliases must not shadow source columns or ClickHouse throws `ILLEGAL_AGGREGATION` ([ADR 061](../../../docs/adr/ui/061-phase15-dashboard-read-tier.md)) |
 | Saturation metrics | Gateway: `statix_gateway_mpsc_depth` (background sampler, `STATIX_MPSC_DEPTH_SAMPLE_MS`), `statix_api_ingest_503_total` (flat 503 counter); agent: `statix_wal_bytes_current` seeded at `init_wal` ([ADR 060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md)) |
 
@@ -99,7 +100,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 - K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/fixes/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md))
 - Memory: precomputed `{CGROUP_ROOT}/…/memory.current`; sampler reads **leaf cgroups only** (`nlink == 2`), re-checked every tick ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md))
-- Env: `STATIX_WINDOW_SECS`, `STATIX_SAMPLE_INTERVAL_SECS`, `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
+- Env: `STATIX_WINDOW_SECS` (also the sampling period — ADR 067), `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
 
 ### Hot-path heap discipline
 

@@ -30,7 +30,7 @@ USER statix
 COPY --from=builder /usr/src/statix/target/release/statix-gateway /usr/local/bin/statix-gateway
 
 ENV STATIX_API_PORT=3000
-ENV RUST_LOG=info
+ENV RUST_LOG=info,clickhouse=warn
 
 EXPOSE 3000
 

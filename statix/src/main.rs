@@ -56,7 +56,6 @@ async fn main() -> anyhow::Result<()> {
 
     let ebpf_path = ebpf_select::resolve_ebpf_path()?;
     let window_secs = statix_infra::env::read_env_u64("STATIX_WINDOW_SECS", 10);
-    let sample_secs = statix_infra::env::read_env_u64("STATIX_SAMPLE_INTERVAL_SECS", 10);
     let node = read_node_name();
     let raw_events = statix_infra::env::var("STATIX_RAW_EVENTS").as_deref() == Some("1");
 
@@ -79,9 +78,6 @@ async fn main() -> anyhow::Result<()> {
     let mut flush_interval = time::interval(Duration::from_secs(window_secs));
     flush_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
-    let mut sample_interval = time::interval(Duration::from_secs(sample_secs));
-    sample_interval.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
-
     let mut eviction_interval = time::interval(Duration::from_secs(60));
     eviction_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
@@ -96,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Ingest: stdout (set STATIX_INGEST_URL for HTTP ingest)");
     }
     log::info!(
-        "Agent ready (window={window_secs}s, sample={sample_secs}s, node={node})"
+        "Agent ready (window={window_secs}s, node={node})"
     );
     println!(
         r#"{{"status":"ready","probe":"sched:sched_process_exec","schema_version":{}}}"#,
@@ -143,13 +139,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             _ = flush_interval.tick() => {
-                if let Some(batch) = agg.flush(&node, &cache) {
+                for batch in sampler.tick(&cache, &mut agg, &node).await {
                     output::emit_batch(batch);
                 }
-            }
-
-            _ = sample_interval.tick() => {
-                for batch in sampler.tick(&cache, &mut agg, &node).await {
+                if let Some(batch) = agg.flush(&node, &cache) {
                     output::emit_batch(batch);
                 }
             }

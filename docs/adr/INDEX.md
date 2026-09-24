@@ -40,6 +40,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [063](agent/063-wall-clock-window-bounds.md) | Read the wall clock for window bounds; remove the cached offset |
 | [058](agent/058-phase14-cpu-usage-tracking.md) | Phase 14 — CPU time tracking (`cpu_usage_usec`) |
 | [066](agent/066-sample-leaf-cgroups-only.md) | Sample leaf cgroups only (parents already include their children) |
+| [067](agent/067-sample-inside-flush.md) | Sample inside the flush step — one reading per window |
 
 ## Ingest & transport
 

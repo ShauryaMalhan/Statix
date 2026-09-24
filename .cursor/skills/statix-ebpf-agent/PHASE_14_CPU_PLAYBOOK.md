@@ -45,6 +45,6 @@ cgroup cpu.stat (delta) ── sampler ─────┘       → POST /ingest
 
 ## Reference
 
-- Env: reuses `STATIX_SAMPLE_INTERVAL_SECS`, `STATIX_CGROUP_ROOT` (no new required vars).
+- Env: `STATIX_CGROUP_ROOT` (no new required vars). Originally reused `STATIX_SAMPLE_INTERVAL_SECS`; removed in [ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md) — sampling now happens once per window, inside the flush step.
 - Metrics: `statix_cpu_sampler_errors_total` (agent `:9091`); `statix_memory_sampler_errors_total` on JoinError.
 - Pattern: [PATTERNS.md](PATTERNS.md) Pattern 6d; full decision record in [ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md).

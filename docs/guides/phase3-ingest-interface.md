@@ -89,8 +89,7 @@ Wire types: `statix_wire::IngestBatch` ([ADR 028](../adr/meta/028-finops-wire-an
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Pool idle timeout |
 | `STATIX_BACKOFF_*` | 1s→30s | Retry worker ([ADR 006](../adr/ingest/006-shared-http-client-for-ingest.md)) |
 | `STATIX_EBF_PATH` | (required) | Compiled BPF ELF |
-| `STATIX_WINDOW_SECS` | `10` | Aggregation window |
-| `STATIX_SAMPLE_INTERVAL_SECS` | `10` | cgroupfs poll interval (`memory.current` + `cpu.stat` on same tick) |
+| `STATIX_WINDOW_SECS` | `10` | Aggregation window; cgroupfs (`memory.current` + `cpu.stat`) is sampled once per window, just before it closes ([ADR 067](../adr/agent/067-sample-inside-flush.md)) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 
 ### API (`statix-gateway`)
