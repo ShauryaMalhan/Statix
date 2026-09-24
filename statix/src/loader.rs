@@ -24,9 +24,7 @@ pub fn load_and_attach(ebpf_path: &str) -> anyhow::Result<Ebpf> {
 fn attach_sched_process_exec(bpf: &mut Ebpf) -> anyhow::Result<()> {
     let program: &mut TracePoint = bpf
         .program_mut("statix_sched_process_exec")
-        .ok_or_else(|| {
-            anyhow::anyhow!("BPF program 'statix_sched_process_exec' not found in ELF")
-        })?
+        .ok_or_else(|| anyhow::anyhow!("BPF program 'statix_sched_process_exec' not found in ELF"))?
         .try_into()?;
 
     program.load()?;

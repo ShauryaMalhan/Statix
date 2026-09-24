@@ -4,9 +4,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use statix_common::StatixEvent;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Serialize;
+use statix_common::StatixEvent;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::aggregator::BatchPayload;
@@ -111,8 +111,8 @@ pub fn init_retry_worker(url: String) {
     let _ = RETRY_RX.set(Arc::clone(&rx));
 
     let initial_backoff = read_env_u64("STATIX_BACKOFF_INITIAL_SECS", DEFAULT_BACKOFF_INITIAL_SECS);
-    let max_backoff = read_env_u64("STATIX_BACKOFF_MAX_SECS", DEFAULT_BACKOFF_MAX_SECS)
-        .max(initial_backoff);
+    let max_backoff =
+        read_env_u64("STATIX_BACKOFF_MAX_SECS", DEFAULT_BACKOFF_MAX_SECS).max(initial_backoff);
 
     let node_name = read_node_name_for_retry_worker();
 
@@ -183,7 +183,9 @@ pub fn init_wal(node: &str) {
 
     let cfg = crate::wal::WalConfig::from_env();
     if !cfg.enabled {
-        log::info!("Disk WAL spillway disabled (STATIX_WAL_ENABLED=0); overflow falls back to drop-oldest");
+        log::info!(
+            "Disk WAL spillway disabled (STATIX_WAL_ENABLED=0); overflow falls back to drop-oldest"
+        );
         return;
     }
     log::info!(

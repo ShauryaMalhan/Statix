@@ -63,10 +63,12 @@ impl Sampler {
         .await
         {
             Ok(results) => {
-                let live: FxHashSet<u64> = results.iter().map(|(cgroup_id, _, _)| *cgroup_id).collect();
-                self.cpu_baseline.retain(|cgroup_id, _| live.contains(cgroup_id));
+                let live: FxHashSet<u64> =
+                    results.iter().map(|(cgroup_id, _, _)| *cgroup_id).collect();
+                self.cpu_baseline
+                    .retain(|cgroup_id, _| live.contains(cgroup_id));
                 results
-            },
+            }
             Err(e) => {
                 log::error!("Sampler blocking task failed: {e}");
                 metrics::counter!("statix_memory_sampler_errors_total").increment(1);
@@ -92,8 +94,7 @@ impl Sampler {
 
             if let Some(current) = usage_usec {
                 if let Some(delta) = cpu_delta(&mut self.cpu_baseline, cgroup_id, current) {
-                    if let Some(batch) =
-                        aggregator.ingest_cpu_sample(cgroup_id, delta, cache, node)
+                    if let Some(batch) = aggregator.ingest_cpu_sample(cgroup_id, delta, cache, node)
                     {
                         early_batches.push(batch);
                     }
@@ -154,7 +155,10 @@ mod tests {
         assert!(cpu_delta(&mut baseline, 42, lifetime_usec).is_none());
         let delta = cpu_delta(&mut baseline, 42, lifetime_usec + 80_000).unwrap();
         assert_eq!(delta, 80_000);
-        assert!(delta < 1_000_000, "first billable window must not include lifetime CPU");
+        assert!(
+            delta < 1_000_000,
+            "first billable window must not include lifetime CPU"
+        );
     }
 
     #[test]

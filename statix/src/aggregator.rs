@@ -4,13 +4,13 @@
 //! - Double-buffered maps: ping-pong + `.clear()` preserves capacity (no realloc per window).
 //! - Early flush at `max_keys`: never drop telemetry (FinOps correctness).
 
-use std::cell::RefCell;
-use std::sync::Arc;
-use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
-use statix_infra::clock::wall_unix_ns;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use rustc_hash::FxHashMap;
+use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
+use statix_infra::clock::wall_unix_ns;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 use crate::attribution::{AttributionCache, WorkloadLabels, DEFAULT_LABELS};
 use statix_wire::WorkloadRow;
@@ -83,7 +83,6 @@ impl Aggregator {
         cache: &AttributionCache,
         node: &str,
     ) -> Option<BatchPayload> {
-
         match event.kind {
             EVENT_KIND_WORKLOAD_IDENTITY => {
                 cache.on_identity_event(event);
@@ -92,12 +91,7 @@ impl Aggregator {
                 entry.labels = cache.labels_for_cgroup(event.cgroup_id);
             }
             k if k == statix_common::EVENT_KIND_MEMORY_SAMPLE => {
-                self.ingest_memory_sample_inner(
-                    k,
-                    event.cgroup_id,
-                    event.memory_bytes,
-                    cache,
-                );
+                self.ingest_memory_sample_inner(k, event.cgroup_id, event.memory_bytes, cache);
             }
             _ => log::warn!("Unknown event kind {}", event.kind),
         }
@@ -154,7 +148,11 @@ impl Aggregator {
     }
 
     /// Flush when the active buffer hits `max_keys` (e.g. exec storm), not by deleting keys.
-    pub fn try_early_flush(&mut self, node: &str, cache: &AttributionCache) -> Option<BatchPayload> {
+    pub fn try_early_flush(
+        &mut self,
+        node: &str,
+        cache: &AttributionCache,
+    ) -> Option<BatchPayload> {
         if self.active_len() >= self.max_keys {
             log::info!(
                 "Early flush: active buffer reached max_keys ({})",

@@ -12,9 +12,9 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
+use statix_common::{StatixEvent, EVENT_KIND_WORKLOAD_IDENTITY};
 use walkdir::WalkDir;
 
 /// Resolved workload metadata for aggregation and JSON output.
@@ -77,14 +77,13 @@ impl AttributionCache {
                 .cpu_stat_paths
                 .insert(event.cgroup_id, Arc::new(cpu_stat));
         }
-        let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&event.cgroup_id)));
+        let labels = Arc::new(labels_from_cgroup_path(
+            state.cgroup_paths.get(&event.cgroup_id),
+        ));
         state.cgroup_labels.insert(event.cgroup_id, labels);
     }
 
-    pub fn for_each_sample_target(
-        &self,
-        mut f: impl FnMut(u64, Arc<PathBuf>, Arc<PathBuf>),
-    ) {
+    pub fn for_each_sample_target(&self, mut f: impl FnMut(u64, Arc<PathBuf>, Arc<PathBuf>)) {
         let state = self.state.read();
         for (cgroup_id, mem_path) in state.memory_current_paths.iter() {
             if let Some(cpu_path) = state.cpu_stat_paths.get(cgroup_id) {
@@ -116,9 +115,7 @@ impl AttributionCache {
         state
             .memory_current_paths
             .insert(cgroup_id, Arc::new(memory_current));
-        state
-            .cpu_stat_paths
-            .insert(cgroup_id, Arc::new(cpu_stat));
+        state.cpu_stat_paths.insert(cgroup_id, Arc::new(cpu_stat));
         let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)));
         state.cgroup_labels.insert(cgroup_id, labels);
     }
@@ -219,7 +216,10 @@ pub async fn bootstrap_existing_cgroups(
         bootstrapped += 1;
     }
 
-    log::info!("Bootstrapped {bootstrapped} existing cgroups from {}", root.display());
+    log::info!(
+        "Bootstrapped {bootstrapped} existing cgroups from {}",
+        root.display()
+    );
     early_flushes
 }
 
@@ -230,16 +230,12 @@ fn cgroup_v2_mount() -> PathBuf {
 }
 
 fn precompute_cpu_stat(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
-    let rel = rel_path
-        .strip_prefix(Path::new("/"))
-        .unwrap_or(rel_path);
+    let rel = rel_path.strip_prefix(Path::new("/")).unwrap_or(rel_path);
     cgroup_root.join(rel).join("cpu.stat")
 }
 
 fn precompute_memory_current(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
-    let rel = rel_path
-        .strip_prefix(Path::new("/"))
-        .unwrap_or(rel_path);
+    let rel = rel_path.strip_prefix(Path::new("/")).unwrap_or(rel_path);
     cgroup_root.join(rel).join("memory.current")
 }
 
@@ -274,30 +270,27 @@ fn cgroup_path_from_pid(pid: u32) -> Result<PathBuf, AttributionError> {
     })?;
 
     let mut buf = [0u8; 1024];
-    let n = file.read(&mut buf).map_err(|source| AttributionError::OpenFile {
-        path: cgroup_file.clone(),
-        source,
-    })?;
-    if n == 0 {
-        return Err(AttributionError::EmptyCgroupFile {
-            path: cgroup_file,
-        });
-    }
-
-    let contents = std::str::from_utf8(&buf[..n]).map_err(|source| {
-        AttributionError::InvalidCgroupUtf8 {
+    let n = file
+        .read(&mut buf)
+        .map_err(|source| AttributionError::OpenFile {
             path: cgroup_file.clone(),
             source,
-        }
-    })?;
+        })?;
+    if n == 0 {
+        return Err(AttributionError::EmptyCgroupFile { path: cgroup_file });
+    }
+
+    let contents =
+        std::str::from_utf8(&buf[..n]).map_err(|source| AttributionError::InvalidCgroupUtf8 {
+            path: cgroup_file.clone(),
+            source,
+        })?;
     for line in contents.lines() {
         if let Some(path) = parse_cgroup_v2_path_line(line) {
             return Ok(PathBuf::from(path));
         }
     }
-    Err(AttributionError::NoCgroupPath {
-        path: cgroup_file,
-    })
+    Err(AttributionError::NoCgroupPath { path: cgroup_file })
 }
 
 /// Read cgroup v2 `memory.current` (used from the memory sampler blocking task).
@@ -309,10 +302,12 @@ pub fn read_memory_current_at(path: &Path) -> Result<u64, AttributionError> {
     })?;
 
     let mut buf = [0u8; 32];
-    let n = file.read(&mut buf).map_err(|source| AttributionError::OpenFile {
-        path: path.display().to_string(),
-        source,
-    })?;
+    let n = file
+        .read(&mut buf)
+        .map_err(|source| AttributionError::OpenFile {
+            path: path.display().to_string(),
+            source,
+        })?;
     if n == 0 {
         return Err(AttributionError::EmptyMemoryCurrent { path: path_buf });
     }
@@ -323,10 +318,12 @@ pub fn read_memory_current_at(path: &Path) -> Result<u64, AttributionError> {
             source,
         })?
         .trim();
-    raw_str.parse::<u64>().map_err(|_| AttributionError::ParseMemoryBytes {
-        path: path.to_path_buf(),
-        value: raw_str.to_string(),
-    })
+    raw_str
+        .parse::<u64>()
+        .map_err(|_| AttributionError::ParseMemoryBytes {
+            path: path.to_path_buf(),
+            value: raw_str.to_string(),
+        })
 }
 
 pub fn read_cpu_usage_usec_at(path: &Path) -> Result<u64, AttributionError> {
@@ -337,20 +334,21 @@ pub fn read_cpu_usage_usec_at(path: &Path) -> Result<u64, AttributionError> {
     })?;
 
     let mut buf = [0u8; 256];
-    let n = file.read(&mut buf).map_err(|source| AttributionError::OpenFile {
-        path: path.display().to_string(),
-        source,
-    })?;
+    let n = file
+        .read(&mut buf)
+        .map_err(|source| AttributionError::OpenFile {
+            path: path.display().to_string(),
+            source,
+        })?;
     if n == 0 {
         return Err(AttributionError::EmptyCpuStat { path: path_buf });
     }
 
-    let contents = std::str::from_utf8(&buf[..n]).map_err(|source| {
-        AttributionError::InvalidCpuUtf8 {
+    let contents =
+        std::str::from_utf8(&buf[..n]).map_err(|source| AttributionError::InvalidCpuUtf8 {
             path: path_buf.clone(),
             source,
-        }
-    })?;
+        })?;
     let first_line = contents
         .lines()
         .next()
@@ -363,10 +361,12 @@ pub fn read_cpu_usage_usec_at(path: &Path) -> Result<u64, AttributionError> {
             path: path_buf.clone(),
         })?
         .trim();
-    value.parse::<u64>().map_err(|_| AttributionError::ParseCpuUsage {
-        path: path_buf,
-        value: value.to_string(),
-    })
+    value
+        .parse::<u64>()
+        .map_err(|_| AttributionError::ParseCpuUsage {
+            path: path_buf,
+            value: value.to_string(),
+        })
 }
 
 fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
@@ -433,8 +433,7 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
         (cgroups, pods)
     };
 
-    let mut new_labels: Vec<(u64, Arc<WorkloadLabels>)> =
-        Vec::with_capacity(cgroup_snap.len());
+    let mut new_labels: Vec<(u64, Arc<WorkloadLabels>)> = Vec::with_capacity(cgroup_snap.len());
 
     for (cgroup_id, path) in &cgroup_snap {
         let mut labels = labels_from_cgroup_path(Some(path));
@@ -461,11 +460,11 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
 /// Reconnects on stream end; runs `refresh_k8s_pods` list fallback between retries.
 pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
     use futures::TryStreamExt;
-    use std::pin::pin;
-    use std::time::Duration;
     use kube::runtime::watcher;
     use kube::runtime::watcher::Event;
     use kube::runtime::WatchStreamExt;
+    use std::pin::pin;
+    use std::time::Duration;
 
     let mut reconnect_backoff = Duration::from_secs(5);
     const MAX_RECONNECT_BACKOFF: Duration = Duration::from_secs(300);
@@ -490,10 +489,7 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
                     if uid.is_empty() {
                         continue;
                     }
-                    let namespace = meta
-                        .namespace
-                        .clone()
-                        .unwrap_or_else(|| "default".into());
+                    let namespace = meta.namespace.clone().unwrap_or_else(|| "default".into());
                     let pod_name = meta.name.clone().unwrap_or_default();
                     let mut container = None;
                     if let Some(spec) = &pod.spec {
@@ -551,9 +547,7 @@ pub async fn refresh_k8s_pods(
     let pods: kube::Api<k8s_openapi::api::core::v1::Pod> = kube::Api::all(client.clone());
 
     let list = pods
-        .list(&kube::api::ListParams::default().fields(&format!(
-            "spec.nodeName={node_name}"
-        )))
+        .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={node_name}")))
         .await?;
 
     for pod in list.items {
@@ -562,10 +556,7 @@ pub async fn refresh_k8s_pods(
         if uid.is_empty() {
             continue;
         }
-        let namespace = meta
-            .namespace
-            .clone()
-            .unwrap_or_else(|| "default".into());
+        let namespace = meta.namespace.clone().unwrap_or_else(|| "default".into());
         let pod_name = meta.name.clone().unwrap_or_default();
         let mut container = None;
         if let Some(spec) = &pod.spec {

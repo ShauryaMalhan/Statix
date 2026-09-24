@@ -16,7 +16,9 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let path = std::env::args().nth(1).ok_or("usage: statix-ebpf-verify <elf-path>")?;
+    let path = std::env::args()
+        .nth(1)
+        .ok_or("usage: statix-ebpf-verify <elf-path>")?;
     bump_memlock_rlimit()?;
     let bytes = fs::read(&path)?;
     let _bpf = Ebpf::load(&bytes)?;

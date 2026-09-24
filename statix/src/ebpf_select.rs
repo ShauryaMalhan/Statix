@@ -20,9 +20,7 @@ fn select_ebpf_by_cpus() -> anyhow::Result<String> {
         _ => ("statix-ebpf-xlarge", 8 * 1024 * 1024),
     };
 
-    log::info!(
-        "Detected {cpus} cores — loading {variant} ({bytes} byte ring buffer)"
-    );
+    log::info!("Detected {cpus} cores — loading {variant} ({bytes} byte ring buffer)");
 
     let dir = statix_infra::env::var("STATIX_BPF_DIR")
         .map(PathBuf::from)
