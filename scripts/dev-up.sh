@@ -33,7 +33,7 @@ colima ssh -- bash -lc "cd '$REPO_ROOT' && setsid --fork env \
     CLICKHOUSE_URL=http://127.0.0.1:8123/ \
     CLICKHOUSE_USER=default \
     CLICKHOUSE_PASSWORD='$CH_PASSWORD' \
-    STATIX_API_PORT=3000 RUST_LOG=info \
+    STATIX_API_PORT=3000 RUST_LOG=info,clickhouse=warn \
     ./target/release/statix-gateway > /tmp/statix-gateway.log 2>&1 < /dev/null"
 
 for i in $(seq 1 30); do

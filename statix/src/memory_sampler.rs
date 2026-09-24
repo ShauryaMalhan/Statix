@@ -107,6 +107,7 @@ impl Sampler {
 
 fn is_leaf_cgroup(dir: &Path) -> bool {
     match fs::metadata(dir) {
+        // We can use the link count to determine if a cgroup is a leaf -> 2 is used to determine leaf.
         Ok(metadata) => metadata.nlink() == 2,
         Err(_) => false,
     }
