@@ -10,6 +10,8 @@ description: >-
 
 # Statix eBPF Agent
 
+**Product:** a self-hosted, read-only Kubernetes waste report — right-sizing by need, short-lived job cost, zombie pods, egress cost ([docs/PRODUCT.md](../../../docs/PRODUCT.md), [ADR 070](../../../docs/adr/meta/070-product-scope-self-hosted-waste-report.md)). **Stay light:** cgroupfs/procfs before eBPF, no new moving parts.
+
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 
 Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054](../../../docs/adr/ingest/054-phase11-wal-spillway.md)) · **13 done** ([ADR 055](../../../docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)–[057](../../../docs/adr/deploy/057-phase13-part2-infra-kafka-strip.md)) · **14 done** ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)) · **10 partial** (Golden-Signal saturation [ADR 060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md)) · **5 partial** · **6–7 done** · **T1–3 done** · **8–9 partial**
@@ -23,7 +25,7 @@ Phases: **1–4 done** · **5.5 V1/V2/V3 done** · **11 done** (WAL — [ADR 054
 5. **ADR** — new file in `docs/adr/<topic>/` (see [INDEX.md](../../../docs/adr/INDEX.md); audit/fix waves → `fixes/`) ([enterprise-latency.md](../../../docs/guides/enterprise-latency.md))
 6. **Docs** — update README, phase validation, `phase5-production-readiness.md` if deploy gates change; `phase3-ingest-interface.md` if wire contract changes
 7. **Skills** — update this skill, REFERENCE, PATTERNS, TODO in the **same PR**
-8. Deferred work → [TODO.md](TODO.md); mark shipped items `[x]` (keep the line)
+8. Deferred work → [TODO.md](TODO.md), under the product goal it serves. Once an item is shipped (pushed), **delete it** — history lives in ADRs and `git log`, not in TODO.md
 
 ## Quick start checklist
 
@@ -58,7 +60,7 @@ Modules: see [REFERENCE.md](REFERENCE.md).
 Ring record: **`StatixEvent`** (64 bytes) with `kind`:
 
 - `EVENT_KIND_WORKLOAD_IDENTITY` (1) — exec via `sched:sched_process_exec`
-- `EVENT_KIND_MEMORY_SAMPLE` (2) — user-space `memory.current` sampler
+- `EVENT_KIND_MEMORY_SAMPLE` (2) — user-space working-set sampler (`memory.current − inactive_file`)
 
 ## Latency contract (non-negotiable)
 
@@ -99,7 +101,7 @@ Full principles: [docs/guides/enterprise-latency.md](../../../docs/guides/enterp
 - `STATIX_RAW_EVENTS=1` debug only
 - K8s: `tokio::spawn` + `watch_k8s_pods` stream — never `await` API in main `select!` ([ADR 041](../../../docs/adr/fixes/041-phase55-v2-wave4-l8-fixes.md))
 - Startup: `bootstrap_existing_cgroups` before event loop, **registers paths only**. No synthetic events into the aggregator, so `exec_count` counts real execs only ([ADR 015](../../../docs/adr/agent/015-cgroup-v2-bootstrap-on-startup.md), [068](../../../docs/adr/agent/068-bootstrap-registers-only.md))
-- Memory: precomputed `{CGROUP_ROOT}/…/memory.current`; sampler reads **leaf cgroups only** (`nlink == 2`), re-checked every tick ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md))
+- Memory: **working set** = `memory.current − inactive_file` (from `memory.stat`), both paths precomputed; soft miss on `memory.stat` falls back to `memory.current` ([ADR 071](../../../docs/adr/agent/071-working-set-memory.md)); sampler reads **leaf cgroups only** (`nlink == 2`), re-checked every tick ([ADR 066](../../../docs/adr/agent/066-sample-leaf-cgroups-only.md))
 - Env: `STATIX_WINDOW_SECS` (also the sampling period — ADR 067), `STATIX_NODE_NAME`, `STATIX_CGROUP_ROOT`
 
 ### Hot-path heap discipline

@@ -34,6 +34,7 @@ pub static DEFAULT_LABELS: LazyLock<Arc<WorkloadLabels>> =
 struct CacheState {
     cgroup_paths: FxHashMap<u64, PathBuf>,
     memory_current_paths: FxHashMap<u64, Arc<PathBuf>>,
+    memory_stat_paths: FxHashMap<u64, Arc<PathBuf>>,
     cpu_stat_paths: FxHashMap<u64, Arc<PathBuf>>,
     cgroup_labels: FxHashMap<u64, Arc<WorkloadLabels>>,
     pod_by_uid: FxHashMap<String, Arc<WorkloadLabels>>,
@@ -68,11 +69,15 @@ impl AttributionCache {
         }
         if let Some(rel_path) = rel_path {
             let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+            let memory_stat = precompute_memory_stat(&self.cgroup_root, &rel_path);
             let cpu_stat = precompute_cpu_stat(&self.cgroup_root, &rel_path);
             state.cgroup_paths.insert(event.cgroup_id, rel_path);
             state
                 .memory_current_paths
                 .insert(event.cgroup_id, Arc::new(memory_current));
+            state
+                .memory_stat_paths
+                .insert(event.cgroup_id, Arc::new(memory_stat));
             state
                 .cpu_stat_paths
                 .insert(event.cgroup_id, Arc::new(cpu_stat));
@@ -83,11 +88,22 @@ impl AttributionCache {
         state.cgroup_labels.insert(event.cgroup_id, labels);
     }
 
-    pub fn for_each_sample_target(&self, mut f: impl FnMut(u64, Arc<PathBuf>, Arc<PathBuf>)) {
+    pub fn for_each_sample_target(
+        &self,
+        mut f: impl FnMut(u64, Arc<PathBuf>, Arc<PathBuf>, Arc<PathBuf>),
+    ) {
         let state = self.state.read();
         for (cgroup_id, mem_path) in state.memory_current_paths.iter() {
-            if let Some(cpu_path) = state.cpu_stat_paths.get(cgroup_id) {
-                f(*cgroup_id, Arc::clone(mem_path), Arc::clone(cpu_path));
+            if let (Some(cpu_path), Some(stat_path)) = (
+                state.cpu_stat_paths.get(cgroup_id),
+                state.memory_stat_paths.get(cgroup_id),
+            ) {
+                f(
+                    *cgroup_id,
+                    Arc::clone(mem_path),
+                    Arc::clone(cpu_path),
+                    Arc::clone(stat_path),
+                );
             }
         }
     }
@@ -110,11 +126,15 @@ impl AttributionCache {
     pub fn register_cgroup_directory(&self, cgroup_id: u64, rel_path: PathBuf) {
         let mut state = self.state.write();
         let memory_current = precompute_memory_current(&self.cgroup_root, &rel_path);
+        let memory_stat = precompute_memory_stat(&self.cgroup_root, &rel_path);
         let cpu_stat = precompute_cpu_stat(&self.cgroup_root, &rel_path);
         state.cgroup_paths.insert(cgroup_id, rel_path);
         state
             .memory_current_paths
             .insert(cgroup_id, Arc::new(memory_current));
+        state
+            .memory_stat_paths
+            .insert(cgroup_id, Arc::new(memory_stat));
         state.cpu_stat_paths.insert(cgroup_id, Arc::new(cpu_stat));
         let labels = Arc::new(labels_from_cgroup_path(state.cgroup_paths.get(&cgroup_id)));
         state.cgroup_labels.insert(cgroup_id, labels);
@@ -138,6 +158,7 @@ impl AttributionCache {
         for id in &stale_ids {
             state.cgroup_paths.remove(id);
             state.memory_current_paths.remove(id);
+            state.memory_stat_paths.remove(id);
             state.cpu_stat_paths.remove(id);
             state.cgroup_labels.remove(id);
         }
@@ -216,6 +237,11 @@ fn precompute_cpu_stat(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
 fn precompute_memory_current(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
     let rel = rel_path.strip_prefix(Path::new("/")).unwrap_or(rel_path);
     cgroup_root.join(rel).join("memory.current")
+}
+
+fn precompute_memory_stat(cgroup_root: &Path, rel_path: &Path) -> PathBuf {
+    let rel = rel_path.strip_prefix(Path::new("/")).unwrap_or(rel_path);
+    cgroup_root.join(rel).join("memory.stat")
 }
 
 /// Parse one line from `/proc/{pid}/cgroup`.
@@ -346,6 +372,24 @@ pub fn read_cpu_usage_usec_at(path: &Path) -> Result<u64, AttributionError> {
             path: path_buf,
             value: value.to_string(),
         })
+}
+
+/// Read `inactive_file` from cgroup v2 `memory.stat`: page cache not used
+/// recently, the first thing the kernel reclaims. Working set =
+/// `memory.current - inactive_file`, the number `kubectl top` shows (ADR 071).
+/// `None` if the file or field is missing; the caller then falls back to
+/// `memory.current` alone.
+pub fn read_inactive_file_at(path: &Path) -> Option<u64> {
+    let mut file = File::open(path).ok()?;
+    let mut buf = [0u8; 4096];
+    let n = file.read(&mut buf).ok()?;
+    let contents = std::str::from_utf8(&buf[..n]).ok()?;
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("inactive_file "))?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
@@ -601,6 +645,26 @@ mod tests {
         fs::write(&mem_path, b"4096").unwrap();
         assert!(read_cpu_usage_usec_at(&cpu_path).is_err());
         assert_eq!(read_memory_current_at(&mem_path).unwrap(), 4096);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn working_set_reads_inactive_file() {
+        let dir = temp_test_dir("statix-memory-stat");
+        let path = dir.join("memory.stat");
+        fs::write(
+            &path,
+            b"anon 100\nfile 900\ninactive_anon 0\nactive_anon 100\ninactive_file 700\nactive_file 200\n",
+        )
+        .unwrap();
+        assert_eq!(read_inactive_file_at(&path), Some(700));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn working_set_missing_memory_stat_is_none() {
+        let dir = temp_test_dir("statix-memory-stat-missing");
+        assert_eq!(read_inactive_file_at(&dir.join("memory.stat")), None);
         let _ = fs::remove_dir_all(&dir);
     }
 }

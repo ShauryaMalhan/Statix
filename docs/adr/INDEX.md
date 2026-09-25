@@ -43,6 +43,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [067](agent/067-sample-inside-flush.md) | Sample inside the flush step — one reading per window |
 | [068](agent/068-bootstrap-registers-only.md) | Bootstrap registers cgroups only — no synthetic exec events |
 | [069](agent/069-prime-cpu-and-full-first-window.md) | Prime the CPU baseline at startup; first window is a full window |
+| [071](agent/071-working-set-memory.md) | Report working-set memory, not `memory.current` |
 
 ## Ingest & transport
 
@@ -133,6 +134,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [048](meta/048-generic-env-positive-parsing.md) | Generic positive-bounded env parsing in `statix-infra` |
 | [062](meta/062-pin-build-toolchain-versions.md) | Pin build-toolchain versions |
 | [064](meta/064-dependabot-and-cargo-audit.md) | Dependabot and `cargo audit`; images move to `rust:1.98.1` |
+| [070](meta/070-product-scope-self-hosted-waste-report.md) | Product scope — a self-hosted, single-tenant Kubernetes waste report |
 
 ## Kafka (historical)
 

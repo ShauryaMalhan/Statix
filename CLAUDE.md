@@ -4,10 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Statix is an eBPF workload-telemetry platform. A kernel BPF program captures
+**Product:** a read-only Kubernetes waste report, self-hosted per company
+(single-tenant, one install per company). Four goals: right-size pods by need
+(usage + pressure vs requests/limits), count short-lived job CPU, find zombie
+pods, show egress cost per workload. **Stay light:** read kernel-maintained
+files (cgroupfs/procfs) before adding eBPF; add no new moving parts; judge every
+feature against the goals. Not a general monitoring app. See
+[`docs/PRODUCT.md`](docs/PRODUCT.md) and [ADR 070](docs/adr/meta/070-product-scope-self-hosted-waste-report.md).
+
+**Mechanism:** Statix is an eBPF workload-telemetry platform. A kernel BPF program captures
 process-exec identity events; a host agent attributes them to cgroups (+ K8s
-labels), samples `memory.current` and `cpu.stat` of **leaf** cgroups only (a
-parent already includes its children — ADR 066), rolls up time windows,
+labels), samples **working-set memory** (`memory.current − inactive_file`, ADR 071)
+and `cpu.stat` of **leaf** cgroups only (a parent already includes its children —
+ADR 066), rolls up time windows,
 and emits batched JSON. A gateway ingests batches, coalesces them into
 ClickHouse RowBinary inserts, and serves a read API.
 
@@ -26,7 +35,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `069`, so the next is `070`). ADRs are filed by
+permanent identity — highest is `071`, so the next is `072`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -119,7 +128,7 @@ Agent module map (`statix/src/`): `loader.rs` (load ELF, attach tracepoint,
 ring buffer + `RING_DROPS` monitor), `ebpf_select.rs` (CPU-tier ELF pick),
 `bpf_memlock.rs` (pre-5.11 `RLIMIT_MEMLOCK` bump), `attribution/` (cgroup_id→path
 via procfs, cgroupfs readers, K8s pod watcher), `aggregator.rs` (double-buffered
-FxHashMap rollups), `memory_sampler.rs` (`memory.current` + `cpu.stat` polling, leaves only),
+FxHashMap rollups), `memory_sampler.rs` (working set from `memory.current` + `memory.stat`, and `cpu.stat`; leaves only),
 `output.rs` (JSON batch, HTTP retry worker, WAL wiring), `wal/` (`mod.rs` store +
 circuit breaker, `writer.rs` thread, `drainer.rs` replay, `recovery.rs` boot
 repair, `segment.rs` frame codec), `bin/verify_ebpf.rs` (`statix-ebpf-verify`).

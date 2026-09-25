@@ -1,4 +1,5 @@
-//! Periodic cgroup v2 sampling: `memory.current` (gauge) and `cpu.stat` (counter delta).
+//! Periodic cgroup v2 sampling: working set (`memory.current - inactive_file`,
+//! a gauge) and `cpu.stat` (counter delta).
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
@@ -9,7 +10,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use statix_common::EVENT_KIND_MEMORY_SAMPLE;
 
 use crate::aggregator::{Aggregator, BatchPayload};
-use crate::attribution::{read_cpu_usage_usec_at, read_memory_current_at, AttributionCache};
+use crate::attribution::{
+    read_cpu_usage_usec_at, read_inactive_file_at, read_memory_current_at, AttributionCache,
+};
 
 pub struct Sampler {
     cpu_baseline: FxHashMap<u64, u64>,
@@ -28,7 +31,7 @@ impl Sampler {
     /// two readings, and without this the first one only primes.
     pub async fn prime(&mut self, cache: &AttributionCache) {
         let mut targets: Vec<(u64, Arc<PathBuf>)> = Vec::new();
-        cache.for_each_sample_target(|cgroup_id, _mem_path, cpu_path| {
+        cache.for_each_sample_target(|cgroup_id, _mem_path, cpu_path, _stat_path| {
             targets.push((cgroup_id, cpu_path));
         });
 
@@ -51,7 +54,7 @@ impl Sampler {
             self.cpu_baseline.insert(cgroup_id, usage_usec);
         }
     }
-    
+
     pub async fn tick(
         &mut self,
         cache: &AttributionCache,
@@ -60,19 +63,22 @@ impl Sampler {
     ) -> Vec<BatchPayload> {
         let sample_tick_ns = now_ns();
 
-        let mut targets: Vec<(u64, Arc<PathBuf>, Arc<PathBuf>)> = Vec::new();
-        cache.for_each_sample_target(|cgroup_id, mem_path, cpu_path| {
-            targets.push((cgroup_id, mem_path, cpu_path));
+        let mut targets: Vec<(u64, Arc<PathBuf>, Arc<PathBuf>, Arc<PathBuf>)> = Vec::new();
+        cache.for_each_sample_target(|cgroup_id, mem_path, cpu_path, stat_path| {
+            targets.push((cgroup_id, mem_path, cpu_path, stat_path));
         });
 
         let readings = match tokio::task::spawn_blocking(move || {
             let mut results = Vec::with_capacity(targets.len());
-            for (cgroup_id, mem_path, cpu_path) in targets {
+            for (cgroup_id, mem_path, cpu_path, stat_path) in targets {
                 if !mem_path.parent().is_some_and(is_leaf_cgroup) {
                     continue;
                 }
                 let memory_bytes = match read_memory_current_at(mem_path.as_path()) {
-                    Ok(v) => Some(v),
+                    Ok(current) => {
+                        let inactive_file = read_inactive_file_at(stat_path.as_path()).unwrap_or(0);
+                        Some(current.saturating_sub(inactive_file))
+                    }
                     Err(e) => {
                         log::debug!("memory.current read failed for {mem_path:?}: {e}");
                         None

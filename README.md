@@ -1,6 +1,8 @@
 # Statix eBPF Platform
 
-Kernel-side workload identity + cgroup memory telemetry, rolled up in user space and emitted as batched JSON.
+**A read-only Kubernetes waste report, self-hosted by each company.** Statix shows where compute money is wasted: pods to right-size (usage and pressure against requests), what short-lived jobs cost, zombie pods, and egress per workload. It's deliberately light: one agent per node, one gateway, one ClickHouse, and it reads what the kernel already accounts for. See **[docs/PRODUCT.md](docs/PRODUCT.md)** for the goals and design rule.
+
+Under the hood: kernel-side workload identity plus cgroup CPU/memory telemetry, rolled up in user space and emitted as batched JSON.
 
 ## Status
 
@@ -32,7 +34,7 @@ Five host crates + BPF + infra:
 Phase 2 behavior in short:
 
 - Tracepoint on process exec → `cgroup_id` + workload identity events
-- Periodic read of cgroup v2 `memory.current` and `cpu.stat` for **leaf** cgroups only — a parent's numbers already include its children, so reading both would double-count ([ADR 066](docs/adr/agent/066-sample-leaf-cgroups-only.md))
+- Periodic read of cgroup v2 working-set memory (`memory.current − inactive_file`, what `kubectl top` shows — [ADR 071](docs/adr/agent/071-working-set-memory.md)) and `cpu.stat` for **leaf** cgroups only — a parent's numbers already include its children, so reading both would double-count ([ADR 066](docs/adr/agent/066-sample-leaf-cgroups-only.md))
 - Optional in-cluster K8s pod list → namespace / pod / container labels
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
@@ -240,7 +242,7 @@ Tear down with `./scripts/dev-down.sh --all`.
 | `STATIX_MPSC_DEPTH_SAMPLE_MS` | `1000` | How often the gateway samples `statix_gateway_mpsc_depth` |
 | `STATIX_EBF_PATH` | (auto) | Override path to BPF ELF; else CPU-tier pick from `STATIX_BPF_DIR` (`target/bpf`) |
 | `STATIX_BPF_DIR` | `target/bpf` | Directory with `statix-ebpf-{small,large,xlarge}` |
-| `STATIX_WINDOW_SECS` | `10` | Aggregation window. `memory.current` and `cpu.stat` are read once per window, just before it closes ([ADR 067](docs/adr/agent/067-sample-inside-flush.md)) (must be &gt; 0; invalid → default) |
+| `STATIX_WINDOW_SECS` | `10` | Aggregation window. Memory (`memory.current`, `memory.stat`) and `cpu.stat` are read once per window, just before it closes ([ADR 067](docs/adr/agent/067-sample-inside-flush.md)) (must be &gt; 0; invalid → default) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 | `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |

@@ -60,6 +60,6 @@ make verify-btf   # confirms BTF is available on this kernel
 |------|------|
 | Tracepoint attach | Ready line shows `sched:sched_process_exec` |
 | Batched output | `schema_version: 2`, `workloads` array |
-| Memory fields | `memory_bytes_max` / `memory_bytes_last` populated after sample tick |
+| Memory fields | `memory_bytes_max` / `memory_bytes_last` populated after sample tick; values are working set, not raw `memory.current` ([ADR 071](../adr/agent/071-working-set-memory.md)) |
 | K8s (optional) | `k8s_resolved: true` for pod workloads |
 | Build | `make build` and `make check` clean |

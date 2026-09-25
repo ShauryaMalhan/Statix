@@ -35,8 +35,8 @@ Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breake
 | `pod` | string? | Pod name when resolved |
 | `container` | string? | Container name when resolved |
 | `k8s_resolved` | bool | `true` if namespace+pod known |
-| `memory_bytes_max` | u64 | Max `memory.current` in window |
-| `memory_bytes_last` | u64 | Last sample in window |
+| `memory_bytes_max` | u64 | Max working set (`memory.current − inactive_file`) in window. Held raw `memory.current` before 2026-09-25 ([ADR 071](../adr/agent/071-working-set-memory.md)) |
+| `memory_bytes_last` | u64 | Working set at the last sample in window |
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
 | `cpu_usage_usec` | u64 | CPU microseconds consumed in window (delta of cgroup `cpu.stat` `usage_usec`; schema v3; omitted in v2 → `0`) ([ADR 058](../adr/agent/058-phase14-cpu-usage-tracking.md)) |
@@ -89,7 +89,7 @@ Wire types: `statix_wire::IngestBatch` ([ADR 028](../adr/meta/028-finops-wire-an
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Pool idle timeout |
 | `STATIX_BACKOFF_*` | 1s→30s | Retry worker ([ADR 006](../adr/ingest/006-shared-http-client-for-ingest.md)) |
 | `STATIX_EBF_PATH` | (required) | Compiled BPF ELF |
-| `STATIX_WINDOW_SECS` | `10` | Aggregation window; cgroupfs (`memory.current` + `cpu.stat`) is sampled once per window, just before it closes ([ADR 067](../adr/agent/067-sample-inside-flush.md)) |
+| `STATIX_WINDOW_SECS` | `10` | Aggregation window; cgroupfs (`memory.current` + `memory.stat` + `cpu.stat`) is sampled once per window, just before it closes ([ADR 067](../adr/agent/067-sample-inside-flush.md)) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
 
 ### API (`statix-gateway`)
