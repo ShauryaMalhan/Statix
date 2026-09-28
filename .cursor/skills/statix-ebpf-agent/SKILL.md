@@ -10,7 +10,7 @@ description: >-
 
 # Statix eBPF Agent
 
-**Product:** a self-hosted, read-only Kubernetes waste report — right-sizing by need, short-lived job cost, zombie pods, egress cost ([docs/PRODUCT.md](../../../docs/PRODUCT.md), [ADR 070](../../../docs/adr/meta/070-product-scope-self-hosted-waste-report.md)). **Stay light:** cgroupfs/procfs before eBPF, no new moving parts.
+**Product:** a self-hosted, read-only Kubernetes cost report — per service: cost, recommended CPU (p95 + 15%) and memory (daily peak + 15%), savings, p95/p99/max as evidence (recommends, never auto-resizes); plus short-lived job cost, zombie pods, egress cost ([docs/PRODUCT.md](../../../docs/PRODUCT.md), [ADR 070](../../../docs/adr/meta/070-product-scope-self-hosted-waste-report.md)). **Stay light:** cgroupfs/procfs before eBPF, no new moving parts.
 
 **Enterprise goal:** &lt;0.1% node CPU at idle, **zero blocking** on kernel event drain, **no telemetry loss** on capacity signals.
 

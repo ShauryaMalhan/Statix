@@ -10,12 +10,67 @@ Verify that fact on a real node first. `file:line` refs are the entry point for 
 
 ---
 
-## Goal 1 — Right-size pods by need
+## Goal 1 — Cost and savings per service
 
-Usage + pressure vs each pod's requests/limits. Numbers first: a waste report nobody trusts
-is useless.
+The report in [PRODUCT.md](../../../docs/PRODUCT.md): per service, what it costs, its p95/p99/max
+CPU and memory, and what right-sizing to p95 would save. Statix recommends; it never
+resizes. Numbers first: a report nobody trusts is useless.
 
-- [ ] **Pressure signals: is the pod starving, not just busy?** Usage alone cannot tell
+- [ ] **Requests/limits per pod.** "Reserves 1000m / 2 GiB" is what the company pays for,
+      so it is the cost basis. Extend the pod watcher (`watch_k8s_pods`) to read each
+      container's `resources.requests` / `resources.limits`, add wire fields + columns.
+      Pods with no requests set need a stated rule (cost them at usage, and flag "no
+      requests set" as its own insight).
+      **Found 2026-09-27 on k3s (containerd, systemd driver):** container cgroups are
+      `…/kubepods-burstable-pod<uid_>.slice/cri-containerd-<64hex>.scope`, and the 64-hex ID
+      equals `containerStatuses[].containerID` after `containerd://`; the pause container is
+      the one folder whose ID is in no status list. Two live bugs:
+      - `extract_container_from_path` looks for `cri-container-` (missing `d`), so it never
+        matches; every container gets the pod's **first** container name (the real cause of
+        the pause-label bug, and `sidecar` was mislabelled too).
+      - `extract_pod_uid_from_path` splits on `-pod`; a Guaranteed pod's
+        `kubepods.slice/kubepods-pod<uid>.slice` (verified on k3s, no QoS level) has no `-pod`
+        after the prefix, so **every Guaranteed pod is unattributed**.
+      - **The agent can't see k3s when run as a VM binary:** `spawn_k8s_watcher` requires
+        `KUBERNETES_SERVICE_HOST` (in-pod only), and `dev-up.sh` sets
+        `STATIX_NODE_NAME=colima-vm` while the k3s node is `colima`, so the node-scoped watch
+        would match no pods. Allow `KUBECONFIG` for out-of-cluster dev, and align node names.
+      **Stages:** 1a parsers + tests · 1b dev access (KUBECONFIG, node name) · 1c watcher
+      mapping ID → name → requests/limits · 2 pipeline (wire v4, gateway, columns + ALTER).
+      **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
+      ID (folder name minus `.scope`, text after the last `-`, must be 64 hex), not by prefix;
+      read `containerStatuses` + `initContainerStatuses` + `ephemeralContainerStatuses`;
+      skip CRI-O's `crio-conmon-<id>` for requests (same ID, would double-charge); parse the
+      pod UID as `pod` + 36-char UUID with `_` or `-`. Unit-test every layout (containerd /
+      CRI-O / Docker × systemd / cgroupfs × Guaranteed / Burstable). Add
+      `statix_k8s_unmatched_cgroups` so an unknown layout is visible, not silently wrong.
+      Supersedes the "stronger cgroup → pod mapping" and pause-label items below.
+
+- [ ] **Group pods by service (owner), not pod name.** Pod names change on every deploy
+      (`checkout-api-7d9f8c-x2k4q`), so a report by pod is unreadable and loses history. Read
+      the pod's `ownerReferences` (ReplicaSet → Deployment, StatefulSet, DaemonSet, Job) in
+      the pod watcher and store an `owner_kind` / `owner_name` label. Resolving ReplicaSet →
+      Deployment either needs one more watch, or the naming convention (strip the hash
+      suffix) — decide in the ADR.
+
+- [ ] **Price per vCPU-hour and per GiB-hour.** Self-hosted, so the company supplies its
+      own rates (gateway config / env), with a documented default (e.g. a public on-demand
+      list price) clearly labelled as an estimate. No cloud billing API — stay light.
+
+- [ ] **The report: cost, recommendation and savings per service.** Rules in
+      [PRODUCT.md](../../../docs/PRODUCT.md): CPU → p95 + 15%; memory → highest daily peak
+      + 15% (never a percentile of all samples: memory OOMs, CPU only slows); both over ≥7
+      days. cost = requests × price × hours; savings = (request − recommendation) × price ×
+      hours; p95/p99/max shown underneath as evidence. A ClickHouse query over the
+      per-window rows, grouped by service, joined with requests and price, then a page that
+      reads like the PRODUCT.md example. Percentiles already work on today's data; cost and
+      savings need the three items above.
+      **Exclude host-pause windows** (see Parked): `WHERE window_end_ns -
+      window_start_ns < 3 × window` — a paused window's CPU per second is far too low.
+
+- [ ] **Pressure signals — what makes "increase this one" possible.** Right after the first
+      report. Usage alone can only say *shrink*: a service throttled at its limit cannot use
+      more than the limit, so its p95 looks fine while it starves. Usage alone cannot tell
       "needs more" from "is fine". Four kernel counters answer it, all cumulative, so each
       becomes a per-window delta exactly like CPU (ADR 058):
       - **CPU capping:** `cpu.stat` `nr_throttled` / `throttled_usec`, in the file the agent
@@ -23,14 +78,12 @@ is useless.
       - **CPU wait:** `cpu.pressure` `some ... total=` (µs of stall)
       - **memory pressure:** `memory.pressure` `some ... total=`
       - **OOM kills:** `memory.events` `oom_kill`
-      Verified present on the dev VM (kernel 6.8, 2026-09-26). Some distros ship PSI disabled
+      Files verified present on the dev VM (kernel 6.8, 2026-09-26); all read 0 there because
+      nothing was constrained. Before building: make a unit struggle on purpose
+      (`systemd-run -p CPUQuota=20%`, `-p MemoryMax=50M` + `tail /dev/zero`) and confirm each
+      counter moves. Some distros ship PSI disabled
       by default (needs the `psi=1` boot parameter), so a missing `*.pressure` file must be a
       soft miss, like `cpu.stat` today. New columns → wire + schema change; needs an ADR.
-
-- [ ] **K8s requests/limits → right-sizing.** Extend the pod watcher to read `resources`,
-      add a wire field and column, then show "uses 200m of its 500m request". This is the
-      single most valuable thing a FinOps dashboard displays, and it is a data-collection
-      project, not a UI one.
 
 - [ ] **Stronger cgroup → pod mapping** *(Phase 8, long-open)*. The dashboard now makes this
       failure visible for the first time; expect it to surface the moment k3s is running.
@@ -201,6 +254,21 @@ no second copy of anything if run twice. `dev-status.sh` then says so in one scr
 Not deleted: each may become relevant later, but none is on the path to the four goals
 (ADR 070). Pick one up only when a goal needs it.
 
+- [ ] **A host pause makes one window span minutes, and the dashboard table blinks empty.**
+      Parked 2026-09-28: no data is lost, the table self-heals within one window, the effect on
+      a 7-day p95 is negligible, and servers rarely pause. The report query's ≤ 3 × window
+      filter covers the one real effect.
+      When the VM freezes (Mac sleep; on servers, a live migration) and the clock is corrected
+      on resume, the window open during the pause ends "now" but started minutes ago. Seen
+      2026-09-27: 10 windows of 62–751 s instead of 10 s; one of 534 s matches
+      `lima-guestagent` "drift was -8m43.9s" to the second. Effects: (1) the dashboard state
+      query filters `window_start_ns >= cutoff` while health uses `window_end_ns`, so the
+      table shows 0 workloads for one refresh while health says "data 1s old" — filter state
+      on `window_end_ns` too (`routes/dashboard/sql.rs`, `inner`); (2) that window's CPU
+      per second is far too low (≈10 s of activity spread over 534 s) — the report must
+      exclude windows longer than ~3 × `STATIX_WINDOW_SECS`. No agent change needed now;
+      if it ever matters on servers, the agent can detect it (wall elapsed ≫ monotonic
+      elapsed) and flag the row.
 - [ ] **Drill-down charts** — `GET /api/v1/dashboard/workload/{cgroup_id}/series`, then a
       time-series view on row click. Cheap: the `cgroup_idx` minmax skip index
       ([ADR 059](../../../docs/adr/storage/059-phase10-clickhouse-cgroup-skip-index.md))

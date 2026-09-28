@@ -1,6 +1,6 @@
 # Statix eBPF Platform
 
-**A read-only Kubernetes waste report, self-hosted by each company.** Statix shows where compute money is wasted: pods to right-size (usage and pressure against requests), what short-lived jobs cost, zombie pods, and egress per workload. It's deliberately light: one agent per node, one gateway, one ClickHouse, and it reads what the kernel already accounts for. See **[docs/PRODUCT.md](docs/PRODUCT.md)** for the goals and design rule.
+**A read-only Kubernetes waste report, self-hosted by each company.** For each service it shows what it costs, what its CPU and memory should be set to, and what that saves, with the p95/p99/max usage behind the recommendation, plus what short-lived jobs cost, zombie pods, and egress per workload. It recommends; it never resizes anything itself. It's deliberately light: one agent per node, one gateway, one ClickHouse, and it reads what the kernel already accounts for. See **[docs/PRODUCT.md](docs/PRODUCT.md)** for the goals and design rule.
 
 Under the hood: kernel-side workload identity plus cgroup CPU/memory telemetry, rolled up in user space and emitted as batched JSON.
 

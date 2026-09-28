@@ -13,7 +13,7 @@ The product is now defined ([docs/PRODUCT.md](../../PRODUCT.md)): a read-only Ku
 
 1. **Self-hosted, one install per company.** Each buying company runs its own agent DaemonSet, gateway and ClickHouse. One company = one tenant = one install. Data never leaves the customer's cluster.
 2. **Single-tenant stays the design.** No `tenant_id` column, no per-tenant auth or query isolation, no shared backend. The dashboard cache keyed on query params rather than caller ([ADR 061](../ui/061-phase15-dashboard-read-tier.md)) remains correct.
-3. **A waste report, not a monitoring app.** Features are judged against the four goals in `docs/PRODUCT.md`. General monitoring (alerting, logs, traces, arbitrary dashboards) is out of scope.
+3. **A readable cost report, not a monitoring app and not an auto-sizer.** Per service: cost, a recommended CPU and memory setting (CPU from p95, memory from daily peak, each + 15%), the savings, and the p95/p99/max evidence behind it. Statix recommends; the company changes its own requests. Features are judged against the four goals in `docs/PRODUCT.md`. General monitoring (alerting, logs, traces, arbitrary dashboards) and automatic resizing are out of scope.
 4. **Stay light.** Prefer reading kernel-maintained files (cgroupfs/procfs) over new eBPF; add no new moving parts (queues, sidecars, databases).
 
 ## Alternatives considered

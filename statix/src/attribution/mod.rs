@@ -396,7 +396,7 @@ fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
     let Some(path) = path else {
         return WorkloadLabels::default();
     };
-    let pod_uid = extract_pod_uid_from_path(path);
+    let pod_uid = pod_uid_from_path(path);
     let container = extract_container_from_path(path);
 
     WorkloadLabels {
@@ -408,21 +408,40 @@ fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
     }
 }
 
-/// Walk `Path::components` — no `to_string_lossy()` heap allocation for the full path.
-fn extract_pod_uid_from_path(path: &Path) -> Option<String> {
-    for component in path.components() {
+/// Pod UID from a cgroup path, for every layout: systemd driver
+/// (`kubepods-burstable-pod<uid_with_underscores>.slice`, Guaranteed
+/// `kubepods-pod<uid>.slice`) and cgroupfs driver (`pod<uid-with-dashes>`).
+/// Finds the last "pod" in each path component and accepts it only if a real
+/// UUID follows. A UUID is hex, so "pod" can never appear inside one.
+fn pod_uid_from_path(path: &Path) -> Option<String> {
+    path.components().find_map(|component| {
         let Component::Normal(part) = component else {
-            continue;
+            return None;
         };
         let part = part.to_str()?;
-        if let Some(rest) = part.strip_prefix("kubepods-") {
-            if let Some(uid_part) = rest.split("-pod").nth(1) {
-                let uid = uid_part.trim_end_matches(".slice");
-                return Some(uid.replace('_', "-"));
-            }
-        }
-    }
-    None
+        let start = part.rfind("pod")? + 3;
+        let uid = part.get(start..start + 36)?;
+        is_uuid(uid).then(|| uid.replace('_', "-"))
+    })
+}
+
+/// 36 chars: hex, with `-` (or `_`, as systemd writes it) at 8, 13, 18, 23.
+fn is_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'_' || b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
+}
+
+/// 64-hex container ID from a container cgroup's folder name, for every
+/// runtime and driver: `cri-containerd-<id>.scope`, `crio-<id>.scope`,
+/// `docker-<id>.scope`, or a bare `<id>` (cgroupfs driver). Matches on the
+/// ID, never on the prefix, so a new runtime's prefix doesn't break it.
+pub fn container_id_from_dir_name(name: &str) -> Option<&str> {
+    let name = name.strip_suffix(".scope").unwrap_or(name);
+    let id = name.rsplit('-').next()?;
+    (id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit())).then_some(id)
 }
 
 fn extract_container_from_path(path: &Path) -> Option<String> {
@@ -460,7 +479,7 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
 
     for (cgroup_id, path) in &cgroup_snap {
         let mut labels = labels_from_cgroup_path(Some(path));
-        if let Some(uid) = extract_pod_uid_from_path(path) {
+        if let Some(uid) = pod_uid_from_path(path) {
             if let Some(pod_labels) = pod_snap.get(&uid) {
                 labels.namespace = pod_labels.namespace.clone();
                 labels.pod = pod_labels.pod.clone();
@@ -666,5 +685,57 @@ mod tests {
         let dir = temp_test_dir("statix-memory-stat-missing");
         assert_eq!(read_inactive_file_at(&dir.join("memory.stat")), None);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    const ID_A: &str = "af223617009e7b29a5359185bbe2a9b79b296314cc8e4eca93ecbd19d7c0daae";
+
+    #[test]
+    fn pod_uid_every_layout() {
+        let want = Some("2b7669e8-6828-4310-9a1f-0eaad6933466".to_string());
+        // Real k3s paths (containerd + systemd driver), 2026-09-27.
+        let burstable = "/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod2b7669e8_6828_4310_9a1f_0eaad6933466.slice/cri-containerd-af22.scope";
+        let guaranteed = "/kubepods.slice/kubepods-pod2b7669e8_6828_4310_9a1f_0eaad6933466.slice/cri-containerd-af22.scope";
+        // cgroupfs driver: dashes kept, no .slice.
+        let cgroupfs = "/kubepods/besteffort/pod2b7669e8-6828-4310-9a1f-0eaad6933466/af22";
+
+        assert_eq!(pod_uid_from_path(Path::new(burstable)), want);
+        assert_eq!(pod_uid_from_path(Path::new(guaranteed)), want);
+        assert_eq!(pod_uid_from_path(Path::new(cgroupfs)), want);
+    }
+
+    #[test]
+    fn pod_uid_none_outside_kubernetes() {
+        assert_eq!(
+            pod_uid_from_path(Path::new("/system.slice/ssh.service")),
+            None
+        );
+        assert_eq!(
+            pod_uid_from_path(Path::new("/kubepods.slice/kubepods-burstable.slice")),
+            None
+        );
+    }
+
+    #[test]
+    fn container_id_every_runtime() {
+        for name in [
+            format!("cri-containerd-{ID_A}.scope"), // containerd, systemd driver
+            format!("crio-{ID_A}.scope"),           // CRI-O
+            format!("docker-{ID_A}.scope"),         // Docker / cri-dockerd
+            ID_A.to_string(),                       // cgroupfs driver: bare ID
+        ] {
+            assert_eq!(container_id_from_dir_name(&name), Some(ID_A), "{name}");
+        }
+    }
+
+    #[test]
+    fn container_id_none_for_non_containers() {
+        for name in [
+            "kubepods-burstable-pod2b7669e8_6828_4310_9a1f_0eaad6933466.slice",
+            "ssh.service",
+            "session-4.scope",
+            "cri-containerd-tooshort.scope",
+        ] {
+            assert_eq!(container_id_from_dir_name(name), None, "{name}");
+        }
     }
 }

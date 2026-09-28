@@ -5,9 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 **Product:** a read-only Kubernetes waste report, self-hosted per company
-(single-tenant, one install per company). Four goals: right-size pods by need
-(usage + pressure vs requests/limits), count short-lived job CPU, find zombie
-pods, show egress cost per workload. **Stay light:** read kernel-maintained
+(single-tenant, one install per company). A **readable report, not an
+auto-sizer**: per service, what it costs, a recommended CPU/memory setting
+(CPU p95 + 15%, memory daily peak + 15% — memory OOMs, CPU only slows), the
+savings, and the p95/p99/max evidence. Four goals: cost and savings per service,
+count short-lived job CPU, find zombie pods, show egress cost per workload. **Stay light:** read kernel-maintained
 files (cgroupfs/procfs) before adding eBPF; add no new moving parts; judge every
 feature against the goals. Not a general monitoring app. See
 [`docs/PRODUCT.md`](docs/PRODUCT.md) and [ADR 070](docs/adr/meta/070-product-scope-self-hosted-waste-report.md).
