@@ -244,6 +244,7 @@ Tear down with `./scripts/dev-down.sh --all`.
 | `STATIX_BPF_DIR` | `target/bpf` | Directory with `statix-ebpf-{small,large,xlarge}` |
 | `STATIX_WINDOW_SECS` | `10` | Aggregation window. Memory (`memory.current`, `memory.stat`) and `cpu.stat` are read once per window, just before it closes ([ADR 067](docs/adr/agent/067-sample-inside-flush.md)) (must be &gt; 0; invalid → default) |
 | `STATIX_NODE_NAME` | hostname | Node id in batches |
+| `STATIX_DEV_KUBECONFIG` | (unset) | **Development only.** Kubeconfig path so the agent binary can reach a local cluster (e.g. k3s `/etc/rancher/k3s/k3s.yaml`, an admin key). Logs a DEV MODE warning. Production runs as the DaemonSet with its own ServiceAccount ([ADR 072](docs/adr/deploy/072-agent-kubernetes-access.md)) |
 | `STATIX_HTTP_TIMEOUT_SECS` | `5` | Agent `reqwest` request timeout (entire POST) |
 | `STATIX_HTTP_POOL_IDLE_SECS` | `55` | Agent connection pool idle timeout (&lt; ALB 60s default) |
 | `STATIX_BACKOFF_INITIAL_SECS` | `1` | Agent retry base backoff (seconds) |

@@ -498,6 +498,41 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
     }
 }
 
+/// Kubeconfig path for DEVELOPMENT only (e.g. the agent as a plain binary next
+/// to a local k3s). Deliberately not plain `KUBECONFIG`: that is often set on
+/// machines for other reasons, and the file is usually an admin key.
+/// Production runs as a DaemonSet pod with its own limited ServiceAccount.
+fn dev_kubeconfig() -> Option<String> {
+    std::env::var("STATIX_DEV_KUBECONFIG")
+        .ok()
+        .filter(|path| !path.is_empty())
+}
+
+/// Is there a Kubernetes API to talk to? In a pod, Kubernetes sets
+/// `KUBERNETES_SERVICE_HOST`; in development, `STATIX_DEV_KUBECONFIG`.
+pub fn k8s_configured() -> bool {
+    std::env::var("KUBERNETES_SERVICE_HOST").is_ok() || dev_kubeconfig().is_some()
+}
+
+/// The Kubernetes client. In a pod: the pod's own ServiceAccount (production).
+/// With `STATIX_DEV_KUBECONFIG`: that file, with a loud warning.
+pub async fn k8s_client() -> anyhow::Result<kube::Client> {
+    let Some(path) = dev_kubeconfig() else {
+        return Ok(kube::Client::try_default().await?);
+    };
+    log::warn!(
+        "DEV MODE: Kubernetes access via STATIX_DEV_KUBECONFIG={path} — \
+         usually an admin key; never use this in production"
+    );
+    let kubeconfig = kube::config::Kubeconfig::read_from(&path)?;
+    let config = kube::Config::from_custom_kubeconfig(
+        kubeconfig,
+        &kube::config::KubeConfigOptions::default(),
+    )
+    .await?;
+    Ok(kube::Client::try_from(config)?)
+}
+
 /// Stream pod label updates via the Kubernetes watch API (node-scoped field selector).
 /// Reconnects on stream end; runs `refresh_k8s_pods` list fallback between retries.
 pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
@@ -578,7 +613,7 @@ pub async fn refresh_k8s_pods(
     cache: &AttributionCache,
     client: &kube::Client,
 ) -> Result<(), AttributionError> {
-    if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
+    if !k8s_configured() {
         return Ok(());
     }
 

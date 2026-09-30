@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
     let mut eviction_interval = time::interval(Duration::from_secs(60));
     eviction_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
-    let in_k8s = std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
+    let in_k8s = attribution::k8s_configured();
     let mut k8s_handle = spawn_k8s_watcher(cache.clone());
 
     if let Some(url) = statix_infra::env::var("STATIX_INGEST_URL") {
@@ -217,11 +217,13 @@ async fn main() -> anyhow::Result<()> {
 
 fn spawn_k8s_watcher(cache: attribution::AttributionCache) -> JoinHandle<()> {
     tokio::spawn(async move {
-        if std::env::var("KUBERNETES_SERVICE_HOST").is_err() {
-            log::info!("Not in K8s — pod watch disabled");
+        if !attribution::k8s_configured() {
+            log::info!(
+                "No Kubernetes API configured (not in a pod, no STATIX_DEV_KUBECONFIG) — pod watch disabled"
+            );
             return;
         }
-        match kube::Client::try_default().await {
+        match attribution::k8s_client().await {
             Ok(client) => {
                 attribution::watch_k8s_pods(cache, client).await;
             }

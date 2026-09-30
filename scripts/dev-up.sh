@@ -52,7 +52,7 @@ echo "  agent..."
 colima ssh -- bash -lc "cd '$REPO_ROOT' && sudo setsid --fork env \
     STATIX_BPF_DIR='$REPO_ROOT/target/bpf' \
     STATIX_INGEST_URL=http://127.0.0.1:3000/ingest \
-    STATIX_NODE_NAME=colima-vm \
+    STATIX_DEV_KUBECONFIG=\$(systemctl is-active -q k3s && echo /etc/rancher/k3s/k3s.yaml) \
     RUST_LOG=info \
     ./target/release/statix > /tmp/statix-agent.log 2>&1 < /dev/null"
 

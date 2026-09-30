@@ -31,12 +31,12 @@ resizes. Numbers first: a report nobody trusts is useless.
       - `extract_pod_uid_from_path` splits on `-pod`; a Guaranteed pod's
         `kubepods.slice/kubepods-pod<uid>.slice` (verified on k3s, no QoS level) has no `-pod`
         after the prefix, so **every Guaranteed pod is unattributed**.
-      - **The agent can't see k3s when run as a VM binary:** `spawn_k8s_watcher` requires
-        `KUBERNETES_SERVICE_HOST` (in-pod only), and `dev-up.sh` sets
-        `STATIX_NODE_NAME=colima-vm` while the k3s node is `colima`, so the node-scoped watch
-        would match no pods. Allow `KUBECONFIG` for out-of-cluster dev, and align node names.
-      **Stages:** 1a parsers + tests · 1b dev access (KUBECONFIG, node name) · 1c watcher
-      mapping ID → name → requests/limits · 2 pipeline (wire v4, gateway, columns + ALTER).
+      **Stages:** ✅ 1a parsers + tests (local commit) · ✅ 1b dev access via
+      `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · **next:** `kube`
+      0.98 → 4.x + `k8s-openapi` 0.28 upgrade (Dependabot now groups them), so 1c is written
+      once against the new API · 1c watcher mapping ID → name → requests/limits (also drop
+      the duplicate "initial sync complete" log: printed for both `Init` and `InitDone`) ·
+      2 pipeline (wire v4, gateway, columns + ALTER). Push when the whole item is done.
       **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
       ID (folder name minus `.scope`, text after the last `-`, must be 64 hex), not by prefix;
       read `containerStatuses` + `initContainerStatuses` + `ephemeralContainerStatuses`;

@@ -101,6 +101,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [046](deploy/046-secrets-env-file.md) | Local secrets via `.env` (ClickHouse password) |
 | [057](deploy/057-phase13-part2-infra-kafka-strip.md) | Phase 13 Part 2 — Strip Kafka from compose and K8s manifests |
 | [065](deploy/065-single-gateway-dockerfile.md) | One gateway Dockerfile, not a dev copy and a prod copy |
+| [072](deploy/072-agent-kubernetes-access.md) | Agent reaches Kubernetes only as a DaemonSet pod; `STATIX_DEV_KUBECONFIG` is dev-only |
 
 ## Audit & fix waves
 
