@@ -37,7 +37,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `073`, so the next is `074`). ADRs are filed by
+permanent identity — highest is `074`, so the next is `075`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -129,7 +129,8 @@ with `cargo +nightly ... -Z build-std=core --target bpfel-unknown-none` inside
 Agent module map (`statix/src/`): `loader.rs` (load ELF, attach tracepoint,
 ring buffer + `RING_DROPS` monitor), `ebpf_select.rs` (CPU-tier ELF pick),
 `bpf_memlock.rs` (pre-5.11 `RLIMIT_MEMLOCK` bump), `attribution/` (cgroup_id→path
-via procfs, cgroupfs readers, K8s pod watcher), `aggregator.rs` (double-buffered
+via procfs, cgroupfs readers, K8s pod watcher; container cgroups matched to
+Kubernetes containers by 64-hex container ID, never by folder prefix — ADR 074), `aggregator.rs` (double-buffered
 FxHashMap rollups), `memory_sampler.rs` (working set from `memory.current` + `memory.stat`, and `cpu.stat`; leaves only),
 `output.rs` (JSON batch, HTTP retry worker, WAL wiring), `wal/` (`mod.rs` store +
 circuit breaker, `writer.rs` thread, `drainer.rs` replay, `recovery.rs` boot

@@ -63,7 +63,7 @@ ring buffer → aggregator → emit_batch
 | 6 | Done — mechanical sympathy / hot path ([ADR 018](../../../docs/adr/meta/018-phase-roadmap-status.md), [ADR 023](../../../docs/adr/fixes/023-phase5-hot-path-fixes.md)) |
 | 7 | **Done** — wire, agent, gateway, infra, `Config`, typed errors, read-only labels ([ADR 028](../../../docs/adr/meta/028-finops-wire-and-agent-rename.md)–[036](../../../docs/adr/meta/036-phase7-typed-errors-labels-read-path.md)) |
 | T1–3 | Done — prod images, K8s YAML, CH init, read API ([ADR 024](../../../docs/adr/deploy/024-agent-production-container.md)–[027](../../../docs/adr/gateway/027-api-read-path-clickhouse.md)) |
-| 8 | Partial — V2 K8s hardening shipped (informer, drain, digest pins); stronger cgroup→pod mapping open |
+| 8 | Partial — V2 K8s hardening shipped (informer, drain, digest pins); cgroup→container mapping by container ID ([ADR 074](../../../docs/adr/agent/074-match-cgroups-by-container-id.md)) |
 | 9 | Partial — eBPF verifier CI shipped ([ADR 037](../../../docs/adr/ebpf/037-phase9-ebpf-verifier-ci.md)); arm64 / cgroup v1 detection open |
 | 10 | Partial — Grafana + CH skip index shipped; Golden-Signal saturation metrics shipped ([ADR 060](../../../docs/adr/observability/060-phase10-golden-signal-saturation-metrics.md)); extended agent metrics remainder open |
 

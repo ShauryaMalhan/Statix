@@ -33,9 +33,11 @@ resizes. Numbers first: a report nobody trusts is useless.
         after the prefix, so **every Guaranteed pod is unattributed**.
       **Stages:** ✅ 1a parsers + tests (local commit) · ✅ 1b dev access via
       `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · ✅ `kube` 4.2 +
-      `k8s-openapi` 0.28, min Kubernetes 1.32 (ADR 073, local commit) · **next:** 1c watcher mapping ID → name → requests/limits (also drop
-      the duplicate "initial sync complete" log: printed for both `Init` and `InitDone`) ·
-      2 pipeline (wire v4, gateway, columns + ALTER). Push when the whole item is done.
+      `k8s-openapi` 0.28, min Kubernetes 1.32 (ADR 073, local commit) · ✅ 1c-i container ID → name mapping (ADR 074, local commit; also
+      resolves the two items below — delete them at push) · **next:** 1c-ii requests/limits per
+      container (Kubernetes quantity parser + tests; also rename the gauge string
+      `statix.k8s.unmatched_cgroups` → underscores) · then 2 pipeline (wire v4, gateway,
+      columns + ALTER). Push when the whole item is done.
       **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
       ID (folder name minus `.scope`, text after the last `-`, must be 64 hex), not by prefix;
       read `containerStatuses` + `initContainerStatuses` + `ephemeralContainerStatuses`;

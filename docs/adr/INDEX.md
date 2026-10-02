@@ -44,6 +44,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [068](agent/068-bootstrap-registers-only.md) | Bootstrap registers cgroups only — no synthetic exec events |
 | [069](agent/069-prime-cpu-and-full-first-window.md) | Prime the CPU baseline at startup; first window is a full window |
 | [071](agent/071-working-set-memory.md) | Report working-set memory, not `memory.current` |
+| [074](agent/074-match-cgroups-by-container-id.md) | Match container cgroups to Kubernetes containers by container ID |
 
 ## Ingest & transport
 

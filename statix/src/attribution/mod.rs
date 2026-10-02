@@ -27,6 +27,16 @@ pub struct WorkloadLabels {
     pub k8s_resolved: bool,
 }
 
+/// What the pod watcher knows about one pod: where it lives, and which
+/// container ID belongs to which container name.
+#[derive(Debug, Default, Clone)]
+pub struct PodInfo {
+    pub namespace: String,
+    pub name: String,
+    /// Container ID -> container name mapping.
+    pub containers: FxHashMap<String, String>,
+}
+
 pub static DEFAULT_LABELS: LazyLock<Arc<WorkloadLabels>> =
     LazyLock::new(|| Arc::new(WorkloadLabels::default()));
 
@@ -37,7 +47,7 @@ struct CacheState {
     memory_stat_paths: FxHashMap<u64, Arc<PathBuf>>,
     cpu_stat_paths: FxHashMap<u64, Arc<PathBuf>>,
     cgroup_labels: FxHashMap<u64, Arc<WorkloadLabels>>,
-    pod_by_uid: FxHashMap<String, Arc<WorkloadLabels>>,
+    pod_by_uid: FxHashMap<String, Arc<PodInfo>>,
 }
 
 #[derive(Clone, Debug)]
@@ -118,8 +128,8 @@ impl AttributionCache {
             .unwrap_or_else(|| Arc::clone(&DEFAULT_LABELS))
     }
 
-    pub fn upsert_pod_labels(&self, uid: String, labels: WorkloadLabels) {
-        self.state.write().pod_by_uid.insert(uid, Arc::new(labels));
+    pub fn upsert_pod(&self, uid: String, info: PodInfo) {
+        self.state.write().pod_by_uid.insert(uid, Arc::new(info));
     }
 
     /// Register a cgroup directory discovered at startup (inode = `cgroup_id` in cgroup v2).
@@ -397,7 +407,14 @@ fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
         return WorkloadLabels::default();
     };
     let pod_uid = pod_uid_from_path(path);
-    let container = extract_container_from_path(path);
+    // Outside Kubernetes (e.g. plain Docker) the short container ID is the only
+    // name there is: the same 12 characters `docker ps` shows. Inside a known
+    // pod, merge_cgroup_labels_from_k8s replaces it with the real name.
+    let container = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(container_id_from_dir_name)
+        .map(|id| id[..12].to_string());
 
     WorkloadLabels {
         namespace: None,
@@ -444,22 +461,45 @@ pub fn container_id_from_dir_name(name: &str) -> Option<&str> {
     (id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit())).then_some(id)
 }
 
-fn extract_container_from_path(path: &Path) -> Option<String> {
-    for component in path.components() {
-        let Component::Normal(part) = component else {
-            continue;
-        };
-        let part = part.to_str()?;
-        if let Some(id) = part.strip_prefix("cri-container-") {
-            let id = id.trim_end_matches(".scope");
-            return Some(id.to_string());
-        }
-        if let Some(name) = part.strip_prefix("docker-") {
-            let name = name.trim_end_matches(".scope");
-            return Some(name.to_string());
+/// Build a `PodInfo` from a pod as the Kubernetes API returns it.
+/// `None` if the pod has no UID. Reads all three status lists, because init
+/// and ephemeral (debug) containers get cgroups too.
+fn pod_info_from(pod: &k8s_openapi::api::core::v1::Pod) -> Option<(String, PodInfo)> {
+    let meta = &pod.metadata;
+    let uid = meta.uid.clone().filter(|uid| !uid.is_empty())?;
+    let mut info = PodInfo {
+        namespace: meta.namespace.clone().unwrap_or_else(|| "default".into()),
+        name: meta.name.clone().unwrap_or_default(),
+        containers: FxHashMap::default(),
+    };
+    if let Some(status) = &pod.status {
+        let lists = [
+            &status.container_statuses,
+            &status.init_container_statuses,
+            &status.ephemeral_container_statuses,
+        ];
+        for statuses in lists.into_iter().flatten() {
+            for cs in statuses {
+                if let Some((_, id)) = cs.container_id.as_deref().and_then(|s| s.split_once("://"))
+                {
+                    info.containers.insert(id.to_string(), cs.name.clone());
+                }
+            }
         }
     }
-    None
+    Some((uid, info))
+}
+
+/// Container name for a container cgroup folder inside a known pod. `None` for:
+/// the pause/sandbox container (its ID is in no status list); a container whose
+/// status hasn't arrived yet; and CRI-O's `crio-conmon-<id>` monitor, which
+/// carries the real container's ID and would otherwise be charged its requests twice.
+fn container_name_in_pod(dir_name: &str, pod: &PodInfo) -> Option<String> {
+    if dir_name.starts_with("crio-conmon-") {
+        return None;
+    }
+    let id = container_id_from_dir_name(dir_name)?;
+    pod.containers.get(id).cloned()
 }
 
 /// Merge pod API labels into `cgroup_labels` for every tracked cgroup (background only).
@@ -476,21 +516,28 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
     };
 
     let mut new_labels: Vec<(u64, Arc<WorkloadLabels>)> = Vec::with_capacity(cgroup_snap.len());
-
+    let mut unmatched = 0u64;
     for (cgroup_id, path) in &cgroup_snap {
         let mut labels = labels_from_cgroup_path(Some(path));
-        if let Some(uid) = pod_uid_from_path(path) {
-            if let Some(pod_labels) = pod_snap.get(&uid) {
-                labels.namespace = pod_labels.namespace.clone();
-                labels.pod = pod_labels.pod.clone();
-                labels.k8s_resolved = true;
-                if labels.container.is_none() {
-                    labels.container = pod_labels.container.clone();
+        if let Some(uid) = &labels.pod_uid {
+            match pod_snap.get(uid) {
+                Some(pod) => {
+                    labels.namespace = Some(pod.namespace.clone());
+                    labels.pod = Some(pod.name.clone());
+                    labels.k8s_resolved = true;
+                    labels.container = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .and_then(|name| container_name_in_pod(name, pod));
                 }
+                // Under a pod the watcher doesn't know: an unfamiliar layout,
+                // or a pod that started a moment ago. Counted so it's visible.
+                None => unmatched += 1,
             }
         }
         new_labels.push((*cgroup_id, Arc::new(labels)));
     }
+    metrics::gauge!("statix.k8s.unmatched_cgroups").set(unmatched as f64);
 
     let mut state = cache.state.write();
     for (cgroup_id, labels) in new_labels {
@@ -560,40 +607,30 @@ pub async fn watch_k8s_pods(cache: AttributionCache, client: kube::Client) {
             reconnect_backoff = Duration::from_secs(5);
 
             match event {
-                Event::Apply(pod) | Event::InitApply(pod) => {
-                    let meta = &pod.metadata;
-                    let uid = meta.uid.clone().unwrap_or_default();
-                    if uid.is_empty() {
-                        continue;
+                Event::Apply(pod) => {
+                    if let Some((uid, info)) = pod_info_from(&pod) {
+                        cache.upsert_pod(uid, info);
+                        merge_cgroup_labels_from_k8s(&cache);
                     }
-                    let namespace = meta.namespace.clone().unwrap_or_else(|| "default".into());
-                    let pod_name = meta.name.clone().unwrap_or_default();
-                    let mut container = None;
-                    if let Some(spec) = &pod.spec {
-                        if let Some(first) = spec.containers.first() {
-                            container = Some(first.name.clone());
-                        }
-                    }
-                    cache.upsert_pod_labels(
-                        uid,
-                        WorkloadLabels {
-                            namespace: Some(namespace),
-                            pod: Some(pod_name),
-                            container,
-                            pod_uid: None,
-                            k8s_resolved: true,
-                        },
-                    );
-                    merge_cgroup_labels_from_k8s(&cache);
                 }
+
                 Event::Delete(pod) => {
                     if let Some(uid) = pod.metadata.uid.as_ref() {
                         cache.remove_pod_by_uid(uid);
                     }
                 }
-                Event::Init | Event::InitDone => {
+
+                // Initial list: store every pod now, merge once at InitDone.
+                Event::InitApply(pod) => {
+                    if let Some((uid, info)) = pod_info_from(&pod) {
+                        cache.upsert_pod(uid, info);
+                    }
+                }
+
+                Event::Init => {}
+                Event::InitDone => {
                     merge_cgroup_labels_from_k8s(&cache);
-                    log::info!("K8s watcher initial sync complete for node {node_name}");
+                    log::info!("K8s pod watcher initial list applied for node {node_name}");
                 }
             }
         }
@@ -627,30 +664,10 @@ pub async fn refresh_k8s_pods(
         .list(&kube::api::ListParams::default().fields(&format!("spec.nodeName={node_name}")))
         .await?;
 
-    for pod in list.items {
-        let meta = &pod.metadata;
-        let uid = meta.uid.clone().unwrap_or_default();
-        if uid.is_empty() {
-            continue;
+    for pod in &list.items {
+        if let Some((uid, info)) = pod_info_from(pod) {
+            cache.upsert_pod(uid, info);
         }
-        let namespace = meta.namespace.clone().unwrap_or_else(|| "default".into());
-        let pod_name = meta.name.clone().unwrap_or_default();
-        let mut container = None;
-        if let Some(spec) = &pod.spec {
-            if let Some(first) = spec.containers.first() {
-                container = Some(first.name.clone());
-            }
-        }
-        cache.upsert_pod_labels(
-            uid,
-            WorkloadLabels {
-                namespace: Some(namespace),
-                pod: Some(pod_name),
-                container,
-                pod_uid: None,
-                k8s_resolved: true,
-            },
-        );
     }
 
     merge_cgroup_labels_from_k8s(cache);
@@ -680,6 +697,64 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    const ID_B: &str = "b01aa86080a7764f1c493ede232c77d5abea6632756dc61ae95abd7fbd0698f6";
+
+    /// One `containerStatuses` entry as the Kubernetes API sends it.
+    fn status(name: &str, id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "name": name,
+            "containerID": format!("containerd://{id}"),
+            "image": "", "imageID": "", "ready": true, "restartCount": 0
+        })
+    }
+
+    #[test]
+    fn pod_info_maps_container_ids_to_names() {
+        let pod: k8s_openapi::api::core::v1::Pod = serde_json::from_value(serde_json::json!({
+            "metadata": {
+                "uid": "2b7669e8-6828-4310-9a1f-0eaad6933466",
+                "name": "reqtest-7694f84d54-84klg",
+                "namespace": "default"
+            },
+            "status": {
+                "containerStatuses": [ status("web", ID_A) ],
+                "initContainerStatuses": [ status("init-db", ID_B) ]
+            }
+        }))
+        .unwrap();
+
+        let (uid, info) = pod_info_from(&pod).unwrap();
+        assert_eq!(uid, "2b7669e8-6828-4310-9a1f-0eaad6933466");
+        assert_eq!(info.name, "reqtest-7694f84d54-84klg");
+        assert_eq!(info.containers.get(ID_A).map(String::as_str), Some("web"));
+        assert_eq!(
+            info.containers.get(ID_B).map(String::as_str),
+            Some("init-db")
+        );
+    }
+
+    #[test]
+    fn container_name_in_pod_cases() {
+        let mut pod = PodInfo::default();
+        pod.containers.insert(ID_A.to_string(), "web".to_string());
+
+        let web = format!("cri-containerd-{ID_A}.scope");
+        let pause = format!("cri-containerd-{ID_B}.scope");
+        let conmon = format!("crio-conmon-{ID_A}.scope");
+
+        assert_eq!(container_name_in_pod(&web, &pod), Some("web".to_string()));
+        assert_eq!(
+            container_name_in_pod(&pause, &pod),
+            None,
+            "pause: ID in no status list"
+        );
+        assert_eq!(
+            container_name_in_pod(&conmon, &pod),
+            None,
+            "CRI-O monitor must not be the container"
+        );
     }
 
     #[test]

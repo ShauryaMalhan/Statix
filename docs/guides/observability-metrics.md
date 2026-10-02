@@ -27,6 +27,7 @@ All three are **seeded to 0 at startup** so idle hosts export the series immedia
 | `statix_api_ch_unhealthy_reject_total` | gateway — Tier 1 `!ch_healthy` |
 | `statix_api_ingest_channel_full_total` | gateway — Tier 2 mpsc full |
 | `statix_wal_segments_current` | agent — WAL segment count |
+| `statix_k8s_unmatched_cgroups` | agent — gauge: cgroups under a pod UID the watcher doesn't know. Should be 0; brief blips while pods start; a steady non-zero value means a cgroup layout we can't map ([ADR 074](../adr/agent/074-match-cgroups-by-container-id.md)) |
 
 ## PromQL examples
 
