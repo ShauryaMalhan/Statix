@@ -102,6 +102,7 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [057](deploy/057-phase13-part2-infra-kafka-strip.md) | Phase 13 Part 2 — Strip Kafka from compose and K8s manifests |
 | [065](deploy/065-single-gateway-dockerfile.md) | One gateway Dockerfile, not a dev copy and a prod copy |
 | [072](deploy/072-agent-kubernetes-access.md) | Agent reaches Kubernetes only as a DaemonSet pod; `STATIX_DEV_KUBECONFIG` is dev-only |
+| [073](deploy/073-kube-4-minimum-kubernetes-1-32.md) | `kube` 4.2 + `k8s-openapi` 0.28; supports Kubernetes 1.32+ |
 
 ## Audit & fix waves
 

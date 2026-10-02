@@ -304,6 +304,8 @@ See [ADR 061](docs/adr/ui/061-phase15-dashboard-read-tier.md).
 
 ## Production deploy
 
+**Requires Kubernetes 1.32 or newer** and cgroup v2 nodes. The agent runs as a DaemonSet, one pod per node, with a ServiceAccount that can only read pods ([ADR 072](docs/adr/deploy/072-agent-kubernetes-access.md), [ADR 073](docs/adr/deploy/073-kube-4-minimum-kubernetes-1-32.md)).
+
 ```bash
 docker build -f deploy/docker/Dockerfile.gateway -t statix-gateway:latest .
 docker build -f deploy/docker/Dockerfile.statix -t statix:latest .

@@ -32,9 +32,8 @@ resizes. Numbers first: a report nobody trusts is useless.
         `kubepods.slice/kubepods-pod<uid>.slice` (verified on k3s, no QoS level) has no `-pod`
         after the prefix, so **every Guaranteed pod is unattributed**.
       **Stages:** ✅ 1a parsers + tests (local commit) · ✅ 1b dev access via
-      `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · **next:** `kube`
-      0.98 → 4.x + `k8s-openapi` 0.28 upgrade (Dependabot now groups them), so 1c is written
-      once against the new API · 1c watcher mapping ID → name → requests/limits (also drop
+      `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · ✅ `kube` 4.2 +
+      `k8s-openapi` 0.28, min Kubernetes 1.32 (ADR 073, local commit) · **next:** 1c watcher mapping ID → name → requests/limits (also drop
       the duplicate "initial sync complete" log: printed for both `Init` and `InitDone`) ·
       2 pipeline (wire v4, gateway, columns + ALTER). Push when the whole item is done.
       **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
