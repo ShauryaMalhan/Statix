@@ -15,7 +15,7 @@ Make the ingest pipeline safe to run on a real network and operable under load b
 | **TLS on `POST /ingest`** | **Shipped:** AWS ALB Ingress (`deploy/k8s/gateway-ingress.yaml`) — HTTPS :443, ACM cert ([ADR 043](../adr/deploy/043-kubernetes-alb-tls-termination.md)). |
 | **BPF ring buffer overflow metric** | **Shipped:** `RING_DROPS` + scrape `http://<node>:9091/metrics` ([ADR 022](../adr/ebpf/022-bpf-ring-buffer-drop-counter.md), [ADR 023](../adr/fixes/023-phase5-hot-path-fixes.md)). |
 | **Attribution / ingest hot path** | **Shipped:** procfs before write lock; label cache + `DEFAULT_LABELS`; `expected_bearer` precomputed ([ADR 023](../adr/fixes/023-phase5-hot-path-fixes.md)). |
-| **Schema evolution** | **Shipped:** gateway accepts `schema_version` 2 or 3 ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md)). |
+| **Schema evolution** | **Shipped:** gateway accepts `schema_version` 2–4 ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md), [075](../adr/ingest/075-requests-limits-schema-v4.md)). Upgrade order: ClickHouse (re-run `01_init.sql`) → gateway → agents. |
 
 ## P1 — Operational readiness
 

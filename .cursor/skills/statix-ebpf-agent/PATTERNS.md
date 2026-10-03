@@ -148,7 +148,8 @@ limits   = requests × 1.25;
 - **Monotonic guard:** `current.saturating_sub(last)` on subsequent samples.
 - **One sample per window:** every window closes through `sample_and_flush` (`main.rs`) — `sampler.tick`, then `agg.flush` — from the flush timer and both shutdown arms. Never call `agg.flush` directly, and never put sampling on its own timer. Two timers with the same period race in `select!` (random pick among ready branches): some windows get no sample (0 memory/CPU), others two (double CPU) ([ADR 067](../../../docs/adr/agent/067-sample-inside-flush.md)).
 - Same tick as memory: `for_each_sample_target` → one `spawn_blocking` reads both files ([ADR 058](../../../docs/adr/agent/058-phase14-cpu-usage-tracking.md)).
-- Agent emits schema v3 with `cpu_usage_usec`; gateway accepts v2..=3 (`#[serde(default)]`).
+- Agent emits schema v4 (v3 added `cpu_usage_usec`, v4 the per-row requests/limits); gateway accepts v2..=4; new fields are `#[serde(default)]` ([ADR 075](../../../docs/adr/ingest/075-requests-limits-schema-v4.md)).
+- **New column = two edits in `01_init.sql`:** the column in `CREATE TABLE` and an idempotent `ALTER … ADD COLUMN IF NOT EXISTS … AFTER …` at the end. Roll out database → gateway → agents.
 
 ---
 

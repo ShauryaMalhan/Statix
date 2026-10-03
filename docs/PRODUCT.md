@@ -26,7 +26,7 @@ Per service (a Deployment/StatefulSet, not a pod — pod names change every depl
 
 | # | Goal | What it answers | Status |
 |---|------|-----------------|--------|
-| 1 | **Cost and savings per service** | What does each service cost, what should its CPU and memory be set to, and what does that save? Needs requests/limits, service grouping, a price, the report; then pressure signals for "increase this one". | usage ✅ · working set ✅ · requests/limits, grouping, price, report, pressure: open |
+| 1 | **Cost and savings per service** | What does each service cost, what should its CPU and memory be set to, and what does that save? Needs requests/limits, service grouping, a price, the report; then pressure signals for "increase this one". | usage ✅ · working set ✅ · requests/limits ✅ · grouping, price, report, pressure: open |
 | 2 | **Count the CPU of short-lived jobs** | What did CronJobs / Jobs actually cost? | open — leftover CPU per parent first, per-job names later |
 | 3 | **Find zombie pods** | Which pods did nothing for days — near-zero CPU **and** no network traffic? | open |
 | 4 | **Show egress cost per workload** | Who is paying for cross-AZ, internet and NAT traffic? | open, largest |

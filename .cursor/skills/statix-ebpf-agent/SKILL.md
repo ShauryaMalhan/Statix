@@ -180,7 +180,7 @@ sudo -E make run   # agent on host (root)
 make compose-down  # tear down stack
 # Host-only API dev (not with compose-up): make run-api
 # After gateway code changes in Docker: docker compose build statix-gateway && docker compose up -d statix-gateway
-# After CH schema change: docker compose down -v && make compose-up
+# After CH schema change: re-run deploy/clickhouse/01_init.sql (idempotent; keeps data — ADR 075)
 # Billing check: SELECT count() FROM statix.workload_metrics FINAL
 curl -s http://127.0.0.1:3000/metrics | grep statix_api_
 curl -s http://127.0.0.1:3000/metrics | grep -E 'statix_gateway_mpsc_depth|statix_api_ingest_503_total'

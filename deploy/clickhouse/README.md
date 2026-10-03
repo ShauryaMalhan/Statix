@@ -27,7 +27,8 @@ clickhouse-client --user default --password "$CLICKHOUSE_PASSWORD" --multiquery 
 
 Compose applies automatically on **first** ClickHouse volume init (`make compose-up`).
 
-After schema changes: `docker compose down -v && make compose-up`.
+After schema changes: re-run `01_init.sql` against the running server — every statement is idempotent and existing data is kept:
+`docker compose exec -T clickhouse clickhouse-client --password "$CLICKHOUSE_PASSWORD" --multiquery < deploy/clickhouse/01_init.sql` ([ADR 075](../../docs/adr/ingest/075-requests-limits-schema-v4.md)). `down -v` wipes all data — only for a deliberately fresh dev start.
 
 ## Verify
 

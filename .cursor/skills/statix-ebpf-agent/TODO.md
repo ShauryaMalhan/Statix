@@ -16,36 +16,6 @@ The report in [PRODUCT.md](../../../docs/PRODUCT.md): per service, what it costs
 CPU and memory, and what right-sizing to p95 would save. Statix recommends; it never
 resizes. Numbers first: a report nobody trusts is useless.
 
-- [ ] **Requests/limits per pod.** "Reserves 1000m / 2 GiB" is what the company pays for,
-      so it is the cost basis. Extend the pod watcher (`watch_k8s_pods`) to read each
-      container's `resources.requests` / `resources.limits`, add wire fields + columns.
-      Pods with no requests set need a stated rule (cost them at usage, and flag "no
-      requests set" as its own insight).
-      **Found 2026-09-27 on k3s (containerd, systemd driver):** container cgroups are
-      `…/kubepods-burstable-pod<uid_>.slice/cri-containerd-<64hex>.scope`, and the 64-hex ID
-      equals `containerStatuses[].containerID` after `containerd://`; the pause container is
-      the one folder whose ID is in no status list. Two live bugs:
-      - `extract_container_from_path` looks for `cri-container-` (missing `d`), so it never
-        matches; every container gets the pod's **first** container name (the real cause of
-        the pause-label bug, and `sidecar` was mislabelled too).
-      - `extract_pod_uid_from_path` splits on `-pod`; a Guaranteed pod's
-        `kubepods.slice/kubepods-pod<uid>.slice` (verified on k3s, no QoS level) has no `-pod`
-        after the prefix, so **every Guaranteed pod is unattributed**.
-      **Stages:** ✅ 1a parsers + tests (local commit) · ✅ 1b dev access via
-      `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · ✅ `kube` 4.2 +
-      `k8s-openapi` 0.28, min Kubernetes 1.32 (ADR 073, local commit) · ✅ 1c-i container ID → name mapping (ADR 074, local commit; also
-      resolves the two items below — delete them at push) · ✅ 1c-ii requests/limits per container
-      + quantity parser (ADR 074 follow-up, local commit) · **next:** 2 pipeline (wire v4, gateway,
-      columns + ALTER). Push when the whole item is done.
-      **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
-      ID (folder name minus `.scope`, text after the last `-`, must be 64 hex), not by prefix;
-      read `containerStatuses` + `initContainerStatuses` + `ephemeralContainerStatuses`;
-      skip CRI-O's `crio-conmon-<id>` for requests (same ID, would double-charge); parse the
-      pod UID as `pod` + 36-char UUID with `_` or `-`. Unit-test every layout (containerd /
-      CRI-O / Docker × systemd / cgroupfs × Guaranteed / Burstable). Add
-      `statix_k8s_unmatched_cgroups` so an unknown layout is visible, not silently wrong.
-      Supersedes the "stronger cgroup → pod mapping" and pause-label items below.
-
 - [ ] **Group pods by service (owner), not pod name.** Pod names change on every deploy
       (`checkout-api-7d9f8c-x2k4q`), so a report by pod is unreadable and loses history. Read
       the pod's `ownerReferences` (ReplicaSet → Deployment, StatefulSet, DaemonSet, Job) in
@@ -64,7 +34,9 @@ resizes. Numbers first: a report nobody trusts is useless.
       hours; p95/p99/max shown underneath as evidence. A ClickHouse query over the
       per-window rows, grouped by service, joined with requests and price, then a page that
       reads like the PRODUCT.md example. Percentiles already work on today's data; cost and
-      savings need the three items above.
+      savings need grouping and price (requests/limits are in ClickHouse since ADR 075).
+      **Pods with no requests set** (columns are 0): cost them at usage, and flag "no requests
+      set" as its own insight — they are invisible to the scheduler's packing.
       **Exclude host-pause windows** (see Parked): `WHERE window_end_ns -
       window_start_ns < 3 × window` — a paused window's CPU per second is far too low.
 
@@ -84,14 +56,6 @@ resizes. Numbers first: a report nobody trusts is useless.
       counter moves. Some distros ship PSI disabled
       by default (needs the `psi=1` boot parameter), so a missing `*.pressure` file must be a
       soft miss, like `cpu.stat` today. New columns → wire + schema change; needs an ADR.
-
-- [ ] **Stronger cgroup → pod mapping** *(Phase 8, long-open)*. The dashboard now makes this
-      failure visible for the first time; expect it to surface the moment k3s is running.
-
-- [ ] **The `container` label is wrong on sandbox cgroups.** The pause container is
-      labelled with the application container's name, because the name comes from the pod
-      spec rather than from the cgroup path. Its memory is real and small (0.2 MB), and after
-      ADR 066 it is no longer double-counted — only the label is wrong.
 
 ---
 
@@ -194,6 +158,12 @@ anyone but you.
 
 ## Engineering health
 
+- [ ] **Gateway shutdown drain times out instead of finishing.** Seen 2026-10-04: on
+      `dev-down.sh` the old gateway logged `ClickHouse writer drain timed out after 10s`.
+      If the writer still held unwritten rows, they are lost on every gateway restart.
+      Cause unverified — likely the writer waits for the ingest channel to close while a
+      sender (e.g. in `AppState`) is still alive. Check `main.rs` graceful drain +
+      `clickhouse_writer.rs`, and whether the final batch is flushed or dropped on timeout.
 - [ ] **arm64 eBPF in CI.** Verified working by hand on 2026-09-15 — aarch64, Ubuntu 24.04,
       kernel 6.8, `eBPF program loaded and kernel-verified`. The CI matrix is still x86-only,
       so nothing stops an arm64 regression. Required for Graviton and every Apple Silicon
@@ -217,6 +187,11 @@ anyone but you.
 
 - [ ] **Wire them to the Makefile** — `make dev-up` / `dev-down` / `dev-status`, and fix
       `make compose-up` at the same time (`Makefile:18` hardcodes `docker compose`).
+- [ ] **`dev-down.sh` doesn't wait for processes to exit.** The old gateway can spend up to
+      10 s draining after SIGTERM; `dev-up.sh` meanwhile starts the new one and truncates
+      `/tmp/statix-gateway.log`, so the old process keeps writing at its old offset — the
+      log fills with NUL bytes (`grep` calls it "binary"; use `grep -a`). Wait for the PIDs
+      to exit (with a timeout) before returning.
 - [ ] **`dev-up.sh` silently runs a stale binary.** It starts whatever is in
       `target/release/` and never builds. On 2026-09-26 a working-set change was "tested"
       against a two-day-old binary because `make build` hadn't produced a new one, and the

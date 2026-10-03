@@ -41,7 +41,7 @@ Trigger workload activity. Wait one flush window.
 | ClickHouse rows | `SELECT count() FROM statix.workload_metrics FINAL` → &gt; 0 after traffic |
 | Read API | `GET /api/v1/workloads/summary?hours=24` → `200` + JSON ([ADR 027](../adr/gateway/027-api-read-path-clickhouse.md)) |
 | Backpressure | Pause ClickHouse → within `STATIX_CH_INSERT_TIMEOUT_SECS`, `/ingest` and `/ready` → `503` ([ADR 055](../adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md)) |
-| Schema gate | `schema_version` 2 or 3 → `200`; outside range → `400` ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md)) |
+| Schema gate | `schema_version` 2–4 → `200`; outside range → `400` ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md)) |
 | Stdout fallback | Unset `STATIX_INGEST_URL` → batched JSON on stdout |
 
 ## ClickHouse schema check

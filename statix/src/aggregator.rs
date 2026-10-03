@@ -191,6 +191,10 @@ impl Aggregator {
                 exec_count: s.exec_count,
                 sample_count: s.sample_count,
                 cpu_usage_usec: s.cpu_usage_usec,
+                cpu_request_millicores: s.labels.resources.cpu_request_millicores,
+                memory_request_bytes: s.labels.resources.memory_request_bytes,
+                cpu_limit_millicores: s.labels.resources.cpu_limit_millicores,
+                memory_limit_bytes: s.labels.resources.memory_limit_bytes,
             })
             .collect();
 

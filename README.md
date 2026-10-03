@@ -35,7 +35,7 @@ Phase 2 behavior in short:
 
 - Tracepoint on process exec → `cgroup_id` + workload identity events
 - Periodic read of cgroup v2 working-set memory (`memory.current − inactive_file`, what `kubectl top` shows — [ADR 071](docs/adr/agent/071-working-set-memory.md)) and `cpu.stat` for **leaf** cgroups only — a parent's numbers already include its children, so reading both would double-count ([ADR 066](docs/adr/agent/066-sample-leaf-cgroups-only.md))
-- Optional in-cluster K8s pod list → namespace / pod / container labels
+- Optional in-cluster K8s pod watch → namespace / pod / container labels, each container cgroup matched by its container ID, plus that container's **requests and limits** from the pod spec — stored on every row as the report's cost basis ([ADR 074](docs/adr/agent/074-match-cgroups-by-container-id.md), [075](docs/adr/ingest/075-requests-limits-schema-v4.md))
 - Time-windowed rollups flushed to stdout or HTTP ingest
 
 Phase 3+ ingest: HTTP JSON batches → gateway coalescer → RowBinary INSERT → `statix.workload_metrics` (billing: `FINAL`). Schema: [deploy/clickhouse/01_init.sql](deploy/clickhouse/01_init.sql). [ADR 055](docs/adr/ingest/055-phase13-part1-kafka-removal-rowbinary.md).

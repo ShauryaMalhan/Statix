@@ -40,7 +40,7 @@ pub async fn handler(
 }
 
 const MIN_SCHEMA_VERSION: u32 = 2;
-const MAX_SCHEMA_VERSION: u32 = 3;
+const MAX_SCHEMA_VERSION: u32 = 4;
 
 async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
     let batch_window_end_ns = batch.window_end_ns;
@@ -53,7 +53,7 @@ async fn ingest_inner(state: AppState, batch: IngestBatch) -> Response {
         return (
             StatusCode::BAD_REQUEST,
             format!(
-                "Unsupported schema_version={}. Expected 2 or 3.",
+                "Unsupported schema_version={}. Expected {MIN_SCHEMA_VERSION}..={MAX_SCHEMA_VERSION}.",
                 batch.schema_version
             ),
         )

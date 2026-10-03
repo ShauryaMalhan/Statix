@@ -53,9 +53,10 @@ New decision? Add the next number (highest wins), drop it in the right folder, a
 | [005](ingest/005-non-blocking-ingest-pipeline.md) | Non-blocking HTTP → Kafka ingest pipeline |
 | [006](ingest/006-shared-http-client-for-ingest.md) | Shared `reqwest::Client` and ingest retry worker |
 | [017](ingest/017-batch-lineage-metadata.md) | Batch lineage metadata (`batch_id`, `agent_version`) |
-| [020](ingest/020-ingest-schema-version-window.md) | Ingest schema version window (2 and 3) |
+| [020](ingest/020-ingest-schema-version-window.md) | Ingest schema version window (2 and 3) — *extended to 2..=4 by 075* |
 | [054](ingest/054-phase11-wal-spillway.md) | Phase 11 — Local disk WAL spillway for the agent |
 | [055](ingest/055-phase13-part1-kafka-removal-rowbinary.md) | Phase 13 Part 1 — Kafka removal, direct ClickHouse RowBinary ingest |
+| [075](ingest/075-requests-limits-schema-v4.md) | Requests and limits per row (schema v4); upgrade by re-running `01_init.sql` |
 
 ## Gateway & API
 

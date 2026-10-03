@@ -18,7 +18,7 @@ Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breake
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `schema_version` | u32 | `2` or `3` ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md)) |
+| `schema_version` | u32 | `2`, `3` or `4` ([ADR 020](../adr/ingest/020-ingest-schema-version-window.md), [075](../adr/ingest/075-requests-limits-schema-v4.md)) |
 | `window_start_ns` | u64 | Window open (Unix ns) |
 | `window_end_ns` | u64 | Window close (Unix ns) |
 | `node` | string | Hostname / `STATIX_NODE_NAME` |
@@ -40,6 +40,10 @@ Backpressure: `ch_healthy` false or mpsc full → `503` → agent circuit breake
 | `exec_count` | u32 | `sched_process_exec` events in window |
 | `sample_count` | u32 | Memory samples in window |
 | `cpu_usage_usec` | u64 | CPU microseconds consumed in window (delta of cgroup `cpu.stat` `usage_usec`; schema v3; omitted in v2 → `0`) ([ADR 058](../adr/agent/058-phase14-cpu-usage-tracking.md)) |
+| `cpu_request_millicores` | u64 | Container's CPU request from its pod spec. 0 = not set / pause / non-K8s (schema v4; omitted in v2/v3 → `0`) ([ADR 075](../adr/ingest/075-requests-limits-schema-v4.md)) |
+| `memory_request_bytes` | u64 | Container's memory request (bytes), same rules |
+| `cpu_limit_millicores` | u64 | Container's CPU limit, same rules |
+| `memory_limit_bytes` | u64 | Container's memory limit (bytes), same rules |
 
 ## Gateway flat row (one per workload)
 
@@ -53,7 +57,7 @@ The ingest handler builds gateway-local `MetricRow` via `MetricRow::from_ingest`
 | Sort key | `(node, window_start_ns, cgroup_id)` ([ADR 011](../adr/storage/011-replacingmergetree-dedupe-identity.md)) |
 | Billing queries | Always `FROM statix.workload_metrics FINAL` |
 
-Schema change on existing volume: `docker compose down -v && make compose-up`.
+Schema change on an existing install: re-run `deploy/clickhouse/01_init.sql` — every statement is idempotent, existing data is kept ([ADR 075](../adr/ingest/075-requests-limits-schema-v4.md)).
 
 ## HTTP endpoints
 
@@ -70,7 +74,7 @@ Schema change on existing volume: `docker compose down -v && make compose-up`.
 |--------|------|------|
 | `200 OK` | Every workload row enqueued to coalescer mpsc | empty |
 | `401 Unauthorized` | `STATIX_API_TOKEN` set and `Authorization` missing/wrong ([ADR 019](../adr/gateway/019-ingest-bearer-token-auth.md)) | empty |
-| `400 Bad Request` | `schema_version` not in `2..=3` | plain text |
+| `400 Bad Request` | `schema_version` not in `2..=4` | plain text |
 | `503 Service Unavailable` | `!ch_healthy` or `try_reserve_many` full | plain text |
 
 Handler never awaits ClickHouse insert. On `503`, agent circuit opens and WAL captures batches ([ADR 054](../adr/ingest/054-phase11-wal-spillway.md)).

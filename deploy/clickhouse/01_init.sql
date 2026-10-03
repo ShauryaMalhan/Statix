@@ -3,7 +3,10 @@
 --
 -- Billing: SELECT * FROM statix.workload_metrics FINAL WHERE node = '...';
 --
--- Schema change on existing volume: docker compose down -v && make compose-up
+-- Upgrading an existing install: re-run this whole file. Every statement is
+-- idempotent (IF NOT EXISTS / IF EXISTS), so it creates what is missing and
+-- leaves existing data alone:
+--   clickhouse-client --password ... --multiquery < deploy/clickhouse/01_init.sql
 
 CREATE DATABASE IF NOT EXISTS statix;
 
@@ -25,6 +28,12 @@ CREATE TABLE IF NOT EXISTS statix.workload_metrics
     exec_count UInt32,
     sample_count UInt32,
     cpu_usage_usec UInt64,
+    -- What the container reserves (from its pod spec), per row. 0 = not set;
+    -- also 0 for the pause sandbox and non-Kubernetes cgroups (ADR 075).
+    cpu_request_millicores UInt64,
+    memory_request_bytes UInt64,
+    cpu_limit_millicores UInt64,
+    memory_limit_bytes UInt64,
     -- FinOps read-path: minmax skip index lets cgroup-filtered queries skip granules
     -- whose cgroup_id range cannot match (billing drill-down, workload lookup).
     INDEX cgroup_idx cgroup_id TYPE minmax GRANULARITY 4
@@ -50,3 +59,9 @@ DROP TABLE IF EXISTS statix.kafka_telemetry_queue SYNC;
 --
 -- Existing volume (Phase 10): ALTER TABLE statix.workload_metrics
 --   ADD INDEX IF NOT EXISTS cgroup_idx cgroup_id TYPE minmax GRANULARITY 4;
+
+-- Upgrades for tables created before these columns existed (no-op on new installs).
+ALTER TABLE statix.workload_metrics ADD COLUMN IF NOT EXISTS cpu_request_millicores UInt64 AFTER cpu_usage_usec;
+ALTER TABLE statix.workload_metrics ADD COLUMN IF NOT EXISTS memory_request_bytes   UInt64 AFTER cpu_request_millicores;
+ALTER TABLE statix.workload_metrics ADD COLUMN IF NOT EXISTS cpu_limit_millicores   UInt64 AFTER memory_request_bytes;
+ALTER TABLE statix.workload_metrics ADD COLUMN IF NOT EXISTS memory_limit_bytes     UInt64 AFTER cpu_limit_millicores;

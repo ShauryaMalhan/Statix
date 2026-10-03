@@ -24,7 +24,7 @@ ClickHouse RowBinary inserts, and serves a read API.
 
 Data flow (queue-less since Phase 13 — **there is no Kafka**):
 `sched:sched_process_exec` → BPF ring buffer → agent (attribute + aggregate)
-→ `POST /ingest` (JSON, schema v3) → gateway `MetricRow` mpsc + coalescer
+→ `POST /ingest` (JSON, schema v4) → gateway `MetricRow` mpsc + coalescer
 → RowBinary `INSERT` → ClickHouse `statix.workload_metrics`
 → `GET /api/v1/workloads/summary`.
 
@@ -37,7 +37,7 @@ Before editing any crate, read `.cursor/skills/statix-ebpf-agent/SKILL.md`
 (then `REFERENCE.md`, `PATTERNS.md`). It is the source of truth for conventions.
 **Every architectural change must, in the same PR:** add an ADR under
 `docs/adr/<topic>/` (numbering is global-sequential and the number is the ADR's
-permanent identity — highest is `074`, so the next is `075`). ADRs are filed by
+permanent identity — highest is `075`, so the next is `076`). ADRs are filed by
 topic: `ebpf/ agent/ ingest/ gateway/ storage/ observability/ ui/ deploy/
 fixes/ meta/ kafka-legacy/` — see [`docs/adr/INDEX.md`](docs/adr/INDEX.md).
 Audit/fix waves go in `fixes/` because they cross-cut by nature. Also update
@@ -84,7 +84,7 @@ run the binary with the variable genuinely unset:
 `make run-api` (alias of `run-gateway`) is host-only gateway dev and must NOT be
 combined with `compose-up` (port :3000 conflict). After gateway code changes in
 Docker: `docker compose build statix-gateway && docker compose up -d statix-gateway`.
-After a CH schema change: `docker compose down -v && make compose-up`.
+After a CH schema change: re-run `deploy/clickhouse/01_init.sql` (`docker compose exec -T clickhouse clickhouse-client --password … --multiquery < deploy/clickhouse/01_init.sql`) — every statement is idempotent; never `down -v` to upgrade (ADR 075).
 
 **Host is macOS (arm64); eBPF builds and the agent only run on Linux.** Build and
 run inside the Colima/Lima Ubuntu VM — `make build`, `make check`'s nightly BPF
@@ -200,7 +200,7 @@ drop-oldest).
 
 ## Gateway / storage notes
 
-- `POST /ingest` accepts `schema_version` 2 or 3 (else 400), 2 MB body limit,
+- `POST /ingest` accepts `schema_version` 2..=4 (else 400; v4 adds per-row requests/limits, ADR 075), 2 MB body limit,
   optional bearer auth via `STATIX_API_TOKEN`. Two backpressure tiers, both 503:
   Tier 1 `!ch_healthy`, Tier 2 `try_reserve_many` on the bounded `MetricRow`
   mpsc (default 8192). The handler denormalizes the batch envelope into per-row
@@ -216,7 +216,9 @@ drop-oldest).
   stall-detection primitive.
 - Storage is `ReplacingMergeTree(window_end_ns)`, `PARTITION BY` hour,
   `ORDER BY (node, window_start_ns, cgroup_id)`, 30-day TTL, minmax skip index
-  on `cgroup_id`. Billing/dedup queries use `FINAL`; the operational read path
+  on `cgroup_id`. Schema changes: add the column to `CREATE TABLE` **and** an
+  idempotent `ALTER … ADD COLUMN IF NOT EXISTS` at the end of `01_init.sql`.
+  Billing/dedup queries use `FINAL`; the operational read path
   (`/api/v1/workloads/summary`) deliberately does not. Schema/init:
   `deploy/clickhouse/01_init.sql`.
 
