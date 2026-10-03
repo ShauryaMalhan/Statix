@@ -44,6 +44,14 @@ The two-container `reqtest` pod: `web` (cgroup 10215), `sidecar` (10308), and th
 - **Known transient:** a new container's cgroup appears a moment before Kubernetes reports its ID, so it is unnamed (and, from the next stage, has no request) until the next `Apply` event.
 - **Unverified layouts:** CRI-O, Docker and cgroupfs are covered by unit tests, not by a live cluster. The gauge is how a mismatch would surface.
 
+## Follow-up: requests and limits per container (2026-10-04)
+
+Each `PodInfo` also holds **container name → `Resources`** (CPU/memory × request/limit as plain millicores and bytes; **0 = not set**), filled from `spec.containers` and `spec.initContainers` (ephemeral containers cannot set resources). The lookup is cgroup → ID → name → resources, so the pause sandbox, CRI-O conmon and non-Kubernetes containers carry zeros — they reserve nothing, and must not be charged.
+
+Kubernetes quantities are parsed by `cpu_millicores` (`250m`, `1`, `0.5`) and `memory_bytes` — binary (`Ki`…`Ei`, ×1024) and decimal (`k`…`E`, ×1000) suffixes, plain bytes and exponent form (`1e9`). `Mi` vs `M` differ by ~5%, so both are handled. Junk, negative and non-finite input gives `None` → 0, never a panic. A limit-only container needs no special case: the API server copies the limit into the request at admission, so the pod the watcher receives already has both.
+
+Unit-tested with the `reqtest` values (`web` 250m/128Mi, limits 500m/256Mi; `sidecar` 50m/32Mi, no limit → 0). Not yet visible outside the agent: the wire format and ClickHouse columns come in the next stage.
+
 ## References
 
 - [ADR 066](066-sample-leaf-cgroups-only.md) — leaf-only sampling (each container is a leaf)

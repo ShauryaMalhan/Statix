@@ -12,9 +12,12 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use k8s_openapi::api::core::v1::ResourceRequirements;
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
 use statix_common::StatixEvent;
+use std::collections::BTreeMap;
 use walkdir::WalkDir;
 
 /// Resolved workload metadata for aggregation and JSON output.
@@ -25,6 +28,7 @@ pub struct WorkloadLabels {
     pub container: Option<String>,
     pub pod_uid: Option<String>,
     pub k8s_resolved: bool,
+    pub resources: Resources,
 }
 
 /// What the pod watcher knows about one pod: where it lives, and which
@@ -35,6 +39,17 @@ pub struct PodInfo {
     pub name: String,
     /// Container ID -> container name mapping.
     pub containers: FxHashMap<String, String>,
+    /// Container name → its requests and limits (from the pod spec).
+    pub resources: FxHashMap<String, Resources>,
+}
+
+/// One container's requests and limits as plain numbers. 0 means "not set".
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Resources {
+    pub cpu_request_millicores: u64,
+    pub memory_request_bytes: u64,
+    pub cpu_limit_millicores: u64,
+    pub memory_limit_bytes: u64,
 }
 
 pub static DEFAULT_LABELS: LazyLock<Arc<WorkloadLabels>> =
@@ -422,6 +437,7 @@ fn labels_from_cgroup_path(path: Option<&PathBuf>) -> WorkloadLabels {
         container,
         pod_uid: pod_uid.clone(),
         k8s_resolved: false,
+        resources: Resources::default(),
     }
 }
 
@@ -471,6 +487,7 @@ fn pod_info_from(pod: &k8s_openapi::api::core::v1::Pod) -> Option<(String, PodIn
         namespace: meta.namespace.clone().unwrap_or_else(|| "default".into()),
         name: meta.name.clone().unwrap_or_default(),
         containers: FxHashMap::default(),
+        resources: FxHashMap::default(),
     };
     if let Some(status) = &pod.status {
         let lists = [
@@ -487,6 +504,13 @@ fn pod_info_from(pod: &k8s_openapi::api::core::v1::Pod) -> Option<(String, PodIn
             }
         }
     }
+    if let Some(spec) = &pod.spec {
+        let init = spec.init_containers.iter().flatten();
+        for c in spec.containers.iter().chain(init) {
+            info.resources
+                .insert(c.name.clone(), resources_from(&c.resources));
+        }
+    }
     Some((uid, info))
 }
 
@@ -500,6 +524,68 @@ fn container_name_in_pod(dir_name: &str, pod: &PodInfo) -> Option<String> {
     }
     let id = container_id_from_dir_name(dir_name)?;
     pod.containers.get(id).cloned()
+}
+
+/// Kubernetes CPU quantity → millicores: "250m" → 250, "1" → 1000, "0.5" → 500.
+fn cpu_millicores(q: &str) -> Option<u64> {
+    let q = q.trim();
+    let millicores = match q.strip_suffix('m') {
+        Some(m) => m.parse::<f64>().ok()?,
+        None => q.parse::<f64>().ok()? * 1000.0,
+    };
+    (millicores.is_finite() && millicores >= 0.0).then(|| millicores.round() as u64)
+}
+
+/// Kubernetes memory quantity → bytes. Binary units (Ki, Mi, Gi…, ×1024) and
+/// decimal units (k, M, G…, ×1000) differ by ~5% at Mi/M, so both matter.
+fn memory_bytes(q: &str) -> Option<u64> {
+    const UNITS: [(&str, f64); 12] = [
+        ("Ki", 1024.0),
+        ("Mi", 1024.0 * 1024.0),
+        ("Gi", 1024.0 * 1024.0 * 1024.0),
+        ("Ti", 1024.0 * 1024.0 * 1024.0 * 1024.0),
+        ("Pi", 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0),
+        ("Ei", 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0),
+        ("k", 1e3),
+        ("M", 1e6),
+        ("G", 1e9),
+        ("T", 1e12),
+        ("P", 1e15),
+        ("E", 1e18),
+    ];
+    let q = q.trim();
+    let (number, factor) = UNITS
+        .iter()
+        .find_map(|(suffix, factor)| q.strip_suffix(suffix).map(|num| (num, *factor)))
+        .unwrap_or((q, 1.0));
+    let bytes = number.parse::<f64>().ok()? * factor;
+    (bytes.is_finite() && bytes >= 0.0).then(|| bytes.round() as u64)
+}
+
+/// The quantity text for `key` ("cpu" or "memory") in a requests/limits map.
+fn quantity<'a>(map: &'a Option<BTreeMap<String, Quantity>>, key: &str) -> Option<&'a str> {
+    map.as_ref()?.get(key).map(|q| q.0.as_str())
+}
+
+/// A container's `resources:` block as plain numbers; anything missing is 0.
+fn resources_from(spec: &Option<ResourceRequirements>) -> Resources {
+    let Some(r) = spec else {
+        return Resources::default();
+    };
+    Resources {
+        cpu_request_millicores: quantity(&r.requests, "cpu")
+            .and_then(cpu_millicores)
+            .unwrap_or(0),
+        memory_request_bytes: quantity(&r.requests, "memory")
+            .and_then(memory_bytes)
+            .unwrap_or(0),
+        cpu_limit_millicores: quantity(&r.limits, "cpu")
+            .and_then(cpu_millicores)
+            .unwrap_or(0),
+        memory_limit_bytes: quantity(&r.limits, "memory")
+            .and_then(memory_bytes)
+            .unwrap_or(0),
+    }
 }
 
 /// Merge pod API labels into `cgroup_labels` for every tracked cgroup (background only).
@@ -529,6 +615,12 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
                         .file_name()
                         .and_then(|name| name.to_str())
                         .and_then(|name| container_name_in_pod(name, pod));
+                    labels.resources = labels
+                        .container
+                        .as_ref()
+                        .and_then(|name| pod.resources.get(name))
+                        .copied()
+                        .unwrap_or_default();
                 }
                 // Under a pod the watcher doesn't know: an unfamiliar layout,
                 // or a pod that started a moment ago. Counted so it's visible.
@@ -537,7 +629,7 @@ fn merge_cgroup_labels_from_k8s(cache: &AttributionCache) {
         }
         new_labels.push((*cgroup_id, Arc::new(labels)));
     }
-    metrics::gauge!("statix.k8s.unmatched_cgroups").set(unmatched as f64);
+    metrics::gauge!("statix_k8s_unmatched_cgroups").set(unmatched as f64);
 
     let mut state = cache.state.write();
     for (cgroup_id, labels) in new_labels {
@@ -847,5 +939,72 @@ mod tests {
         ] {
             assert_eq!(container_id_from_dir_name(name), None, "{name}");
         }
+    }
+
+    #[test]
+    fn cpu_quantities() {
+        for (q, want) in [
+            ("250m", 250),
+            ("100m", 100),
+            ("1", 1000),
+            ("0.5", 500),
+            ("1.5", 1500),
+            ("2", 2000),
+        ] {
+            assert_eq!(cpu_millicores(q), Some(want), "{q}");
+        }
+        for bad in ["", "abc", "-1", "inf"] {
+            assert_eq!(cpu_millicores(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn memory_quantities() {
+        for (q, want) in [
+            ("128Mi", 128 << 20),
+            ("1Gi", 1 << 30),
+            ("64Ki", 64 << 10),
+            ("500M", 500_000_000),
+            ("1G", 1_000_000_000),
+            ("1k", 1_000),
+            ("134217728", 134_217_728),
+            ("1e9", 1_000_000_000),
+            ("1.5Gi", 3 << 29),
+        ] {
+            assert_eq!(memory_bytes(q), Some(want), "{q}");
+        }
+        for bad in ["", "abc", "-1Gi", "inf"] {
+            assert_eq!(memory_bytes(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn pod_info_reads_requests_and_limits() {
+        let pod: k8s_openapi::api::core::v1::Pod = serde_json::from_value(serde_json::json!({
+            "metadata": { "uid": "2b7669e8-6828-4310-9a1f-0eaad6933466", "name": "reqtest", "namespace": "default" },
+            "spec": { "containers": [
+                { "name": "web", "resources": {
+                    "requests": { "cpu": "250m", "memory": "128Mi" },
+                    "limits":   { "cpu": "500m", "memory": "256Mi" } } },
+                { "name": "sidecar", "resources": { "requests": { "cpu": "50m", "memory": "32Mi" } } }
+            ] }
+        }))
+        .unwrap();
+
+        let (_, info) = pod_info_from(&pod).unwrap();
+        assert_eq!(
+            info.resources["web"],
+            Resources {
+                cpu_request_millicores: 250,
+                memory_request_bytes: 128 << 20,
+                cpu_limit_millicores: 500,
+                memory_limit_bytes: 256 << 20,
+            }
+        );
+        assert_eq!(info.resources["sidecar"].cpu_request_millicores, 50);
+        assert_eq!(
+            info.resources["sidecar"].memory_limit_bytes, 0,
+            "no limit set → 0"
+        );
     }
 }

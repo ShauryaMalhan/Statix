@@ -34,9 +34,8 @@ resizes. Numbers first: a report nobody trusts is useless.
       **Stages:** ✅ 1a parsers + tests (local commit) · ✅ 1b dev access via
       `STATIX_DEV_KUBECONFIG`, node name `colima` (ADR 072, local commit) · ✅ `kube` 4.2 +
       `k8s-openapi` 0.28, min Kubernetes 1.32 (ADR 073, local commit) · ✅ 1c-i container ID → name mapping (ADR 074, local commit; also
-      resolves the two items below — delete them at push) · **next:** 1c-ii requests/limits per
-      container (Kubernetes quantity parser + tests; also rename the gauge string
-      `statix.k8s.unmatched_cgroups` → underscores) · then 2 pipeline (wire v4, gateway,
+      resolves the two items below — delete them at push) · ✅ 1c-ii requests/limits per container
+      + quantity parser (ADR 074 follow-up, local commit) · **next:** 2 pipeline (wire v4, gateway,
       columns + ALTER). Push when the whole item is done.
       **Design — independent of runtime and driver:** match cgroup → container by the 64-hex
       ID (folder name minus `.scope`, text after the last `-`, must be 64 hex), not by prefix;
