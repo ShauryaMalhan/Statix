@@ -16,6 +16,46 @@ The report in [PRODUCT.md](../../../docs/PRODUCT.md): per service, what it costs
 CPU and memory, and what right-sizing to p95 would save. Statix recommends; it never
 resizes. Numbers first: a report nobody trusts is useless.
 
+- [ ] **Services-first dashboard — the report as the UI** (agreed 2026-10-04; ADR + docs
+      written once the whole item is done). Today's dashboard lists every cgroup (system
+      slices, Docker, `cgroup:7998 unattributed`): a debug view nobody at a company acts on.
+      Target is the cloud-console shape (AWS / DigitalOcean): a short list of what you run,
+      one click opens it with graphs.
+      **Services in the list, pods inside the detail** — not a pod list: pods get new names
+      on every deploy/restart/scale-up, so replicas bloat the list and a 7-day graph breaks
+      into pieces; the report is per service (Deployment / StatefulSet / DaemonSet / CronJob).
+      - **Overview + service list:** cluster cost, potential savings, service count; per
+        service: namespace, CPU used/reserved, memory used/reserved, cost/mo, savings,
+        ⚠ throttled. Sorted by savings. Non-K8s cgroups hidden; `kube-system` behind a toggle.
+      - **Service detail:** recommendation line first (CPU p95 + 15%, memory daily peak
+        + 15%, ≥7 days — PRODUCT.md); CPU graph (usage, request line, p95 line); memory graph
+        (working set, request line, daily peaks); ranges 7/14/30 days; current pods (name,
+        age, restarts). Usage far below the request line *is* the waste.
+      - **Read API:** a service-list endpoint and a service-series endpoint, bucketed in
+        ClickHouse (per minute short ranges, per hour long ones) so the browser never pulls
+        raw 10 s rows; ADR 061's rules carry over (bounded inputs, whitelisted sorts, bound
+        params, query-param cache); exclude windows > ~3 × window (host pause).
+      - **Stay light:** one HTML file, no framework, no build step. Charts from a small
+        library **vendored into the repo, never a CDN** (offline installs; strict CSP).
+        Candidate uPlot — check its licence and size first; hand-drawn SVG as fallback.
+      - **Secure by default, in the same work:** CSP (`default-src 'self'`, no inline
+        script), `X-Frame-Options: DENY` / `frame-ancestors 'none'`, `nosniff`,
+        `Referrer-Policy: no-referrer`; XSS test (a pod named
+        `<img src=x onerror=alert(1)>` renders inert); `LIMIT` on every list (incl. the
+        node list); **access control on by default**.
+      - **User visibility — to discuss and confirm before step 4 ships:** (A) shared token
+        required unless bound to loopback (reuse `STATIX_API_TOKEN`, lightest); (B) login per
+        person via company SSO/OIDC; (C) namespace-scoped visibility per team (B + mapping
+        or Kubernetes RBAC). Leaning: A now, B/C when a company asks.
+      - **Order, each step verified before the next:** (1) group pods by service — agent
+        reads the owner (ReplicaSet → Deployment, StatefulSet, DaemonSet, Job/CronJob) and
+        stores it per row; (2) price per vCPU-hour / GiB-hour; (3) service list + overview;
+        (4) service detail with graphs + the secure-by-default items; (5) retire the cgroup
+        table (or move it behind "debug").
+      - Absorbs: the parked "drill-down charts" item, the self-hosted-readiness security
+        items, and the grouping / price / report items below — delete those as each step
+        ships.
+
 - [ ] **Group pods by service (owner), not pod name.** Pod names change on every deploy
       (`checkout-api-7d9f8c-x2k4q`), so a report by pod is unreadable and loses history. Read
       the pod's `ownerReferences` (ReplicaSet → Deployment, StatefulSet, DaemonSet, Job) in
@@ -244,10 +284,6 @@ Not deleted: each may become relevant later, but none is on the path to the four
       exclude windows longer than ~3 × `STATIX_WINDOW_SECS`. No agent change needed now;
       if it ever matters on servers, the agent can detect it (wall elapsed ≫ monotonic
       elapsed) and flag the row.
-- [ ] **Drill-down charts** — `GET /api/v1/dashboard/workload/{cgroup_id}/series`, then a
-      time-series view on row click. Cheap: the `cgroup_idx` minmax skip index
-      ([ADR 059](../../../docs/adr/storage/059-phase10-clickhouse-cgroup-skip-index.md))
-      exists precisely for this filter.
 - [ ] **Single-flight on cache miss.** TTL alone collapses steady state; the stampede window
       is the instant after expiry. Add only if measurement shows it matters.
 - [ ] **Agent-side signals in the health strip** — `statix_ring_drops_total` and
